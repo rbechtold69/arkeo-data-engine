@@ -1,0 +1,98 @@
+# ---------------------------------------
+# OS / Editor Files
+# ---------------------------------------
+.DS_Store
+Thumbs.db
+
+# JetBrains IDE
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# ---------------------------------------
+# Go build artifacts
+# ---------------------------------------
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go vendor (optional if you use modules)
+vendor/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# ---------------------------------------
+# Node / Web Admin
+# ---------------------------------------
+node_modules/
+npm-debug.log
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+.cache/
+
+# ---------------------------------------
+# Python
+# ---------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+venv/
+ENV/
+env/
+
+# ---------------------------------------
+# Logs
+# ---------------------------------------
+*.log
+logs/
+*.pid
+
+# ---------------------------------------
+# Docker
+# ---------------------------------------
+*.tar
+docker-compose.override.yml
+
+# ---------------------------------------
+# Secrets / Keys
+# ---------------------------------------
+*.key
+*.pem
+*.crt
+*.env
+secrets/
+keys/
+credentials/
+
+# ---------------------------------------
+# Arkeo Runtime
+# ---------------------------------------
+# Never commit blockchain home directories
+.arkeod/
+arkeod/
+arkeod-data/
+arkeod-home/
+data/
+config/priv_validator_key.json
+config/node_key.json
+
+# ---------------------------------------
+# Temporary / Scratch Files
+# ---------------------------------------
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
