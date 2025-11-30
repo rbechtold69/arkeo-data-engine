@@ -2,28 +2,35 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Arkeo Provider - Admin</title>
+    <title>Arkeo Marketplace | Provider Manager</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="images/favicon.ico">
+    <link rel="shortcut icon" href="images/favicon.ico">
 </head>
 <body>
 <div class="card header-card">
     <div class="row-between header-top">
-        <div class="header-left">
-            <h1 id="headerMoniker"></h1>
-            <div id="headerDescription" class="muted" style="margin-top:-6px;"></div>
+            <div class="header-left">
+                <div class="header-brand-row">
+                    <img src="images/arkeo-logo-200px_1.png" alt="Arkeo" class="header-logo">
+                    <div class="header-brand">
+                        <span class="brand-main">Arkeo Marketplace</span>
+                        <span class="brand-sep">|</span>
+                        <span class="brand-sub">Provider Manager</span>
+                    </div>
+                </div>
+                <h1 id="headerMoniker"></h1>
+                <div id="headerDescription" class="muted header-desc"></div>
+            </div>
+            <div class="header-right">
+                <div class="header-line" id="headerPubkey">
+                    <strong>Provider Pubkey:</strong>
+                    <span class="inline"><span id="headerPubkeyValue"></span> <button class="copy-btn" onclick="copyPubkeyFromHeader()">Copy</button></span>
+            </div>
+            <div class="header-line" id="headerBalance"><strong>Hotwallet Balance:</strong></div>
+            <div class="header-line muted" id="headerBlock"><strong>Current Block:</strong></div>
+            <div class="header-line fixed-pill"><span id="headerRefreshPill" class="status-badge status-warn hidden">Loading...</span></div>
         </div>
-        <div class="header-right">
-            <div id="headerBalance" class="header-line"><strong>Hotwallet Balance:</strong></div>
-            <div id="headerBlock" class="header-line muted"><strong>Current Block:</strong></div>
-            <div class="header-line fixed-pill"><span id="headerRefreshPill" class="status-badge status-warn" style="display:none;">Loading...</span></div>
-        </div>
-    </div>
-</div>
-
-<div class="card">
-    <h2>External Access</h2>
-        <div id="headerPubkey" class="header-line"><strong>Provider Pubkey: </strong></div>
-        <div id="endpointList" class="muted" style="white-space: normal;"></div>
     </div>
 </div>
 
@@ -31,7 +38,7 @@
     <h2>Sentinel Info</h2>
     <div class="row">
         <div class="col">
-            <div class="stack panel" style="margin-bottom:8px;">
+            <div class="stack panel mb-8">
                 <div class="pill-row">
                     <div class="status-badge status-warn" id="sentinelStatusBadgeTop">(loading)</div>
                 </div>
@@ -40,9 +47,8 @@
                     <button class="primary" onclick="controlSentinel('stop')">Stop Sentinel</button>
                     <button class="primary" onclick="controlSentinel('start')">Start Sentinel</button>
                     <button class="primary" onclick="runProviderClaims()">Provider Claims</button>
+                    <button class="primary" onclick="runProviderTotals()">Provider Totals</button>
                 </div>
-                <pre id="sentinelControlResult" style="display:none; margin-top:0; min-width:220px;"></pre>
-                <pre id="providerClaimsResult" style="display:none; margin-top:8px; min-width:220px;"></pre>
             </div>
         </div>
         <div class="col">
@@ -62,7 +68,7 @@
     <h2>Provider Services</h2>
     <div class="row">
         <div class="col">
-            <div class="panel" style="margin-bottom:12px;">
+            <div class="panel mb-12">
                 <div id="providerServices" class="muted">(loading services...)</div>
             </div>
         </div>
@@ -80,10 +86,32 @@
 </div>
 
 <div class="card">
+    <h2>Access Points</h2>
+    <div id="endpointList" class="muted ws-normal"></div>
+</div>
+
+<div class="card footer-card">
+    <div class="footer-links">
+        <div class="footer-brand">
+            <img src="images/arkeo-logo-200px_1.png" alt="Arkeo" class="footer-logo">
+            <span class="footer-title">
+                <span class="brand-main">Arkeo Marketplace</span>
+                <span class="brand-sep">|</span>
+                <span class="brand-sub">Provider Manager</span>
+            </span>
+        </div>
+        <div class="footer-links-right">
+            <div><a href="https://arkeo.network/" target="_blank" rel="noopener">Arkeo Marketplace Website</a></div>
+            <div><a href="https://discord.gg/arkeo" target="_blank" rel="noopener">Arkeo Discord</a></div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
     <div class="section">
         <h3>Debug</h3>
         <p id="version">Loading arkeod version...</p>
-        <span id="refreshBadge" class="status-badge status-warn" style="display:none; margin-bottom:8px;">Refreshing…</span>
+        <span id="refreshBadge" class="status-badge status-warn hidden mb-8">Refreshing…</span>
         <button class="primary" onclick="refreshInfo()">Refresh Info</button>
         <pre id="debugInfo">Loading...</pre>
         <h4>Sentinel Status</h4>
@@ -91,8 +119,17 @@
     </div>
 </div>
 
+<div id="resultModal" class="overlay hidden">
+    <div class="overlay-card modal-card">
+        <h3 id="modalTitle">Result</h3>
+        <pre id="modalBody"></pre>
+        <button class="primary" onclick="closeModal()">OK</button>
+    </div>
+</div>
+
 <script>
     let providerServicesData = [];
+    let currentPubkey = "";
 
     async function refreshInfo() {
         const debugEl = document.getElementById("debugInfo");
@@ -103,26 +140,38 @@
         if (headerPill) headerPill.style.display = "inline-block";
         try {
             const fetchNoStore = (url) => fetch(url, { cache: "no-store" });
-            const [provRes, balRes, keyRes, metaRes, svcRes, allSvcRes, sentRes, heightRes, sCfgRes] = await Promise.allSettled([
+            const [provRes, balRes, keyRes, svcRes, allSvcRes, sentRes, heightRes, sCfgRes, metaRes] = await Promise.allSettled([
                 fetchNoStore("http://localhost:9999/api/provider-info"),
                 fetchNoStore("http://localhost:9999/api/balance"),
                 fetchNoStore("http://localhost:9999/api/key"),
-                fetchNoStore("http://localhost:9999/api/sentinel-metadata"),
                 fetchNoStore("http://localhost:9999/api/provider-services"),
                 fetchNoStore("http://localhost:9999/api/services"),
                 fetchNoStore("http://localhost:9999/api/sentinel-status"),
                 fetchNoStore("http://localhost:9999/api/block-height"),
                 fetchNoStore("http://localhost:9999/api/sentinel-config"),
+                fetchNoStore("http://localhost:9999/api/sentinel-metadata?quiet=1"),
             ]);
-            const prov = provRes.status === "fulfilled" ? await provRes.value.json() : { error: provRes.reason };
-            const bal = balRes.status === "fulfilled" ? await balRes.value.json() : { error: balRes.reason };
-            const key = keyRes.status === "fulfilled" ? await keyRes.value.json() : { error: keyRes.reason };
-            const meta = metaRes.status === "fulfilled" ? await metaRes.value.json() : { error: metaRes.reason };
-            const services = svcRes.status === "fulfilled" ? await svcRes.value.json() : { error: svcRes.reason };
-            const allServices = allSvcRes.status === "fulfilled" ? await allSvcRes.value.json() : { error: allSvcRes.reason };
-            const sentinelStatus = sentRes.status === "fulfilled" ? await sentRes.value.json() : { error: sentRes.reason };
-            const height = heightRes.status === "fulfilled" ? await heightRes.value.json() : { error: heightRes.reason };
-            const sentinelConfig = sCfgRes.status === "fulfilled" ? await sCfgRes.value.json() : { error: sCfgRes.reason };
+            const parseSafe = async (settled) => {
+                if (settled.status !== "fulfilled" || !settled.value) return { error: String(settled.reason || "request failed") };
+                try {
+                    if (!settled.value.ok) {
+                        const text = await settled.value.text().catch(() => "");
+                        return { error: `${settled.value.status} ${settled.value.statusText || ""}`, body: text };
+                    }
+                    return await settled.value.json();
+                } catch (err) {
+                    return { error: "invalid json", detail: String(err) };
+                }
+            };
+            const prov = await parseSafe(provRes);
+            const bal = await parseSafe(balRes);
+            const key = await parseSafe(keyRes);
+            const services = await parseSafe(svcRes);
+            const allServices = await parseSafe(allSvcRes);
+            const sentinelStatus = await parseSafe(sentRes);
+            const height = await parseSafe(heightRes);
+            const sentinelConfig = await parseSafe(sCfgRes);
+            const meta = await parseSafe(metaRes);
             // Provider summary at top
             const metaCfg = (meta && meta.metadata && meta.metadata.config) || {};
             const envMeta = (prov && prov.provider_metadata) || {};
@@ -137,6 +186,8 @@
                 (prov && prov.pubkey && prov.pubkey.bech32) ||
                 (key && key.pubkey && key.pubkey.bech32) ||
                 "(unknown)";
+            currentPubkey = bech32Pubkey || "";
+            const shortPubkey = formatPubkeyShort(currentPubkey);
             const balanceAmt = formatBalance(bal);
             const blockHeight = formatBlockHeight(height);
             const summaryEl = document.getElementById("providerSummary");
@@ -148,10 +199,12 @@
             const headerPubEl = document.getElementById("headerPubkey");
             if (headerMonikerEl) headerMonikerEl.textContent = moniker || "";
             if (headerDescEl) headerDescEl.textContent = desc || "";
-            if (headerBalanceEl) headerBalanceEl.textContent = `Hotwallet Balance: ${balanceAmt}`;
-            if (headerBlockEl) headerBlockEl.textContent = `Current Block: ${blockHeight}`;
+            if (headerBalanceEl) headerBalanceEl.innerHTML = `<strong>Hotwallet Balance:</strong> ${balanceAmt}`;
+            if (headerBlockEl) headerBlockEl.innerHTML = `<strong>Current Block:</strong> ${blockHeight}`;
             if (headerPubEl) {
-                headerPubEl.innerHTML = `<strong>Provider Pubkey:</strong> <span class="inline"><span>${bech32Pubkey}</span> <button class="copy-btn" onclick="copyPubkey('${bech32Pubkey}')">Copy</button></span>`;
+                const valEl = document.getElementById("headerPubkeyValue");
+                if (valEl) valEl.textContent = shortPubkey;
+                headerPubEl.dataset.fullPubkey = currentPubkey;
             }
             const svcEl = document.getElementById("providerServices");
             const svcLookup = {};
@@ -182,7 +235,6 @@
                     else if (sname) sentinelServices.push({ name: sname });
                 });
             }
-            renderEndpointPanel(sentinelConfig);
             if (providerServicesData && providerServicesData.length) {
                 const items = providerServicesData.map((s, idx) => {
                     let rawId = "";
@@ -320,6 +372,61 @@
         return num.toLocaleString("en-US");
     }
 
+    function formatPubkeyShort(pk) {
+        if (!pk) return "";
+        const str = String(pk);
+        if (str.length <= 17) return str;
+        return `${str.slice(0, 9)}...${str.slice(-8)}`;
+    }
+
+    async function checkEndpoint(statusId, url, opts = {}) {
+        const badge = document.getElementById(statusId);
+        if (!badge) return;
+        if (!url) {
+            badge.className = "status-dot err";
+            return;
+        }
+        const { appendStatusPath = false, pathOverride = "", allowOpaqueOk = false } = opts;
+        let base = url.replace(/\/$/, "");
+        if (base.startsWith("tcp://")) {
+            base = "http://" + base.slice("tcp://".length);
+        }
+        let target = base;
+        try {
+            const parsed = new URL(base);
+            if (pathOverride) {
+                parsed.pathname = pathOverride;
+                target = parsed.toString();
+            } else if (appendStatusPath) {
+                parsed.pathname = parsed.pathname && parsed.pathname !== "/" ? parsed.pathname : "/status";
+                if (!parsed.pathname.endsWith("/status")) parsed.pathname = "/status";
+                target = parsed.toString();
+            }
+        } catch (e) {
+            if (pathOverride) {
+                target = `${base}${pathOverride.startsWith("/") ? pathOverride : `/${pathOverride}`}`;
+            } else if (appendStatusPath && !base.endsWith("/status")) {
+                target = `${base}/status`;
+            }
+        }
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 4000);
+        try {
+            const res = await fetch(target, { method: "GET", mode: "no-cors", signal: controller.signal });
+            clearTimeout(timer);
+            if (res.ok) {
+                badge.className = "status-dot ok";
+            } else if (res.type === "opaque") {
+                badge.className = allowOpaqueOk ? "status-dot ok" : "status-dot warn";
+            } else {
+                badge.className = "status-dot err";
+            }
+        } catch (e) {
+            clearTimeout(timer);
+            badge.className = "status-dot err";
+        }
+    }
+
     async function refreshSentinelStatus() {
         try {
             const res = await fetch("http://localhost:9999/api/sentinel-status");
@@ -332,9 +439,7 @@
     }
 
     async function controlSentinel(action) {
-        const resEl = document.getElementById("sentinelControlResult");
-        resEl.style.display = "block";
-        resEl.textContent = `Sending ${action}...`;
+        showResultModal("Sentinel Control", `Sending ${action}...`);
         try {
             const res = await fetch("http://localhost:9999/api/sentinel-control", {
                 method: "POST",
@@ -343,36 +448,61 @@
             });
             const data = await res.json();
             if (res.ok) {
-                resEl.textContent = `${action} ok: ${JSON.stringify(data)}`;
+                showResultModal("Sentinel Control", `${action} ok: ${JSON.stringify(data)}`);
                 refreshInfo();
             } else {
-                resEl.textContent = `${action} failed: ${JSON.stringify(data)}`;
+                showResultModal("Sentinel Control", `${action} failed: ${JSON.stringify(data)}`);
             }
         } catch (e) {
-                resEl.textContent = `${action} request error: ${e}`;
+                showResultModal("Sentinel Control", `${action} request error: ${e}`);
         }
     }
 
     async function runProviderClaims() {
-        const resEl = document.getElementById("providerClaimsResult");
-        if (resEl) {
-            resEl.style.display = "block";
-            resEl.textContent = "Running provider claims...";
-        }
+        showResultModal("Provider Claims", "Running provider claims...");
         try {
             const res = await fetch("http://localhost:9999/api/provider-claims", { method: "POST" });
             const data = await res.json();
             if (res.ok) {
-                resEl.textContent = JSON.stringify(data, null, 2);
+                showResultModal("Provider Claims", JSON.stringify(data, null, 2));
             } else {
-                resEl.textContent = "Error: " + JSON.stringify(data, null, 2);
+                showResultModal("Provider Claims", "Error: " + JSON.stringify(data, null, 2));
             }
         } catch (e) {
-            if (resEl) resEl.textContent = "Request failed: " + e;
+            showResultModal("Provider Claims", "Request failed: " + e);
         }
     }
 
-    function renderEndpointPanel(sCfg, provObj, envMeta) {
+    async function runProviderTotals() {
+        showResultModal("Provider Totals", "Running provider totals...");
+        try {
+            const res = await fetch("http://localhost:9999/api/provider-totals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+            const data = await res.json();
+            if (res.ok) {
+                showResultModal("Provider Totals", JSON.stringify(data, null, 2));
+            } else {
+                showResultModal("Provider Totals", "Error: " + JSON.stringify(data, null, 2));
+            }
+        } catch (e) {
+            showResultModal("Provider Totals", "Request failed: " + e);
+        }
+    }
+
+    function showResultModal(title, bodyText) {
+        const modal = document.getElementById("resultModal");
+        const t = document.getElementById("modalTitle");
+        const b = document.getElementById("modalBody");
+        if (t) t.textContent = title || "Result";
+        if (b) b.textContent = bodyText || "";
+        if (modal) modal.style.display = "flex";
+    }
+
+    function closeModal() {
+        const modal = document.getElementById("resultModal");
+        if (modal) modal.style.display = "none";
+    }
+
+    async function renderEndpointPanel(sCfg, provObj, envMeta) {
         const el = document.getElementById("endpointList");
         if (!el) return;
         const envLower = (sCfg && sCfg.env) || {};
@@ -389,11 +519,33 @@
         const sentinelNode = pickEnv("SENTINEL_NODE") || pickMeta("SENTINEL_NODE");
         const sentinelPort = pickEnv("SENTINEL_PORT") || pickMeta("SENTINEL_PORT") || "3636";
         const sentinelFull = sentinelNode ? `${sentinelNode}:${sentinelPort}` : `(not set):${sentinelPort}`;
-        const lines = [];
-        lines.push(`<div><strong>Arkeo Node: </strong><span class="muted">${arkeodNode || "(not set)"}</span></div>`);
-        lines.push(`<div style="margin-top:6px;"><strong>Arkeo RPC: </strong><span class="muted">${restApi || "(not set)"}</span></div>`);
-        lines.push(`<div style="margin-top:6px;"><strong>Sentinel RPC: </strong><span class="muted">${sentinelFull}</span></div>`);
-        el.innerHTML = lines.join("");
+        const adminApiPort = pickEnv("ADMIN_API_PORT") || pickMeta("ADMIN_API_PORT") || "9999";
+        const adminPort = pickEnv("ADMIN_PORT") || pickMeta("ADMIN_PORT") || "8080";
+
+        const makeRow = (label, value, statusId) => {
+            return `<div class="endpoint-row">
+                <span id="${statusId}" class="status-dot warn"></span>
+                <strong>${label}: </strong><span class="muted endpoint-url">${value || "(not set)"}</span>
+            </div>`;
+        };
+
+        el.innerHTML = [
+            `<div class="endpoint-section-title"><strong>External Access</strong></div>`,
+            makeRow("Arkeo Node", arkeodNode, "arkeod-status"),
+            makeRow("Arkeo RPC", restApi, "arkeorpc-status"),
+            `<div class="endpoint-row"><strong>Sentinel RPC: </strong><span class="muted endpoint-url">${sentinelFull}</span></div>`,
+            `<div class="endpoint-section-title"><strong>Internal Access</strong></div>`,
+            makeRow("Sentinel RPC (Internal)", `http://localhost:${sentinelPort}`, "internal-sentinel-status"),
+            makeRow("Admin API", `http://localhost:${adminApiPort}/api/version`, "internal-adminapi-status"),
+            makeRow("Admin UI", `http://localhost:${adminPort}`, "internal-admin-status")
+        ].join("");
+
+        // Kick off reachability checks
+        checkEndpoint("arkeod-status", arkeodNode, { pathOverride: "/health", allowOpaqueOk: true });
+        checkEndpoint("arkeorpc-status", restApi, { pathOverride: "/cosmos/base/tendermint/v1beta1/node_info", allowOpaqueOk: true });
+        checkEndpoint("internal-sentinel-status", `http://localhost:${sentinelPort}`, { pathOverride: "/metadata.json", allowOpaqueOk: true });
+        checkEndpoint("internal-adminapi-status", `http://localhost:${adminApiPort}/api/version`, { allowOpaqueOk: true });
+        checkEndpoint("internal-admin-status", `http://localhost:${adminPort}`, { allowOpaqueOk: true });
     }
 
     async function getVersion() {
@@ -420,6 +572,16 @@
             console.warn("Failed to cache service for edit", e);
         }
         window.location.href = "provider.html";
+    }
+
+    function copyPubkeyFromHeader() {
+        const el = document.getElementById("headerPubkey");
+        const full = (el && el.dataset.fullPubkey) || currentPubkey || "";
+        if (full) {
+            copyPubkey(full);
+        } else {
+            alert("Pubkey unavailable");
+        }
     }
 
     async function copyPubkey(val) {

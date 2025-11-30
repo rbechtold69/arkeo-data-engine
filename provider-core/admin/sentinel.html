@@ -2,12 +2,14 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Arkeo Provider - Manage Sentinel</title>
+    <title>Arkeo Marketplace | Sentinel Management</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="images/favicon.ico">
+    <link rel="shortcut icon" href="images/favicon.ico">
 </head>
 <body>
 
-<div id="savingOverlay" class="overlay" style="display:none;">
+<div id="savingOverlay" class="overlay hidden">
     <div class="overlay-card">
         <h3>Please wait…</h3>
         <p>Updating sentinel config and restarting the sentinel. This can take up to ~15 seconds.</p>
@@ -15,17 +17,29 @@
 </div>
 
 <div class="card header-card">
-    <div class="row-between">
-        <h1>Provider Sentinel</h1>
-        <a class="btn primary" href="index.html">Back to Admin Home</a>
+    <div class="row-between header-top">
+        <div class="header-left">
+            <div class="header-brand-row">
+                <img src="images/arkeo-logo-200px_1.png" alt="Arkeo" class="header-logo">
+                <div class="header-brand">
+                    <span class="brand-main">Arkeo Marketplace</span>
+                    <span class="brand-sep">|</span>
+                    <span class="brand-sub">Provider Manager</span>
+                </div>
+            </div>
+            <h1>Sentinel Management</h1>
+        </div>
+        <div class="header-right">
+            <a class="btn primary" href="index.html">Back to Admin Home</a>
+        </div>
     </div>
 </div>
 
 <div class="card">
-    <div class="row-between" style="align-items:center;">
-        <div class="inline" style="display:flex; align-items:center; gap:10px;">
-            <h2 style="margin-top:0;">Sentinel Settings</h2>
-            <span id="refreshPill" class="status-badge status-warn" style="display:none;">Refreshing…</span>
+    <div class="row-between">
+        <div class="inline">
+            <h2 class="mt-0">Sentinel Settings</h2>
+            <span id="refreshPill" class="status-badge status-warn hidden">Refreshing…</span>
         </div>
     </div>
     <table>
@@ -144,22 +158,50 @@
             <td class="value"><span id="metadataNonce">(loading...)</span></td>
         </tr>
         <tr>
-            <td colspan="2" style="text-align:left; padding-top:12px; border-bottom: none;">
+            <td colspan="2" class="text-left pt-12 no-border">
                 <button class="primary" id="saveSentinelBtn" onclick="saveConfig()">Save Sentinel Config</button>
             </td>
         </tr>
     </table>
-    <pre id="saveResult" style="display:none;"></pre>
+    <pre id="saveResult" class="hidden"></pre>
+</div>
 
-    <h3>Sentinel YAML</h3>
-    <div class="hint">provider + services from sentinel.yaml</div>
-    <pre id="sentinelYaml">(loading...)</pre>
+<div class="card footer-card">
+    <div class="footer-links">
+        <div class="footer-brand">
+            <img src="images/arkeo-logo-200px_1.png" alt="Arkeo" class="footer-logo">
+            <span class="footer-title">
+                <span class="brand-main">Arkeo Marketplace</span>
+                <span class="brand-sep">|</span>
+                <span class="brand-sub">Provider Manager</span>
+            </span>
+        </div>
+        <div class="footer-links-right">
+            <div><a href="https://arkeo.network/" target="_blank" rel="noopener">Arkeo Marketplace Website</a></div>
+            <div><a href="https://discord.gg/arkeo" target="_blank" rel="noopener">Arkeo Discord</a></div>
+        </div>
+    </div>
+</div>
 
-<h3>Sentinel Metadata</h3>
-<div class="hint">metadata.json from the sentinel endpoint</div>
-<pre id="sentinelMeta">(loading...)</pre>
-<button class="primary" onclick="loadInfo()">Refresh</button>
-<pre id="debugInfo">Loading...</pre>
+<div class="card">
+
+    <h3>Debug Info</h3>
+
+    <button class="primary" onclick="loadInfo()">Refresh</button>
+    <pre id="sentinelMeta">(loading...)</pre>
+
+    <div class="panel mt-14">
+        <h3>Sentinel YAML</h3>
+        <div class="hint">provider + services from sentinel.yaml</div>
+        <pre id="sentinelYaml">(loading...)</pre>
+    </div>
+
+    <div class="panel mt-14">
+        <h3>Sentinel Metadata</h3>
+        <div class="hint">metadata.json from the sentinel endpoint</div>
+        <pre id="debugInfo">Loading...</pre>
+    </div>
+
 </div>
 
 <script>
@@ -189,11 +231,11 @@
                 document.getElementById("metadataNonce").textContent = prov.metadata_nonce || "(not set)";
             }
 
-            // YAML view
+            const yamlEl = document.getElementById("sentinelYaml");
             if (cfg.raw) {
-                document.getElementById("sentinelYaml").textContent = cfg.raw;
+                yamlEl.textContent = cfg.raw;
             } else {
-                document.getElementById("sentinelYaml").textContent = "(no sentinel.yaml found)";
+                yamlEl.textContent = "(no sentinel.yaml found)";
             }
 
             // Inputs

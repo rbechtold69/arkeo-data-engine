@@ -905,6 +905,7 @@ def sentinel_control():
 def sentinel_metadata():
     """Fetch sentinel metadata.json from the given URL (or default)."""
     force_loopback = request.args.get("loopback") not in (None, "", "0", "false", "False")
+    quiet = request.args.get("quiet") not in (None, "", "0", "false", "False")
     if force_loopback:
         url = "http://127.0.0.1:3636/metadata.json"
     else:
@@ -915,7 +916,8 @@ def sentinel_metadata():
         with urllib.request.urlopen(url, timeout=5) as resp:
             body = resp.read().decode("utf-8", errors="replace")
     except urllib.error.URLError as e:
-        return jsonify({"error": "failed to fetch sentinel metadata", "detail": str(e), "url": url}), 500
+        status = 200 if quiet else 500
+        return jsonify({"error": "failed to fetch sentinel metadata", "detail": str(e), "url": url}), status
     parsed = None
     try:
         parsed = json.loads(body)
@@ -1444,6 +1446,141 @@ def provider_claims():
         results.append({"claim": claim, "exit_code": exit_code, "tx": tx_json})
 
     return jsonify({"status": "ok", "claims_processed": len(results), "results": results})
+
+
+@app.post("/api/provider-totals")
+def provider_totals():
+    """Summarize PAYG claim spending for this provider (and optional service) over a height range."""
+    body = request.get_json(silent=True) or {}
+    service_filter = body.get("service") or ""
+    from_h = str(body.get("from_height") or body.get("from") or 0)
+    to_h = str(body.get("to_height") or body.get("to") or 999_999_999)
+
+    # Derive provider pubkey (bech32)
+    key_cmd = ["arkeod", "--home", ARKEOD_HOME, "keys", "show", KEY_NAME, "-p", "--keyring-backend", KEYRING]
+    code, out = run_list(key_cmd)
+    if code != 0:
+        return jsonify({"error": "failed to get provider pubkey", "detail": out}), 500
+    raw_pub = ""
+    try:
+        raw_pub = json.loads(out).get("key") or ""
+    except Exception:
+        pass
+    bech_pub = ""
+    if raw_pub:
+        c2, o2 = run_list(["arkeod", "debug", "pubkey-raw", raw_pub])
+        if c2 == 0:
+            for line in o2.splitlines():
+                if "Bech32 Acc:" in line:
+                    bech_pub = line.split("Bech32 Acc:")[-1].strip()
+                    break
+    provider_pubkey = bech_pub or raw_pub
+    if not provider_pubkey:
+        return jsonify({"error": "failed to derive provider pubkey", "detail": out}), 500
+
+    node = ARKEOD_NODE
+    query = f"message.action='/arkeo.arkeo.MsgClaimContractIncome' AND tx.height>={from_h} AND tx.height<={to_h}"
+    all_rows = []
+    page = 1
+    while True:
+        tx_cmd = [
+            "arkeod",
+            "q",
+            "txs",
+            "--order_by",
+            "asc",
+            "--limit",
+            "1000",
+            "--page",
+            str(page),
+            "--query",
+            query,
+            "-o",
+            "json",
+        ]
+        if node:
+            tx_cmd.extend(["--node", node])
+        code, out = run_list(tx_cmd)
+        if code != 0:
+            break
+        try:
+            data = json.loads(out)
+        except Exception:
+            break
+        txs = data.get("txs") or []
+        if not txs:
+            break
+        for tx in txs:
+            events = tx.get("events") or []
+            height = int(tx.get("height") or 0)
+            for ev in events:
+                if ev.get("type") != "arkeo.arkeo.EventSettleContract":
+                    continue
+                attrs = ev.get("attributes") or []
+                attr_map = {a.get("key"): a.get("value") for a in attrs if isinstance(a, dict)}
+                provider_val = (attr_map.get("provider") or "").strip('"')
+                service_val = (attr_map.get("service") or "").strip('"')
+                if provider_val != provider_pubkey:
+                    continue
+                if service_filter and service_val != service_filter:
+                    continue
+                try:
+                    contract_id = attr_map.get("contract_id", "").strip('"')
+                    nonce = int(str(attr_map.get("nonce", "0")).strip('"'))
+                    paid = int(str(attr_map.get("paid", "0")).strip('"'))
+                except Exception:
+                    continue
+                all_rows.append(
+                    {
+                        "height": height,
+                        "contract_id": contract_id,
+                        "nonce": nonce,
+                        "paid": paid,
+                        "provider": provider_val,
+                        "service": service_val,
+                    }
+                )
+        page += 1
+
+    # Summaries
+    totals = {}
+    for r in all_rows:
+        cid = r["contract_id"]
+        t = totals.setdefault(
+            cid,
+            {
+                "contract_id": cid,
+                "tx_count": 0,
+                "total": 0,
+                "first_nonce": r["nonce"],
+                "last_nonce": r["nonce"],
+                "first_height": r["height"],
+                "last_height": r["height"],
+            },
+        )
+        t["tx_count"] += 1
+        t["total"] += r["paid"]
+        t["first_nonce"] = min(t["first_nonce"], r["nonce"])
+        t["last_nonce"] = max(t["last_nonce"], r["nonce"])
+        t["first_height"] = min(t["first_height"], r["height"])
+        t["last_height"] = max(t["last_height"], r["height"])
+
+    totals_list = sorted(totals.values(), key=lambda x: (int(x["contract_id"]) if str(x["contract_id"]).isdigit() else x["contract_id"]))
+    grand_total = sum(t["total"] for t in totals_list)
+
+    return jsonify(
+        {
+            "provider_pubkey": provider_pubkey,
+            "service_filter": service_filter or None,
+            "node": node,
+            "from_height": from_h,
+            "to_height": to_h,
+            "tx_count": len(all_rows),
+            "contracts": totals_list,
+            "total_paid_uarkeo": grand_total,
+            "total_paid_arkeo": grand_total / 1_000_000,
+        }
+    )
 
 
 if __name__ == "__main__":

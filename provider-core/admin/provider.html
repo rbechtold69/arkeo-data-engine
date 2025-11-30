@@ -2,12 +2,14 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Arkeo Provider - Manage Service</title>
+    <title>Arkeo Marketplace | Provider Management</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="images/favicon.ico">
+    <link rel="shortcut icon" href="images/favicon.ico">
 </head>
 <body>
 
-<div id="savingOverlay" class="overlay" style="display:none;">
+<div id="savingOverlay" class="overlay hidden">
     <div class="overlay-card">
         <h3>Please wait…</h3>
         <p>Submitting two on-chain contracts, updating sentinel config, and restarting the sentinel. This can take up to ~15 seconds.</p>
@@ -15,15 +17,27 @@
 </div>
 
 <div class="card header-card">
-    <div class="row-between">
-        <h1>Bond Provider Service</h1>
-        <a class="btn" href="index.html">Back to Admin Home</a>
+    <div class="row-between header-top">
+        <div class="header-left">
+            <div class="header-brand-row">
+                <img src="images/arkeo-logo-200px_1.png" alt="Arkeo" class="header-logo">
+                <div class="header-brand">
+                    <span class="brand-main">Arkeo Marketplace</span>
+                    <span class="brand-sep">|</span>
+                    <span class="brand-sub">Provider Manager</span>
+                </div>
+            </div>
+            <h1>Provider Service Management</h1>
+        </div>
+        <div class="header-right">
+            <a class="btn primary" href="index.html">Back to Admin Home</a>
+        </div>
     </div>
 </div>
 
 <div class="card">
-    <h2 style="margin-top:0;">Bond Provider Service</h2>
-    <div class="hint" style="margin-top:6px;">
+    <h2 class="mt-0">Bond Provider Service</h2>
+    <div class="hint mt-6">
         Saving can take up to ~15 seconds. Two contracts are submitted and verified on-chain, the sentinel config is updated, and the sentinel restarts. Please be patient.
     </div>
     <form id="bondForm" onsubmit="bondProvider(event)">
@@ -188,12 +202,31 @@
                 </td>
             </tr>
         </table>
-        <button type="submit" id="bondSubmit" class="primary">Submit Bond + Mod</button>
+        <button type="submit" id="bondSubmit" class="primary">Submit Provider Info</button>
     </form>
+    </div>
 </div>
 
 <pre id="bondResult"></pre>
-<pre id="servicesDebug" style="white-space: pre-wrap;"></pre>
+
+<div class="card footer-card">
+    <div class="footer-links">
+        <div class="footer-brand">
+            <img src="images/arkeo-logo-200px_1.png" alt="Arkeo" class="footer-logo">
+            <span class="footer-title">
+                <span class="brand-main">Arkeo Marketplace</span>
+                <span class="brand-sep">|</span>
+                <span class="brand-sub">Provider Manager</span>
+            </span>
+        </div>
+        <div class="footer-links-right">
+            <div><a href="https://arkeo.network/" target="_blank" rel="noopener">Arkeo Marketplace Website</a></div>
+            <div><a href="https://discord.gg/arkeo" target="_blank" rel="noopener">Arkeo Discord</a></div>
+        </div>
+    </div>
+</div>
+
+<pre id="servicesDebug" class="pre-wrap"></pre>
 
 <script>
     let pendingEditService = null;
@@ -551,6 +584,5 @@
         loadSentinelConfig();
     });
 </script>
-
 </body>
 </html>
