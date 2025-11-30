@@ -58,6 +58,12 @@ a { color: #38bdf8; }
 
 .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
 .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.header-top { align-items: flex-start; }
+.header-left h1 { margin: 0; }
+.header-left .muted { margin-top: 4px; }
+.header-right { text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+.header-line { min-height: 20px; }
+.fixed-pill { min-height: 24px; }
 .col {
     flex: 1 1 300px;
     min-width: 260px;
@@ -179,23 +185,46 @@ pre {
 }
 
 .service-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    display: flex;
+    flex-direction: column;
     gap: 10px;
+    width: 100%;
+}
+.service-grid.full-width {
     width: 100%;
 }
 .service-row {
     background: #0b1220;
-    border: 1px solid #1f2937;
+    border: 0px solid #1f2937;
     border-radius: 8px;
     padding: 10px 12px;
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: nowrap;
+    width: 100%;
+    box-sizing: border-box;
 }
 .service-name {
     font-weight: 700;
     color: #e2e8f0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.service-actions-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: auto;
+    gap: 6px;
+    padding-right: 0;
+}
+.service-row-padded {
+    padding-right: 16px;
 }
 .service-sub {
     color: #94a3b8;
@@ -236,4 +265,34 @@ pre {
 .btn-ghost:hover {
     border-color: #38bdf8;
     color: #38bdf8;
+}
+
+/* Loading overlay */
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+}
+.overlay-card {
+    background: #0b1220;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 20px 24px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+    max-width: 420px;
+    text-align: center;
+}
+.overlay-card h3 {
+    margin: 0 0 8px;
+}
+.overlay-card p {
+    margin: 0;
+    color: #cbd5e1;
 }

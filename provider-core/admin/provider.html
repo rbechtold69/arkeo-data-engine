@@ -2,20 +2,30 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Bond Provider Service</title>
+    <title>Arkeo Provider - Manage Service</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+<div id="savingOverlay" class="overlay" style="display:none;">
+    <div class="overlay-card">
+        <h3>Please wait…</h3>
+        <p>Submitting two on-chain contracts, updating sentinel config, and restarting the sentinel. This can take up to ~15 seconds.</p>
+    </div>
+</div>
+
 <div class="card header-card">
     <div class="row-between">
         <h1>Bond Provider Service</h1>
-        <a href="index.html">Back to Admin Home</a>
+        <a class="btn" href="index.html">Back to Admin Home</a>
     </div>
 </div>
 
 <div class="card">
     <h2 style="margin-top:0;">Bond Provider Service</h2>
+    <div class="hint" style="margin-top:6px;">
+        Saving can take up to ~15 seconds. Two contracts are submitted and verified on-chain, the sentinel config is updated, and the sentinel restarts. Please be patient.
+    </div>
     <form id="bondForm" onsubmit="bondProvider(event)">
         <table>
             <tr>
@@ -97,6 +107,33 @@
             </tr>
             <tr>
                 <td class="label">
+                    RPC URL
+                    <div class="hint">Endpoint for this service (e.g., http://localhost:8332).</div>
+                </td>
+                <td class="value">
+                    <input type="text" id="rpcUrl" placeholder="http://localhost:8332" required />
+                </td>
+            </tr>
+            <tr>
+                <td class="label">
+                    RPC User
+                    <div class="hint">Optional RPC username.</div>
+                </td>
+                <td class="value">
+                    <input type="text" id="rpcUser" placeholder="rpc-username" />
+                </td>
+            </tr>
+            <tr>
+                <td class="label">
+                    RPC Password
+                    <div class="hint">Optional RPC password.</div>
+                </td>
+                <td class="value">
+                    <input type="text" id="rpcPass" placeholder="rpc-password" />
+                </td>
+            </tr>
+            <tr>
+                <td class="label">
                     Hotwallet Key
                     <div class="hint">The hot wallet key used.</div>
                 </td>
@@ -164,11 +201,19 @@
     let servicesCatalog = [];
     let editingExisting = false;
     let noncePrimed = false;
+    let nonceLockedFromEdit = false;
+    let sentinelServices = [];
 
     function setBondLabelForMode() {
         const label = document.getElementById("bondAmountLabel");
         if (!label) return;
         label.textContent = "1uarkeo";
+    }
+
+    function showSavingOverlay(show) {
+        const el = document.getElementById("savingOverlay");
+        if (!el) return;
+        el.style.display = show ? "flex" : "none";
     }
 
     function pullPendingEdit() {
@@ -216,6 +261,7 @@
                 const opt = document.createElement("option");
                 // Use the service name as the value; fall back to id only if name missing
                 opt.value = name || id;
+                opt.dataset.id = id;
                 opt.textContent = name ? `${name} (${id})` : id;
                 select.appendChild(opt);
             }
@@ -237,6 +283,9 @@
         const bondAmount = "1";
         // Always increment the metadata nonce immediately before submitting
         const metadataNonce = incrementMetadataNonce();
+        const select = document.getElementById("bondService");
+        const selectedOption = select.options[select.selectedIndex];
+        const serviceId = selectedOption ? selectedOption.dataset.id || "" : "";
         const payload = {
             service: document.getElementById("bondService").value.trim(),
             bond: bondAmount,
@@ -248,8 +297,12 @@
             subscription_rates: document.getElementById("subscriptionRates").value.trim(),
             pay_as_you_go_rates: document.getElementById("payAsYouGoRates").value.trim(),
             settlement_dur: document.getElementById("settlementDur").value.trim(),
+            rpc_url: document.getElementById("rpcUrl").value.trim(),
+            rpc_user: document.getElementById("rpcUser").value.trim(),
+            rpc_pass: document.getElementById("rpcPass").value.trim(),
         };
-        setPre("bondResult", "Submitting bond...");
+        setPre("bondResult", "Submitting bond and mod...");
+        showSavingOverlay(true);
         try {
             const res = await fetch("http://localhost:9999/api/bond-mod-provider", {
                 method: "POST",
@@ -267,13 +320,35 @@
             setPre("bondResult", JSON.stringify(data, null, 2));
             updateDerivedFields(data);
             if (bondAndModSucceeded(data)) {
-                alert("Save succeeded.");
+                try {
+                    await fetch("http://localhost:9999/api/sentinel-rebuild", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            service_overrides: [
+                                {
+                                    name: payload.service,
+                                    id: serviceId,
+                                    status: payload.status,
+                                    rpc_url: payload.rpc_url,
+                                    rpc_user: payload.rpc_user,
+                                    rpc_pass: payload.rpc_pass,
+                                },
+                            ],
+                        }),
+                    });
+                } catch (e) {
+                    console.warn("sentinel rebuild failed", e);
+                }
+                window.location.href = "index.html";
             }
         } catch (e) {
             setPre("bondResult", "Request failed: " + e);
         } finally {
             submitBtn.disabled = false;
             submitBtn.textContent = "Submit Bond + Mod";
+            // Overlay will be hidden only if we remain on the page (errors)
+            showSavingOverlay(false);
         }
     }
 
@@ -310,7 +385,7 @@
         }
         if (data.inputs) {
             if (data.inputs.sentinel_uri) document.getElementById("sentinelUri").value = data.inputs.sentinel_uri;
-            if (data.inputs.metadata_nonce) {
+            if (data.inputs.metadata_nonce && !nonceLockedFromEdit) {
                 document.getElementById("metadataNonceHidden").value = data.inputs.metadata_nonce;
                 document.getElementById("metadataNonceLabel").textContent = data.inputs.metadata_nonce;
             }
@@ -337,7 +412,7 @@
             if (data.keyring_backend) document.getElementById("bondKeyringLabel").textContent = data.keyring_backend;
             if (data.user) document.getElementById("walletKey").textContent = data.user;
             if (data.pubkey_error) setPre("bondResult", data.pubkey_error);
-            if (data.metadata_nonce) {
+            if (data.metadata_nonce && !nonceLockedFromEdit) {
                 document.getElementById("metadataNonceHidden").value = data.metadata_nonce;
                 document.getElementById("metadataNonceLabel").textContent = data.metadata_nonce;
             }
@@ -347,6 +422,19 @@
             applyPendingEdit();
         } catch (e) {
             setPre("bondResult", "Request failed: " + e);
+        }
+    }
+
+    async function loadSentinelConfig() {
+        try {
+            const res = await fetch("http://localhost:9999/api/sentinel-config");
+            const data = await res.json();
+            if (res.ok && data && data.config && Array.isArray(data.config.services)) {
+                sentinelServices = data.config.services;
+            }
+            applyPendingEdit();
+        } catch (e) {
+            console.warn("Failed to load sentinel config", e);
         }
     }
 
@@ -420,6 +508,23 @@
             document.getElementById("metadataNonceHidden").value = svc.metadata_nonce;
             document.getElementById("metadataNonceLabel").textContent = svc.metadata_nonce;
             noncePrimed = true;
+            nonceLockedFromEdit = true;
+        }
+        // Fill RPC creds from sentinel.yaml if present
+        if (sentinelServices && sentinelServices.length) {
+            const match = sentinelServices.find((s) => {
+                if (!s) return false;
+                const sid = String(s.id ?? "");
+                const sname = String(s.name ?? s.service ?? "");
+                if (svcId !== undefined && svcId !== null && String(svcId) === sid) return true;
+                if (resolvedName && resolvedName === sname) return true;
+                return false;
+            });
+            if (match) {
+                if (match.rpc_url) document.getElementById("rpcUrl").value = match.rpc_url;
+                if (match.rpc_user !== undefined) document.getElementById("rpcUser").value = match.rpc_user;
+                if (match.rpc_pass !== undefined) document.getElementById("rpcPass").value = match.rpc_pass;
+            }
         }
         setBondLabelForMode();
         pendingEditService = null;
@@ -443,6 +548,7 @@
         pullPendingEdit();
         loadServices();
         loadProviderInfo();
+        loadSentinelConfig();
     });
 </script>
 

@@ -2,20 +2,32 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Provider Sentinel</title>
+    <title>Arkeo Provider - Manage Sentinel</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+<div id="savingOverlay" class="overlay" style="display:none;">
+    <div class="overlay-card">
+        <h3>Please wait…</h3>
+        <p>Updating sentinel config and restarting the sentinel. This can take up to ~15 seconds.</p>
+    </div>
+</div>
+
 <div class="card header-card">
     <div class="row-between">
         <h1>Provider Sentinel</h1>
-        <a href="index.html">Back to Admin Home</a>
+        <a class="btn primary" href="index.html">Back to Admin Home</a>
     </div>
 </div>
 
 <div class="card">
-    <h2 style="margin-top:0;">Sentinel Settings</h2>
+    <div class="row-between" style="align-items:center;">
+        <div class="inline" style="display:flex; align-items:center; gap:10px;">
+            <h2 style="margin-top:0;">Sentinel Settings</h2>
+            <span id="refreshPill" class="status-badge status-warn" style="display:none;">Refreshing…</span>
+        </div>
+    </div>
     <table>
         <tr>
             <td class="label">
@@ -143,22 +155,25 @@
     <div class="hint">provider + services from sentinel.yaml</div>
     <pre id="sentinelYaml">(loading...)</pre>
 
-    <h3>Sentinel Metadata</h3>
-    <div class="hint">metadata.json from the sentinel endpoint</div>
-    <pre id="sentinelMeta">(loading...)</pre>
-    <button class="primary" onclick="loadInfo()">Refresh</button>
-    <pre id="debugInfo">Loading...</pre>
+<h3>Sentinel Metadata</h3>
+<div class="hint">metadata.json from the sentinel endpoint</div>
+<pre id="sentinelMeta">(loading...)</pre>
+<button class="primary" onclick="loadInfo()">Refresh</button>
+<pre id="debugInfo">Loading...</pre>
 </div>
 
 <script>
     async function loadInfo() {
         const debug = document.getElementById("debugInfo");
+        const pill = document.getElementById("refreshPill");
+        if (pill) pill.style.display = "inline-block";
         debug.textContent = "Loading...";
         try {
+            // Use loopback for metadata fetch in the form to avoid external loopback issues
             const [provRes, cfgRes, metaRes] = await Promise.all([
                 fetch("http://localhost:9999/api/provider-info"),
                 fetch("http://localhost:9999/api/sentinel-config"),
-                fetch("http://localhost:9999/api/sentinel-metadata"),
+                fetch("http://localhost:9999/api/sentinel-metadata?loopback=1"),
             ]);
             const prov = await provRes.json();
             const cfg = await cfgRes.json();
@@ -203,12 +218,21 @@
             debug.textContent = JSON.stringify({ provider_info: prov, sentinel_config: cfg, sentinel_metadata: meta }, null, 2);
         } catch (e) {
             debug.textContent = "Failed to load info: " + e;
+        } finally {
+            if (pill) pill.style.display = "none";
         }
+    }
+
+    function showSavingOverlay(show) {
+        const el = document.getElementById("savingOverlay");
+        if (!el) return;
+        el.style.display = show ? "flex" : "none";
     }
 
     async function saveConfig() {
         const btn = document.getElementById("saveSentinelBtn");
         if (btn) { btn.disabled = true; btn.textContent = "Saving..."; }
+        showSavingOverlay(true);
         const payload = {
             provider_name: document.getElementById("providerName").value.trim(),
             moniker: document.getElementById("moniker").value.trim(),
@@ -230,12 +254,14 @@
             const data = await res.json();
             resEl.textContent = res.ok ? "Saved:\n" + JSON.stringify(data, null, 2) : "Error:\n" + JSON.stringify(data, null, 2);
             if (res.ok) {
-                loadInfo();
+                window.location.href = "index.html";
             }
         } catch (e) {
             resEl.textContent = "Request failed: " + e;
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = "Save Sentinel Config"; }
+            // Hide overlay only if we stay on the page (errors)
+            showSavingOverlay(false);
         }
     }
 

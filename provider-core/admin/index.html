@@ -2,21 +2,29 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Arkeo Provider Admin</title>
+    <title>Arkeo Provider - Admin</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="card header-card">
-    <h1>Arkeo Provider Admin</h1>
+    <div class="row-between header-top">
+        <div class="header-left">
+            <h1 id="headerMoniker"></h1>
+            <div id="headerDescription" class="muted" style="margin-top:-6px;"></div>
+        </div>
+        <div class="header-right">
+            <div id="headerPubkey" class="header-line">Provider Pubkey:</div>
+            <div id="headerBalance" class="header-line">Hotwallet Balance:</div>
+            <div id="headerBlock" class="header-line muted">Current Block:</div>
+            <div class="header-line fixed-pill"><span id="headerRefreshPill" class="status-badge status-warn" style="display:none;">Loading...</span></div>
+        </div>
+    </div>
 </div>
 
 <div class="card">
     <h2>Sentinel Info</h2>
     <div class="row">
         <div class="col">
-            <div id="providerInfo" class="section-body">
-                <div id="providerSummary">(loading provider info...)</div>
-            </div>
             <div class="stack panel" style="margin-bottom:8px;">
                 <div class="pill-row">
                     <div class="status-badge status-warn" id="sentinelStatusBadgeTop">(loading)</div>
@@ -34,7 +42,7 @@
                 <div class="step">
                     <h3>Step 1: Provide Sentinel Details</h3>
                     <p>Configure your sentinel settings before bonding a service.</p>
-                    <p class="muted">Edits may take 1–2 blocks to appear in the dashboard.</p>
+                    <p class="muted">* Edits may take 1–2 blocks to appear in the dashboard as the blockchain refreshes. Let the interface refresh to see the latest changes.</p>
                     <a class="btn" href="sentinel.html">Open Sentinel Form</a>
                 </div>
             </div>
@@ -46,14 +54,16 @@
     <h2>Provider Services</h2>
     <div class="row">
         <div class="col">
-            <div id="providerServices" class="muted" style="margin-bottom:12px;">(loading services...)</div>
+            <div class="panel" style="margin-bottom:12px;">
+                <div id="providerServices" class="muted">(loading services...)</div>
+            </div>
         </div>
         <div class="col">
             <div class="steps">
                 <div class="step">
                     <h3>Step 2: Add Provider Service</h3>
                     <p>Bond and configure provider services for the marketplace.</p>
-                    <p class="muted">Edits may take 1–2 blocks to appear in the dashboard.</p>
+                    <p class="muted">* Edits may take 1–2 blocks to appear in the dashboard as the blockchain refreshes. Let the interface refresh to see the latest changes.</p>
                     <a class="btn" href="provider.html">Open Provider Services Form</a>
                 </div>
             </div>
@@ -80,10 +90,12 @@
         const debugEl = document.getElementById("debugInfo");
         debugEl.textContent = "Loading...";
         const refreshBadge = document.getElementById("refreshBadge");
+        const headerPill = document.getElementById("headerRefreshPill");
         if (refreshBadge) refreshBadge.style.display = "inline-block";
+        if (headerPill) headerPill.style.display = "inline-block";
         try {
             const fetchNoStore = (url) => fetch(url, { cache: "no-store" });
-            const [provRes, balRes, keyRes, metaRes, svcRes, allSvcRes, sentRes, heightRes] = await Promise.allSettled([
+            const [provRes, balRes, keyRes, metaRes, svcRes, allSvcRes, sentRes, heightRes, sCfgRes] = await Promise.allSettled([
                 fetchNoStore("http://localhost:9999/api/provider-info"),
                 fetchNoStore("http://localhost:9999/api/balance"),
                 fetchNoStore("http://localhost:9999/api/key"),
@@ -92,6 +104,7 @@
                 fetchNoStore("http://localhost:9999/api/services"),
                 fetchNoStore("http://localhost:9999/api/sentinel-status"),
                 fetchNoStore("http://localhost:9999/api/block-height"),
+                fetchNoStore("http://localhost:9999/api/sentinel-config"),
             ]);
             const prov = provRes.status === "fulfilled" ? await provRes.value.json() : { error: provRes.reason };
             const bal = balRes.status === "fulfilled" ? await balRes.value.json() : { error: balRes.reason };
@@ -101,14 +114,17 @@
             const allServices = allSvcRes.status === "fulfilled" ? await allSvcRes.value.json() : { error: allSvcRes.reason };
             const sentinelStatus = sentRes.status === "fulfilled" ? await sentRes.value.json() : { error: sentRes.reason };
             const height = heightRes.status === "fulfilled" ? await heightRes.value.json() : { error: heightRes.reason };
-            console.log("Provider services contract data", services);
+            const sentinelConfig = sCfgRes.status === "fulfilled" ? await sCfgRes.value.json() : { error: sCfgRes.reason };
             // Provider summary at top
-            const summaryEl = document.getElementById("providerSummary");
             const metaCfg = (meta && meta.metadata && meta.metadata.config) || {};
             const envMeta = (prov && prov.provider_metadata) || {};
-            const moniker = metaCfg.moniker || envMeta.MONIKER || "(unset)";
-            const desc = metaCfg.description || envMeta.DESCRIPTION || "(unset)";
-            const location = metaCfg.location || envMeta.LOCATION || "(unset)";
+            const moniker =
+                metaCfg.moniker ||
+                metaCfg.provider_name ||
+                envMeta.MONIKER ||
+                envMeta.PROVIDER_NAME ||
+                "";
+            const desc = metaCfg.description || envMeta.DESCRIPTION || "";
             const bech32Pubkey =
                 (prov && prov.pubkey && prov.pubkey.bech32) ||
                 (key && key.pubkey && key.pubkey.bech32) ||
@@ -118,19 +134,20 @@
             const shortPub = bech32Pubkey && bech32Pubkey.length > 12
                 ? `${bech32Pubkey.slice(0, 10)}...${bech32Pubkey.slice(-8)}`
                 : bech32Pubkey;
-            summaryEl.innerHTML = `
-                <div><strong>Moniker:</strong> ${moniker}</div>
-                <div><strong>Description:</strong> ${desc}</div>
-                <div><strong>Location:</strong> ${location}</div>
-                <div><strong>Current Block:</strong> ${blockHeight}</div>
-                <div><strong>Hotwallet Balance:</strong> ${balanceAmt}</div>
-                <div><strong>Pubkey:</strong>
-                    <span class="inline">
-                        <span class="truncate" title="${bech32Pubkey}">${shortPub}</span>
-                        <button class="copy-btn" onclick="copyPubkey('${bech32Pubkey}')">Copy</button>
-                    </span>
-                </div>
-            `;
+            const summaryEl = document.getElementById("providerSummary");
+            if (summaryEl) summaryEl.innerHTML = "";
+            const headerMonikerEl = document.getElementById("headerMoniker");
+            const headerDescEl = document.getElementById("headerDescription");
+            const headerBalanceEl = document.getElementById("headerBalance");
+            const headerBlockEl = document.getElementById("headerBlock");
+            const headerPubEl = document.getElementById("headerPubkey");
+            if (headerMonikerEl) headerMonikerEl.textContent = moniker || "";
+            if (headerDescEl) headerDescEl.textContent = desc || "";
+            if (headerBalanceEl) headerBalanceEl.textContent = `Hotwallet Balance: ${balanceAmt}`;
+            if (headerBlockEl) headerBlockEl.textContent = `Current Block: ${blockHeight}`;
+            if (headerPubEl) {
+                headerPubEl.innerHTML = `Provider Pubkey: <span class="inline"><span class="truncate" title="${bech32Pubkey}">${shortPub}</span> <button class="copy-btn" onclick="copyPubkey('${bech32Pubkey}')">Copy</button></span>`;
+            }
             const svcEl = document.getElementById("providerServices");
             const svcLookup = {};
             if (allServices && Array.isArray(allServices.services)) {
@@ -149,6 +166,16 @@
                 });
             }
             providerServicesData = services && Array.isArray(services.services) ? services.services : [];
+            const sentinelServices = [];
+            if (sentinelConfig && sentinelConfig.config && Array.isArray(sentinelConfig.config.services)) {
+                sentinelConfig.config.services.forEach(ss => {
+                    if (!ss || typeof ss !== "object") return;
+                    const sid = ss.id !== undefined && ss.id !== null ? String(ss.id) : "";
+                    const sname = ss.name || ss.service;
+                    if (sid) sentinelServices.push({ id: sid, name: sname });
+                    else if (sname) sentinelServices.push({ name: sname });
+                });
+            }
             if (providerServicesData && providerServicesData.length) {
                 const items = providerServicesData.map((s, idx) => {
                     let rawId = "";
@@ -183,22 +210,30 @@
                         statusStr === "true";
                     const statusLabel = isActive ? "Active" : "Inactive";
                     const statusClass = isActive ? "ok" : "err";
+                    const inSentinel = sentinelServices.some(ss => {
+                        if (!ss) return false;
+                        const idMatch = rawId && (ss.id === rawId || String(ss.id) === String(rawId));
+                        const nameMatch = resolvedName && ss.name && String(ss.name) === String(resolvedName);
+                        return idMatch || nameMatch;
+                    });
+                    const sentinelBadge = inSentinel
+                        ? '<span class="status-pill status-ok">Connected to Sentinel</span>'
+                        : '<span class="status-pill status-err">Missing from Sentinel</span>';
                     return `
-                        <div class="service-row">
-                            <div class="service-name">
-                                <span class="status-pill ${statusClass}">(${statusLabel})</span>
+                        <div class="service-row full-width service-row-padded">
+                            <div class="service-name full-width">
+                                <span class="status-pill ${statusClass}">${statusLabel}</span>
                                 <span class="service-pipe">|</span>
-                                ${resolvedName}
+                                ${resolvedName} ${rawId ? `(${rawId})` : ""}
+                                ${sentinelBadge}
                             </div>
-                            <div class="service-sub">
-                                ${serviceIdLabel}
-                                <span class="service-pipe">|</span>
+                            <div class="service-actions-row">
                                 <button class="primary" onclick="editService(${idx})">Edit</button>
                             </div>
                         </div>
                     `;
                 });
-                svcEl.innerHTML = `<div class="service-grid">${items.join("")}</div>`;
+                svcEl.innerHTML = `<div class="service-grid full-width">${items.join("")}</div>`;
             } else if (services && services.error) {
                 svcEl.textContent = "Provider services unavailable";
             } else {
@@ -223,6 +258,7 @@
             debugEl.textContent = "Failed to load info: " + e;
         }
         if (refreshBadge) refreshBadge.style.display = "none";
+        if (headerPill) headerPill.style.display = "none";
     }
 
     function updateSentinelStatusDisplay(sentinelStatus) {
@@ -242,9 +278,9 @@
                 badgeTop.className = `status-badge ${cls}`;
                 badgeTop.textContent = display;
             }
-            statusEl.textContent = `${display}\n\nstdout:\n${sentinelStatus.log || ""}\n\nstderr:\n${sentinelStatus.err_log || ""}`;
+            statusEl.textContent = display;
         } else {
-            statusEl.textContent = "";
+            statusEl.textContent = "Sentinel status unavailable";
         }
     }
 

@@ -53,6 +53,8 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-EXPOSE 26657 1317 8080 9999 3636
+# Expose the admin UI (8080), admin API (9999), and sentinel metadata (3636).
+# arkeod RPC/REST remain unexposed.
+EXPOSE 8080 9999 3636
 
 ENTRYPOINT ["/app/entrypoint.sh"]

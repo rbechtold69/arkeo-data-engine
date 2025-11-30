@@ -378,11 +378,44 @@ def bond_and_mod_provider():
             }
         ), 500
 
+    def fetch_sequence(bech32: str, min_expected: int | None = None, attempts: int = 5, delay: float = 1.0) -> list[str]:
+        """Fetch account sequence with retries; optionally wait until it reaches min_expected."""
+        seq_val = None
+        for _ in range(attempts):
+            try:
+                acct_cmd = ["arkeod", "--home", ARKEOD_HOME, "query", "auth", "account", bech32, "-o", "json"]
+                if ARKEOD_NODE:
+                    acct_cmd.extend(["--node", ARKEOD_NODE])
+                code, acct_out = run_list(acct_cmd)
+                if code == 0:
+                    acct = json.loads(acct_out)
+                    if isinstance(acct, dict):
+                        account_info = acct.get("account") or acct.get("result") or {}
+                        if isinstance(account_info, dict):
+                            val = account_info.get("value") or account_info
+                            if isinstance(val, dict):
+                                seq_val = val.get("sequence")
+                    if seq_val is not None:
+                        seq_int = int(seq_val)
+                        if min_expected is None or seq_int >= min_expected:
+                            return ["--sequence", str(seq_int)]
+            except Exception:
+                pass
+            time.sleep(delay)
+        return ["--sequence", str(seq_val)] if seq_val is not None else []
+
     # If provider already exists, skip rebond and go straight to mod.
     skip_bond = False
     bond_cmd: list[str] | None = None
     bond_code = 0
     bond_out = "skipped: provider already bonded"
+    initial_seq_arg: list[str] = fetch_sequence(bech32_pubkey, attempts=2, delay=0.5)
+    initial_seq_val = None
+    try:
+        if initial_seq_arg:
+            initial_seq_val = int(initial_seq_arg[1])
+    except Exception:
+        initial_seq_val = None
     try:
         lookup_cmd = [
             "arkeod",
@@ -448,32 +481,14 @@ def bond_and_mod_provider():
                 }
             ), 500
 
-        # Give the bond a brief moment to settle before mod-provider
-        time.sleep(2)
+        # Give the bond a moment to settle before mod-provider
+        time.sleep(6)
 
     # Fetch account sequence to avoid mismatch (with retries to catch fresh state)
-    sequence_arg: list[str] = []
-    for _ in range(3):
-        try:
-            acct_cmd = ["arkeod", "--home", ARKEOD_HOME, "query", "auth", "account", bech32_pubkey, "-o", "json"]
-            if ARKEOD_NODE:
-                acct_cmd.extend(["--node", ARKEOD_NODE])
-            code, acct_out = run_list(acct_cmd)
-            if code == 0:
-                acct = json.loads(acct_out)
-                seq_val = None
-                if isinstance(acct, dict):
-                    account_info = acct.get("account") or acct.get("result") or {}
-                    if isinstance(account_info, dict):
-                        val = account_info.get("value") or account_info
-                        if isinstance(val, dict):
-                            seq_val = val.get("sequence")
-                if seq_val is not None:
-                    sequence_arg = ["--sequence", str(seq_val)]
-                    break
-        except Exception:
-            pass
-        time.sleep(1)
+    min_expected_seq = None
+    if not skip_bond and initial_seq_val is not None:
+        min_expected_seq = initial_seq_val + 1
+    sequence_arg: list[str] = fetch_sequence(bech32_pubkey, min_expected=min_expected_seq, attempts=5, delay=1.0)
 
     mod_cmd_base = [
         "arkeod",
@@ -889,7 +904,11 @@ def sentinel_control():
 @app.get("/api/sentinel-metadata")
 def sentinel_metadata():
     """Fetch sentinel metadata.json from the given URL (or default)."""
-    url = request.args.get("url") or request.args.get("sentinel_uri") or SENTINEL_URI_DEFAULT
+    force_loopback = request.args.get("loopback") not in (None, "", "0", "false", "False")
+    if force_loopback:
+        url = "http://127.0.0.1:3636/metadata.json"
+    else:
+        url = request.args.get("url") or request.args.get("sentinel_uri") or SENTINEL_URI_DEFAULT
     if not url:
         return jsonify({"error": "sentinel uri not provided"}), 400
     try:
@@ -941,6 +960,229 @@ def _load_env_file(path: str) -> dict:
     except OSError:
         pass
     return data
+
+
+def _fetch_provider_services_internal(bech32_pubkey: str) -> list[dict]:
+    """Return provider services for a given pubkey (lightweight helper)."""
+    cmd = ["arkeod", "--home", ARKEOD_HOME]
+    if ARKEOD_NODE:
+        cmd.extend(["--node", ARKEOD_NODE])
+    cmd.extend(["query", "arkeo", "list-providers", "--output", "json"])
+    code, out = run_list(cmd)
+    if code != 0:
+        return []
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return []
+    providers = data.get("provider") or data.get("providers") or []
+    services: list[dict] = []
+    for p in providers:
+        if not isinstance(p, dict):
+            continue
+        pk = p.get("pub_key") or p.get("pubkey") or p.get("pubKey")
+        if pk != bech32_pubkey:
+            continue
+        entries = []
+        if isinstance(p.get("services"), list):
+            entries = p.get("services")
+        elif isinstance(p.get("service"), list):
+            entries = p.get("service")
+        if not entries:
+            entries = [p]
+        for s in entries:
+            if not isinstance(s, dict):
+                continue
+            sid = s.get("service_id") or s.get("id") or s.get("service")
+            sname = s.get("service") or s.get("name")
+            services.append(
+                {
+                    "id": sid,
+                    "name": sname,
+                    "status": s.get("status"),
+                }
+            )
+    return services
+
+
+def _all_services_lookup() -> dict[str, str]:
+    """Return a mapping of service id -> service name from arkeod all-services."""
+    lookup: dict[str, str] = {}
+    cmd = ["arkeod", "--home", ARKEOD_HOME]
+    if ARKEOD_NODE:
+        cmd.extend(["--node", ARKEOD_NODE])
+    cmd.extend(["query", "arkeo", "all-services", "-o", "json"])
+    code, out = run_list(cmd)
+    if code != 0:
+        return lookup
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return lookup
+    services = data.get("services") or data.get("result") or data.get("data") or []
+    if not isinstance(services, list):
+        services = []
+    for item in services:
+        if not isinstance(item, dict):
+            continue
+        sid = item.get("id") or item.get("service_id") or item.get("serviceID")
+        name = item.get("name") or item.get("service") or item.get("label")
+        if sid is None:
+            continue
+        lookup[str(sid)] = name
+    return lookup
+
+
+@app.post("/api/sentinel-rebuild")
+def sentinel_rebuild():
+    """Update or add a single service entry in sentinel.yaml (rpc settings) and restart sentinel."""
+    payload = request.get_json(silent=True) or {}
+    overrides = payload.get("service_overrides") or []
+    target = None
+    if isinstance(overrides, list) and overrides:
+        target = overrides[0] if isinstance(overrides[0], dict) else None
+    if not target:
+        return jsonify({"error": "no service override provided"}), 400
+    target_name = str(target.get("name") or target.get("service") or "").strip()
+    target_id = str(target.get("id") or target.get("service_id") or target.get("service") or "").strip()
+    if not target_name and not target_id:
+        return jsonify({"error": "service name or id required"}), 400
+    if not target_name and target_id:
+        lookup = _all_services_lookup()
+        target_name = lookup.get(target_id, "")
+    status_raw = str(target.get("status") or "").lower()
+    should_remove = status_raw in ("0", "inactive", "offline")
+
+    raw_pubkey, bech32_pubkey, pub_err = derive_pubkeys(KEY_NAME, KEYRING)
+    if pub_err:
+        return jsonify({"error": pub_err}), 500
+
+    parsed, raw = _load_sentinel_config()
+    if parsed is None or not isinstance(parsed, dict):
+        parsed = {}
+    existing_services = parsed.get("services") if isinstance(parsed.get("services"), list) else []
+    provider_cfg = parsed.get("provider") if isinstance(parsed.get("provider"), dict) else {}
+    api_cfg = parsed.get("api") if isinstance(parsed.get("api"), dict) else {}
+
+    def _normalize_id(val):
+        """Coerce numeric-looking ids to int to satisfy yaml expectations."""
+        if isinstance(val, int):
+            return val
+        try:
+            ival = int(str(val))
+            return ival
+        except (TypeError, ValueError):
+            return val
+
+    def _is_placeholder(entry: dict) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        name = str(entry.get("name") or entry.get("service") or "").strip()
+        sid = str(entry.get("id") or entry.get("service_id") or entry.get("service") or "").strip()
+        return name == "default-placeholder" or sid in ("0", 0)
+
+    new_services = []
+    updated = False
+    for svc in existing_services:
+        if not isinstance(svc, dict):
+            new_services.append(svc)
+            continue
+        sid = str(svc.get("id")) if svc.get("id") is not None else ""
+        sname = str(svc.get("name") or svc.get("service") or "")
+        match = False
+        if target_id and sid and target_id == sid:
+            match = True
+        if target_name and sname and target_name == sname:
+            match = True
+        if match:
+            if should_remove:
+                updated = True
+                continue
+            entry = dict(svc)
+            if target.get("rpc_url") is not None:
+                entry["rpc_url"] = target.get("rpc_url")
+            if target.get("rpc_user") is not None:
+                entry["rpc_user"] = target.get("rpc_user")
+            if target.get("rpc_pass") is not None:
+                entry["rpc_pass"] = target.get("rpc_pass")
+            if target_id:
+                entry["id"] = _normalize_id(target_id)
+            if target_name:
+                entry["name"] = target_name
+            if target_name:
+                entry["type"] = target_name
+            entry.setdefault("rpc_url", "")
+            entry.setdefault("rpc_user", "")
+            entry.setdefault("rpc_pass", "")
+            new_services.append(entry)
+            updated = True
+        else:
+            new_services.append(svc)
+
+    if not updated and not should_remove:
+        entry = {}
+        if target_id:
+            entry["id"] = _normalize_id(target_id)
+        if target_name:
+            entry["name"] = target_name
+            entry["type"] = target_name
+        entry["rpc_url"] = target.get("rpc_url") or ""
+        entry["rpc_user"] = target.get("rpc_user") or ""
+        entry["rpc_pass"] = target.get("rpc_pass") or ""
+        new_services.append(entry)
+
+    # Normalize ids to ints where possible to avoid quoted strings in YAML
+    normalized_services = []
+    for svc in new_services:
+        if isinstance(svc, dict) and "id" in svc:
+            svc = dict(svc)
+            svc["id"] = _normalize_id(svc.get("id"))
+        normalized_services.append(svc)
+
+    active_services = [s for s in normalized_services if not _is_placeholder(s)]
+    if active_services:
+        normalized_services = active_services
+    if not normalized_services:
+        new_services.append(
+            {
+                "name": "default-placeholder",
+                "id": 0,
+                "type": "default-placeholder",
+                "rpc_url": "http://provider1.innovationtheory.com:26657",
+                "rpc_user": "",
+                "rpc_pass": "",
+            }
+        )
+        normalized_services = new_services
+
+    parsed["provider"] = {
+        "pubkey": bech32_pubkey,
+        "name": provider_cfg.get("name") or os.getenv("PROVIDER_NAME") or "Arkeo Provider",
+    }
+    parsed["services"] = normalized_services
+    parsed["api"] = api_cfg or {"listen_addr": "0.0.0.0:3636"}
+
+    try:
+        with open(SENTINEL_CONFIG_PATH, "w", encoding="utf-8") as f:
+            yaml.safe_dump(parsed, f, sort_keys=False)
+    except OSError as e:
+        return jsonify({"error": "failed to write sentinel config", "detail": str(e)}), 500
+
+    try:
+        code, out = run_list([*SUPERVISORCTL, "restart", "sentinel"])
+    except Exception as e:
+        return jsonify({"error": "failed to restart sentinel", "detail": str(e)}), 500
+
+    return jsonify(
+        {
+            "status": "ok",
+            "services_written": new_services,
+            "pubkey": {"raw": raw_pubkey, "bech32": bech32_pubkey},
+            "restart_exit_code": code,
+            "restart_output": out,
+            "sentinel_config_path": SENTINEL_CONFIG_PATH,
+        }
+    )
 
 
 @app.get("/api/sentinel-config")
@@ -1020,8 +1262,8 @@ def update_sentinel_config():
         _set_env("PROVIDER_HUB_URI", payload.get("provider_hub_uri"))
         _set_env("ARKEO_REST_API_PORT", payload.get("provider_hub_uri"))
 
-    # Prefer explicit provider_name, otherwise fall back to moniker for the YAML provider name
-    effective_provider_name = provider_name or moniker
+    # Prefer explicit provider_name for the YAML provider.name; do not fall back to moniker
+    effective_provider_name = provider_name or config.get("provider", {}).get("name") or os.getenv("PROVIDER_NAME") or env_file.get("PROVIDER_NAME")
 
     if provider_pubkey:
         config.setdefault("provider", {})
