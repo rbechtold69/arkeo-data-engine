@@ -342,6 +342,69 @@ def build_active_services(provider_services_payload: Dict[str, Any], active_prov
     }
 
 
+def build_active_service_types(active_services_payload: Dict[str, Any], service_types_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Derive active_service_types.json with unique service ids and counts, enriched with service type metadata."""
+    active_services = []
+    if isinstance(active_services_payload, dict):
+        active_services = active_services_payload.get("active_services") or []
+    if not isinstance(active_services, list):
+        active_services = []
+
+    service_types_list: List[Dict[str, Any]] = []
+    st_data = service_types_payload.get("data") if isinstance(service_types_payload, dict) else {}
+    if isinstance(st_data, list):
+        service_types_list = st_data
+    elif isinstance(st_data, dict):
+        service_types_list = st_data.get("services") or st_data.get("service") or st_data.get("result") or []
+    if not isinstance(service_types_list, list):
+        service_types_list = []
+
+    # Build lookup by service_id string
+    st_lookup: Dict[str, Dict[str, Any]] = {}
+    for st in service_types_list:
+        if not isinstance(st, dict):
+            continue
+        sid = st.get("service_id") or st.get("id") or st.get("serviceID") or st.get("service")
+        if sid is None:
+            continue
+        st_lookup[str(sid)] = st
+
+    counts: Dict[str, int] = {}
+    for svc in active_services:
+        if not isinstance(svc, dict):
+            continue
+        sid = svc.get("service_id") or svc.get("id") or svc.get("service")
+        if sid is None:
+            continue
+        key = str(sid)
+        counts[key] = counts.get(key, 0) + 1
+
+    entries = []
+    for sid, cnt in counts.items():
+        entries.append(
+            {
+                "service_id": sid,
+                "count": cnt,
+                "service_type": st_lookup.get(sid),
+            }
+        )
+
+    # Sort by description (most readable), fallback to name or service_id
+    def _sort_key(entry: Dict[str, Any]):
+        st = entry.get("service_type") or {}
+        desc = st.get("description") or st.get("desc") or ""
+        name = st.get("name") or st.get("service") or ""
+        return (str(desc).lower(), str(name).lower(), str(entry.get("service_id")))
+
+    entries.sort(key=_sort_key)
+
+    return {
+        "fetched_at": timestamp(),
+        "source": "active_services",
+        "active_service_types": entries,
+    }
+
+
 def build_subscribers_from_contracts(contracts_payload: Dict[str, Any]) -> Dict[str, Any]:
     """Derive subscribers.json from provider-contracts cache (unique subscriber addresses)."""
     contracts_list = []
@@ -428,6 +491,11 @@ def fetch_once(commands: Dict[str, List[str]], record_status: bool = False) -> D
             write_cache("active_services", active_services_payload)
             results["active_services"] = active_services_payload
             results["active_providers"] = providers_payload
+            # Derive active_service_types.json if service-types cache exists
+            if "service-types" in results and results["service-types"].get("exit_code") == 0:
+                ast_payload = build_active_service_types(active_services_payload, results["service-types"])
+                write_cache("active_service_types", ast_payload)
+                results["active_service_types"] = ast_payload
         # Derive subscribers.json from provider-contracts if available
         if "provider-contracts" in results and results["provider-contracts"].get("exit_code") == 0:
             subscribers_payload = build_subscribers_from_contracts(results["provider-contracts"])

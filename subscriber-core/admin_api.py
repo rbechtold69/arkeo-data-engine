@@ -9,6 +9,7 @@ import urllib.error
 import urllib.request
 import urllib.parse
 import yaml
+from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 
 from cache_fetcher import (
@@ -20,6 +21,11 @@ from cache_fetcher import (
 
 app = Flask(__name__)
 CACHE_DIR = os.getenv("CACHE_DIR", "/app/cache")
+LISTENERS_FILE = os.path.join(CACHE_DIR, "listeners.json")
+LISTENER_PORT_START = int(os.getenv("LISTENER_PORT_START", "62001"))
+LISTENER_PORT_END = int(os.getenv("LISTENER_PORT_END", "62100"))
+ACTIVE_SERVICE_TYPES_FILE = os.path.join(CACHE_DIR, "active_service_types.json")
+SUBSCRIBER_INFO_FILE = os.path.join(CACHE_DIR, "subscriber_info.json")
 
 def _build_sentinel_uri() -> str:
     port = os.getenv("SENTINEL_PORT") or "3636"
@@ -89,8 +95,12 @@ def run_list(cmd: list[str]) -> tuple[int, str]:
 def add_cors(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
-    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return resp
+
+
+def _timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def derive_pubkeys(user: str, keyring_backend: str) -> tuple[str, str, str | None]:
@@ -191,6 +201,24 @@ def block_height():
         return jsonify({"height": str(height) if height is not None else None, "status": data})
     except json.JSONDecodeError:
         return jsonify({"error": "invalid JSON from status", "detail": out, "cmd": cmd}), 500
+
+
+def _latest_block_height() -> tuple[str | None, str | None]:
+    """Return (height_str, error_str)."""
+    cmd = ["arkeod", "--home", ARKEOD_HOME]
+    if ARKEOD_NODE:
+        cmd.extend(["--node", ARKEOD_NODE])
+    cmd.append("status")
+    code, out = run_list(cmd)
+    if code != 0:
+        return None, f"status exit={code}: {out}"
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return None, "invalid JSON from status"
+    sync_info = data.get("SyncInfo") or data.get("sync_info") or {}
+    height = sync_info.get("latest_block_height") or sync_info.get("latest_block")
+    return (str(height) if height is not None else None), None
 
 
 @app.get("/api/key")
@@ -669,7 +697,27 @@ def provider_info():
 @app.get("/api/subscriber-info")
 def subscriber_info():
     """Alias for subscriber UI; returns the same payload as provider_info."""
-    return provider_info()
+    # Also write to subscriber_info.json for faster local reads
+    resp = provider_info().get_json()
+    try:
+        height, h_err = _latest_block_height()
+    except Exception:
+        height, h_err = None, "failed to fetch height"
+    payload = {
+        "fetched_at": _timestamp(),
+        "pubkey": resp.get("pubkey") if isinstance(resp, dict) else {},
+        "address": resp.get("address") if isinstance(resp, dict) else "",
+        "subscriber_name": resp.get("subscriber_name") if isinstance(resp, dict) else "",
+        "arkeod_node": ARKEOD_NODE,
+        "latest_block": height,
+    }
+    if h_err:
+        payload["latest_block_error"] = h_err
+    try:
+        _write_json_atomic(SUBSCRIBER_INFO_FILE, payload)
+    except Exception:
+        pass
+    return jsonify(resp)
 
 
 @app.get("/api/services")
@@ -1075,6 +1123,196 @@ def _load_cached(name: str) -> dict:
         return {}
 
 
+def _ensure_listeners_file() -> dict:
+    """Load listeners.json; if missing, return an empty structure."""
+    cache_ensure_cache_dir()
+    payload = {"fetched_at": _timestamp(), "listeners": []}
+    try:
+        with open(LISTENERS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get("listeners"), list):
+                return data
+    except (OSError, json.JSONDecodeError):
+        pass
+    try:
+        with open(LISTENERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=True, indent=2)
+    except OSError:
+        pass
+    return payload
+
+
+def _write_listeners(data: dict) -> None:
+    """Write listeners.json atomically."""
+    cache_ensure_cache_dir()
+    path = LISTENERS_FILE
+    tmp_path = f"{path}.tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=True, indent=2)
+        os.replace(tmp_path, path)
+    except OSError:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+
+
+def _next_available_port(used: set[int]) -> int | None:
+    for p in range(LISTENER_PORT_START, LISTENER_PORT_END + 1):
+        if p not in used:
+            return p
+    return None
+
+
+def _load_active_service_types_lookup() -> dict[str, dict]:
+    try:
+        with open(ACTIVE_SERVICE_TYPES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    items = data.get("active_service_types") if isinstance(data, dict) else []
+    if not isinstance(items, list):
+        return {}
+    lookup: dict[str, dict] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        sid = item.get("service_id") or item.get("id") or item.get("service")
+        st = item.get("service_type") or {}
+        if sid is None:
+            continue
+        lookup[str(sid)] = {
+            "service_id": str(sid),
+            "service_name": st.get("name") or "",
+            "service_description": st.get("description") or st.get("desc") or "",
+        }
+    return lookup
+
+
+def _collect_used_ports(listeners: list, skip_id: str | None = None) -> set[int]:
+    used: set[int] = set()
+    for l in listeners:
+        if not isinstance(l, dict):
+            continue
+        if skip_id is not None and str(l.get("id")) == str(skip_id):
+            continue
+        port_val = l.get("port")
+        try:
+            if port_val is None or port_val == "":
+                continue
+            used.add(int(port_val))
+        except (TypeError, ValueError):
+            continue
+    return used
+
+
+def _min_payg_rate(raw: dict) -> tuple[int | None, str | None]:
+    """Return (amount_int, denom) for the lowest pay_as_you_go_rate entry, or (None, None) if missing."""
+    if not isinstance(raw, dict):
+        return None, None
+    rates = raw.get("pay_as_you_go_rate") or raw.get("pay_as_you_go_rates") or []
+    if not isinstance(rates, list):
+        return None, None
+    best_amt = None
+    best_denom = None
+    for r in rates:
+        if not isinstance(r, dict):
+            continue
+        denom = r.get("denom") or r.get("Denom")
+        amt = r.get("amount") or r.get("Amount")
+        if amt is None:
+            continue
+        try:
+            amt_int = int(amt)
+        except (TypeError, ValueError):
+            continue
+        if best_amt is None or amt_int < best_amt:
+            best_amt = amt_int
+            best_denom = denom
+    return best_amt, best_denom
+
+
+def _top_active_services_by_payg(service_id: str, limit: int = 3) -> list[dict]:
+    """Return up to `limit` active services for the given service_id, sorted by lowest pay-as-you-go rate."""
+    if not service_id:
+        return []
+    # build provider lookup for moniker/status
+    provider_lookup: dict[str, str] = {}
+    try:
+        ap = _load_cached("active_providers")
+        prov_list = ap.get("providers") if isinstance(ap, dict) else []
+        if isinstance(prov_list, list):
+            for p in prov_list:
+                if not isinstance(p, dict):
+                    continue
+                pk = p.get("pubkey") or p.get("pub_key") or p.get("pubKey")
+                if not pk:
+                    continue
+                meta = p.get("metadata") or {}
+                moniker = (
+                    (meta.get("config") or {}).get("moniker")
+                    or meta.get("moniker")
+                    or (p.get("provider") or {}).get("moniker")
+                )
+                provider_lookup[pk] = moniker or ""
+    except Exception:
+        pass
+    try:
+        data = _load_cached("active_services")
+    except Exception:
+        data = {}
+    entries = data.get("active_services") or []
+    if not isinstance(entries, list):
+        return []
+    candidates: list[dict] = []
+    sid_str = str(service_id)
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        sid_val = e.get("service_id") or e.get("id") or e.get("service")
+        if sid_str != str(sid_val):
+            continue
+        raw = e.get("raw") if isinstance(e.get("raw"), dict) else e
+        amt, denom = _min_payg_rate(raw or {})
+        moniker = provider_lookup.get(e.get("provider_pubkey") or "") or "(Inactive)"
+        candidates.append(
+            {
+                "provider_pubkey": e.get("provider_pubkey"),
+                "provider_moniker": moniker,
+                "metadata_uri": e.get("metadata_uri"),
+                "pay_as_you_go_rate": {"amount": amt, "denom": denom},
+                "raw": e,
+            }
+        )
+    # sort: first by missing rate (push down), then by amount asc
+    def _sort_key(item: dict):
+        rate = item.get("pay_as_you_go_rate") or {}
+        amt = rate.get("amount")
+        # push None to bottom by treating None as very large
+        amt_key = amt if isinstance(amt, int) else (1 << 62)
+        return (amt_key, item.get("provider_pubkey") or "")
+
+    candidates.sort(key=_sort_key)
+    return candidates[:limit]
+
+
+def _write_json_atomic(path: str, payload: dict) -> None:
+    cache_ensure_cache_dir()
+    tmp_path = f"{path}.tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=True, indent=2)
+        os.replace(tmp_path, path)
+    except OSError:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+
+
 @app.get("/api/providers-with-contracts")
 def providers_with_contracts():
     """Return providers joined with contracts (by pubkey) and service names from cache."""
@@ -1259,9 +1497,33 @@ def cache_refresh():
         active_services_cache = _load_cached("active_services")
         if active_services_cache:
             results["active_services"] = {"data": active_services_cache, "exit_code": 0}
+        active_service_types_cache = _load_cached("active_service_types")
+        if active_service_types_cache:
+            results["active_service_types"] = {"data": active_service_types_cache, "exit_code": 0}
         subscribers_cache = _load_cached("subscribers")
         if subscribers_cache:
             results["subscribers"] = {"data": subscribers_cache, "exit_code": 0}
+        # refresh subscriber_info.json as part of refresh
+        try:
+            height, h_err = _latest_block_height()
+            info_payload = {
+                "fetched_at": _timestamp(),
+                "arkeod_node": ARKEOD_NODE,
+                "latest_block": height,
+            }
+            raw_pubkey, bech32_pubkey, pub_err = derive_pubkeys(KEY_NAME, KEYRING)
+            addr, addr_err = derive_address(KEY_NAME, KEYRING)
+            info_payload["pubkey"] = {"raw": raw_pubkey, "bech32": bech32_pubkey}
+            info_payload["address"] = addr
+            if pub_err:
+                info_payload["pubkey_error"] = pub_err
+            if addr_err:
+                info_payload["address_error"] = addr_err
+            if h_err:
+                info_payload["latest_block_error"] = h_err
+            _write_json_atomic(SUBSCRIBER_INFO_FILE, info_payload)
+        except Exception:
+            pass
         return jsonify({"status": "ok", "results": results})
     except Exception as e:
         return jsonify({"error": "cache_refresh_failed", "detail": str(e)}), 500
@@ -1331,6 +1593,194 @@ def cache_counts():
         counts["subscribers"] = len(subscribers_list)
 
     return jsonify(counts)
+
+
+def _sanitize_listener_payload(payload: dict, existing_ports: set[int], current_id: str | None = None):
+    """Validate listener payload and return (listener_dict, error_str_or_None)."""
+    target = ""  # notes removed
+    status = (payload.get("status") or "").strip() or "pending"
+    service_id_val = payload.get("service_id") or payload.get("service")
+    service_id = str(service_id_val).strip() if service_id_val not in (None, "") else ""
+    port_val = payload.get("port")
+    port: int | None = None
+    if port_val not in (None, ""):
+        try:
+            port = int(port_val)
+        except (TypeError, ValueError):
+            return None, "port must be an integer"
+        if port < LISTENER_PORT_START or port > LISTENER_PORT_END:
+            return None, f"port must be between {LISTENER_PORT_START} and {LISTENER_PORT_END}"
+        if port in existing_ports:
+            return None, f"port {port} already in use"
+    return {
+        "target": target,
+        "status": status,
+        "port": port,
+        "service_id": service_id,
+    }, None
+
+
+@app.get("/api/listeners")
+def get_listeners():
+    """Return current listeners registry."""
+    data = _ensure_listeners_file()
+    listeners = data.get("listeners") if isinstance(data, dict) else []
+    listeners = listeners if isinstance(listeners, list) else []
+    used_ports = _collect_used_ports(listeners)
+    next_port = _next_available_port(used_ports)
+    return jsonify({
+        "listeners": listeners,
+        "port_range": [LISTENER_PORT_START, LISTENER_PORT_END],
+        "next_port": next_port,
+    })
+
+
+@app.post("/api/listeners")
+def create_listener():
+    payload = request.get_json(silent=True) or {}
+    data = _ensure_listeners_file()
+    listeners = data.get("listeners") if isinstance(data, dict) else []
+    if not isinstance(listeners, list):
+        listeners = []
+    used_ports = _collect_used_ports(listeners)
+    clean, err = _sanitize_listener_payload(payload, used_ports)
+    if err:
+        return jsonify({"error": err}), 400
+    # prevent duplicate service_id
+    existing_service_ids = {
+        str(l.get("service_id")) for l in listeners if isinstance(l, dict) and l.get("service_id") not in (None, "")
+    }
+    if clean.get("service_id") and str(clean["service_id"]) in existing_service_ids:
+        return jsonify({"error": "service_already_used"}), 400
+    port = clean["port"] or _next_available_port(used_ports)
+    if port is None:
+        return jsonify({"error": "no ports available in configured range"}), 400
+    now = _timestamp()
+    svc_lookup = _load_active_service_types_lookup()
+    svc_meta = svc_lookup.get(clean.get("service_id") or "", {})
+    best = _top_active_services_by_payg(clean.get("service_id") or "", limit=3)
+    new_entry = {
+        "id": payload.get("id") or str(int(time.time() * 1000)),
+        "target": "",
+        "status": clean["status"],
+        "port": port,
+        "service_id": clean.get("service_id") or "",
+        "service_name": svc_meta.get("service_name", ""),
+        "service_description": svc_meta.get("service_description", ""),
+        "top_services": best,
+        "created_at": now,
+        "updated_at": now,
+    }
+    listeners.append(new_entry)
+    listeners.sort(key=lambda x: x.get("port") if isinstance(x, dict) else 0)
+    data["listeners"] = listeners
+    data["fetched_at"] = now
+    _write_listeners(data)
+    return jsonify({"listener": new_entry, "next_port": _next_available_port(used_ports | {port})})
+
+
+@app.put("/api/listeners/<listener_id>")
+def update_listener(listener_id: str):
+    payload = request.get_json(silent=True) or {}
+    data = _ensure_listeners_file()
+    listeners = data.get("listeners") if isinstance(data, dict) else []
+    if not isinstance(listeners, list):
+        listeners = []
+    existing_ports = _collect_used_ports(listeners, skip_id=listener_id)
+    clean, err = _sanitize_listener_payload(payload, existing_ports, current_id=listener_id)
+    if err:
+        return jsonify({"error": err}), 400
+    # prevent duplicate service_id (excluding current)
+    existing_service_ids = {
+        str(l.get("service_id"))
+        for l in listeners
+        if isinstance(l, dict) and str(l.get("id")) != str(listener_id) and l.get("service_id") not in (None, "")
+    }
+    if clean.get("service_id") and str(clean["service_id"]) in existing_service_ids:
+        return jsonify({"error": "service_already_used"}), 400
+    svc_lookup = _load_active_service_types_lookup()
+    svc_meta = svc_lookup.get(clean.get("service_id") or "", {})
+    best = _top_active_services_by_payg(clean.get("service_id") or "", limit=3)
+    updated = None
+    for l in listeners:
+        if not isinstance(l, dict):
+            continue
+        if str(l.get("id")) != str(listener_id):
+            continue
+        if clean["port"] is not None:
+            l["port"] = clean["port"]
+        l["target"] = ""
+        l["status"] = clean["status"]
+        l["service_id"] = clean.get("service_id") or ""
+        l["service_name"] = svc_meta.get("service_name", "")
+        l["service_description"] = svc_meta.get("service_description", "")
+        l["top_services"] = best
+        l["updated_at"] = _timestamp()
+        updated = l
+        break
+    if updated is None:
+        return jsonify({"error": "listener not found"}), 404
+    listeners.sort(key=lambda x: x.get("port") if isinstance(x, dict) else 0)
+    data["listeners"] = listeners
+    _write_listeners(data)
+    used_ports = existing_ports | ({updated["port"]} if isinstance(updated.get("port"), int) else set())
+    return jsonify({"listener": updated, "next_port": _next_available_port(used_ports)})
+
+
+@app.delete("/api/listeners/<listener_id>")
+def delete_listener(listener_id: str):
+    data = _ensure_listeners_file()
+    listeners = data.get("listeners") if isinstance(data, dict) else []
+    if not isinstance(listeners, list):
+        listeners = []
+    new_list = [l for l in listeners if str(l.get("id")) != str(listener_id)]
+    if len(new_list) == len(listeners):
+        return jsonify({"error": "listener not found"}), 404
+    new_list.sort(key=lambda x: x.get("port") if isinstance(x, dict) else 0)
+    data["listeners"] = new_list
+    data["fetched_at"] = _timestamp()
+    _write_listeners(data)
+    used_ports = _collect_used_ports(new_list)
+    return jsonify({"status": "ok", "next_port": _next_available_port(used_ports)})
+
+
+@app.get("/api/active-service-types")
+def get_active_service_types():
+    """Return active service types cache."""
+    try:
+        with open(ACTIVE_SERVICE_TYPES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        data = {"active_service_types": []}
+    return jsonify(data)
+
+
+@app.post("/api/listeners/<listener_id>/refresh-top-services")
+def refresh_listener_top_services(listener_id: str):
+    """Recompute top_services for a single listener."""
+    data = _ensure_listeners_file()
+    listeners = data.get("listeners") if isinstance(data, dict) else []
+    if not isinstance(listeners, list):
+        listeners = []
+    found = None
+    for l in listeners:
+        if not isinstance(l, dict):
+            continue
+        if str(l.get("id")) != str(listener_id):
+            continue
+        found = l
+        break
+    if not found:
+        return jsonify({"error": "listener not found"}), 404
+
+    svc_id = found.get("service_id") or ""
+    best = _top_active_services_by_payg(svc_id, limit=3)
+    found["top_services"] = best
+    found["updated_at"] = _timestamp()
+    listeners.sort(key=lambda x: x.get("port") if isinstance(x, dict) else 0)
+    data["listeners"] = listeners
+    _write_listeners(data)
+    return jsonify({"listener": found})
 
 
 @app.post("/api/sentinel-rebuild")

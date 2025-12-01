@@ -72,9 +72,30 @@
 </div>
 
 <div class="card">
-    <h2>Arkeo Data Marketplace</h2>
-    <p id="providersStatus" class="muted">Loading providers...</p>
-    <div id="providersList" class="stack"></div>
+    <div class="row-between">
+        <h2>Arkeo Subscriber Listeners</h2>
+        <div class="muted" id="listenerRange">Ports 62001-62100</div>
+    </div>
+    <form id="listenerForm" class="listener-form" onsubmit="submitListenerForm(event)">
+        <div class="listener-grid">
+            <label>
+                <div class="muted">Status</div>
+                <select id="listenerStatus" class="select">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </label>
+            <label>
+                <div class="muted">Service Type</div>
+                <select id="listenerService" class="select"></select>
+            </label>
+            <div class="listener-actions">
+                <button type="submit" class="primary">Add Listener</button>
+            </div>
+        </div>
+    </form>
+    <div class="muted small">Next available port: <span id="nextPortValue">–</span></div>
+    <div id="listenersTable" class="mt-2"></div>
 </div>
 
 <div class="card footer-card">
@@ -299,9 +320,9 @@
             const finishedMsg = `Finished cache refresh at ${new Date().toISOString()}\n${summary || "(no results)"}`;
             if (statusEl) statusEl.textContent = `Last refresh: ${new Date().toLocaleString()}`;
             updateModalBody(finishedMsg);
-            // refresh providers table and header after cache refresh
-            await loadProvidersContracts(false);
+            // refresh header and listeners after cache refresh
             await refreshHeader();
+            await loadListeners();
             // update metrics
             updateMetrics(results);
         } catch (err) {
@@ -313,45 +334,12 @@
         }
     }
 
-    async function loadProvidersContracts(manageSync) {
-        const statusEl = document.getElementById("providersStatus");
-        if (statusEl) statusEl.textContent = "Loading providers...";
-        const list = document.getElementById("providersList");
-        if (list) list.innerHTML = `<div class="muted">Loading...</div>`;
-        if (manageSync) setSyncingLocal(true);
-        try {
-            const res = await fetch("http://localhost:9999/api/providers-with-contracts", { cache: "no-store" });
-            const data = await res.json();
-            if (!res.ok || (data && data.error)) {
-                throw new Error((data && (data.detail || data.error)) || res.status);
-            }
-            const providersData = (data && data.providers) || [];
-            const counts = data && data.counts;
-            let activeSvcCount = 0;
-            providersData.forEach(p => {
-                if (p && Array.isArray(p.services)) activeSvcCount += p.services.length;
-            });
-            renderProvidersBlocks(providersData, counts);
-            updateMetrics(null, {
-                providers: providersData.length,
-                services: activeSvcCount,
-                contracts: counts && counts.contracts,
-                nodeTypes: counts && counts.services,
-            });
-        } catch (err) {
-            if (statusEl) statusEl.textContent = `Failed to load providers/contracts: ${err}`;
-            if (list) list.innerHTML = `<div class="muted">Failed to load providers/contracts</div>`;
-        } finally {
-            if (manageSync) setSyncingLocal(false);
-        }
-    }
-
     document.addEventListener("DOMContentLoaded", () => {
         refreshHeader();
         // Refresh every 10 seconds to mirror provider UI behavior
         setInterval(refreshHeader, 10000);
-        // load cached providers/contracts on load
-        loadProvidersContracts(true);
+        loadListeners();
+        refreshServiceTypes(false);
         // try to populate metrics from initial cache-refresh data if present
         updateMetrics();
         // poll cache status to reflect background sync
@@ -393,10 +381,15 @@
     async function pollSyncStatus() {
         try {
             const statusRes = await fetch("http://localhost:9999/api/cache-status", { cache: "no-store" });
+            let wasSyncing = syncingRemote;
             if (statusRes.ok) {
                 const data = await statusRes.json();
                 const inProg = data && (data.in_progress === true || data.in_progress === "true");
                 setSyncingRemote(!!inProg);
+                // If a sync just finished, refresh service types to update dropdowns without a full reload
+                if (wasSyncing && !inProg) {
+                    refreshServiceTypes(true);
+                }
             }
             const countsRes = await fetch("http://localhost:9999/api/cache-counts", { cache: "no-store" });
             if (countsRes.ok) {
@@ -508,60 +501,329 @@
         }
         if (mNode) mNode.textContent = mNode.textContent || "–";
     }
-    function renderProvidersBlocks(providers, counts) {
-        const list = document.getElementById("providersList");
-        const statusEl = document.getElementById("providersStatus");
-        if (!list) return;
-        if (!Array.isArray(providers) || !providers.length) {
-            list.innerHTML = `<div class="muted">No providers found in cache.</div>`;
-            if (statusEl) statusEl.textContent = "";
-            updateMetrics();
-            return;
-        }
-        const blocks = providers.map((p, idx) => {
-            const pk = p.pubkey || "(no pubkey)";
-            const metaUri = p.metadata_uri || (p.provider && p.provider.metadata_uri) || "";
-            const statusVal = p.status;
-            const statusStr = statusVal === 1 || statusVal === "1" ? "Active" : "Inactive";
-            const statusClass = statusVal === 1 || statusVal === "1" ? "status-ok" : "status-err";
-            const m = p.metadata || {};
-            const moniker = (m.config && m.config.moniker) || m.moniker || "";
-            const desc = (m.config && m.config.description) || m.description || "";
-            const svcs = Array.isArray(p.services) ? p.services : [];
-            const svcBlock = svcs.length
-                ? `<div class="mt-2 muted">Services:<br>${svcs.map(s => {
-                    const sid = s && s.id;
-                    const display = (s && s.display) || (s && s.description) || (s && s.name) || (s && s.slug) || "";
-                    const slug = (s && s.slug) || (s && s.name) || "";
-                    return `${escapeHtml(display || "(unknown)")}${slug ? ` | ${escapeHtml(slug)}` : ""}${sid ? ` | ${escapeHtml(String(sid))}` : ""}`;
-                }).join("<br>")}</div>`
-                : "";
-            return `<div class="panel mb-8">
-                <div><span class="status-pill ${statusClass}">${statusStr}</span></div>
-                <div><strong>${escapeHtml(moniker || "(unknown)")}</strong></div>
-                <div class="muted">${escapeHtml(desc || "")}</div>
-                <div class="mono mt-2">${pk}</div>
-                ${metaUri ? `<div class="muted mt-2">metadata_uri: <a href="${metaUri}" target="_blank" rel="noopener">${escapeHtml(metaUri)}</a></div>` : `<div class="muted mt-2">metadata_uri: (none)</div>`}
-                ${svcBlock}
-            </div>`;
-        });
-        list.innerHTML = blocks.join("");
-        if (statusEl) statusEl.textContent = "";
-        const overrides = counts
-            ? {
-                providers: counts.providers ?? providers.length,
-                contracts: counts.contracts,
-                services: counts.services,
-                nodeTypes: counts.services,
-            }
-            : { providers: providers.length };
-        updateMetrics(null, overrides);
-    }
-
     function closeModal() {
         const modal = document.getElementById("resultModal");
         if (modal) modal.classList.add("hidden");
     }
+
+    // ─────────────────────────────
+    // Listener registry UI helpers
+    // ─────────────────────────────
+    let listenersEditingId = null;
+    let listenersCache = [];
+    let serviceTypesCache = [];
+    let lastServiceTypesFetch = 0;
+
+    function serviceOptionsHtml(selectedId) {
+        const opts = serviceTypesCache.map((s) => {
+            const sid = s && (s.service_id ?? s.serviceID ?? s.id);
+            if (sid === undefined || sid === null) return "";
+            const label = formatServiceLabel(sid);
+            const count = s && s.count !== undefined ? ` (${s.count} Active)` : "";
+            const sel = String(selectedId || "") === String(sid) ? "selected" : "";
+            return `<option value="${escapeHtml(String(sid))}" ${sel}>${escapeHtml(label + count)}</option>`;
+        }).filter(Boolean).join("");
+        return `<option value="">Select a service</option>${opts}`;
+    }
+
+    function updateSelectOptionsFromCache(selectEl) {
+        if (!selectEl) return;
+        const current = selectEl.value;
+        selectEl.innerHTML = serviceOptionsHtml(current);
+        if (current) selectEl.value = current;
+    }
+
+    async function refreshServiceTypes(rerenderTable = false, selectIdToUpdate = null, force = false) {
+        const now = Date.now();
+        const freshWindowMs = 5000;
+        if (!force && now - lastServiceTypesFetch < freshWindowMs) {
+            if (selectIdToUpdate) updateSelectOptionsFromCache(document.getElementById(selectIdToUpdate));
+            if (rerenderTable && !listenersEditingId) renderListenersTable();
+            return;
+        }
+        try {
+            const res = await fetch("http://localhost:9999/api/active-service-types", { cache: "no-store" });
+            if (!res.ok) return;
+            const svcData = await res.json().catch(() => ({}));
+            const list = svcData && svcData.active_service_types;
+            if (Array.isArray(list)) {
+                serviceTypesCache = list;
+                lastServiceTypesFetch = Date.now();
+                populateServiceSelect();
+                if (selectIdToUpdate) {
+                    updateSelectOptionsFromCache(document.getElementById(selectIdToUpdate));
+                }
+                if (rerenderTable && !listenersEditingId) {
+                    renderListenersTable();
+                }
+            }
+        } catch (e) {
+            // ignore fetch errors; will retry on next trigger
+        }
+    }
+
+    async function loadListeners() {
+        try {
+            const res = await fetch("http://localhost:9999/api/listeners", { cache: "no-store" });
+            const data = await res.json();
+            if (!res.ok || (data && data.error)) {
+                throw new Error((data && (data.detail || data.error)) || res.status);
+            }
+            listenersCache = Array.isArray(data.listeners) ? data.listeners : [];
+            const nextPort = data.next_port || "n/a";
+            const npEl = document.getElementById("nextPortValue");
+            if (npEl) npEl.textContent = nextPort;
+            const rangeEl = document.getElementById("listenerRange");
+            if (rangeEl && Array.isArray(data.port_range) && data.port_range.length === 2) {
+                rangeEl.textContent = `Ports ${data.port_range[0]}-${data.port_range[1]}`;
+            }
+            renderListenersTable();
+        } catch (err) {
+            renderListenersTable(`Failed to load listeners: ${err}`);
+        }
+    }
+
+    function renderListenersTable(errorText) {
+        const container = document.getElementById("listenersTable");
+        if (!container) return;
+        if (errorText) {
+            container.innerHTML = `<div class="muted">${escapeHtml(errorText)}</div>`;
+            return;
+        }
+        if (!listenersCache.length) {
+            container.innerHTML = `<div class="muted">No listeners yet. Add one to auto-assign the next open port.</div>`;
+            return;
+        }
+        const rows = listenersCache.map((l) => {
+            const isEditing = listenersEditingId === String(l.id);
+            const targetSafe = escapeHtml(l.target || "");
+            const portSafe = escapeHtml(l.port ?? "");
+            const statusSafe = escapeHtml(l.status || "");
+            const svcLabel = formatServiceLabel(l.service_id);
+            const svcSelect = buildServiceSelect(l.service_id, `editService-${l.id}`);
+            const statusSelect = buildStatusSelect(l.status, `editStatus-${l.id}`);
+            const topServices = Array.isArray(l.top_services) ? l.top_services : [];
+            const topServicesDisplay = topServices.length
+                ? topServices.map((bp, idx) => {
+                    const pk = bp && bp.provider_pubkey ? formatPubkeyShort(bp.provider_pubkey) : "(unknown)";
+                    const mon = bp && bp.provider_moniker;
+                    const name = mon && mon !== "(Inactive)" ? mon : `${pk} (Inactive)`;
+                    const rate = bp && bp.pay_as_you_go_rate && bp.pay_as_you_go_rate.amount !== undefined
+                        ? `${bp.pay_as_you_go_rate.amount}${bp.pay_as_you_go_rate.denom || ""} / tx`
+                        : "";
+                    const right = [rate].filter(Boolean).join(" | ");
+                    const order = `${idx + 1}`;
+                    return `${order} | ${name}${right ? ` | ${right}` : ""}`;
+                }).join("<br>")
+                : "—";
+            if (isEditing) {
+                return `
+                <tbody class="listener-block">
+                <tr class="listener-main">
+                    <td class="col-status">${statusSelect}</td>
+                    <td>${svcSelect}</td>
+                    <td class="mono">${portSafe || "–"}</td>
+                    <td>
+                        <button class="primary" onclick="saveListener('${l.id}')">Save</button>
+                        <button onclick="cancelEditListener()">Cancel</button>
+                    </td>
+                </tr>
+                <tr class="listener-sub">
+                    <td colspan="4">
+                        <div class="muted small">Top services (sorted by lowest PAYG):</div>
+                        <div class="muted">${topServicesDisplay}</div>
+                    </td>
+                </tr>
+                <tr class="listener-spacer"><td colspan="4"></td></tr>
+                </tbody>`;
+            }
+            const statusDot = `<span class="status-dot ${String(l.status).toLowerCase() === "active" ? "dot-ok" : "dot-err"}"></span>`;
+            return `
+            <tbody class="listener-block">
+            <tr class="listener-main">
+                <td class="col-status">${statusDot}</td>
+                <td>${escapeHtml(svcLabel || "—")}</td>
+                <td class="mono">${portSafe || "–"}</td>
+                <td class="listener-actions-cell col-actions">
+                    <button class="primary" onclick="refreshTopServices('${l.id}')">Refresh</button>
+                    <button class="primary" onclick="editListener('${l.id}')">Edit</button>
+                    <button class="primary danger-btn" onclick="deleteListener('${l.id}')">Delete</button>
+                </td>
+            </tr>
+            <tr class="listener-sub">
+                <td colspan="4">
+                    <div class="muted small">Top services:</div>
+                    <div class="muted">${topServicesDisplay}</div>
+                </td>
+            </tr>
+            <tr class="listener-spacer"><td colspan="4"></td></tr>
+            </tbody>`;
+        }).join("");
+        container.innerHTML = `<div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr><th class="col-status">Status</th><th>Service Type</th><th>Port</th><th class="col-actions">Actions</th></tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
+    }
+
+    function resetListenerForm() {
+        const svc = document.getElementById("listenerService");
+        const status = document.getElementById("listenerStatus");
+        if (svc) svc.value = "";
+        if (status) status.value = "active";
+    }
+
+    async function submitListenerForm(evt) {
+        evt.preventDefault();
+        const svcId = document.getElementById("listenerService")?.value || "";
+        if (!svcId) {
+            alert("Please select a service type before adding a listener.");
+            return;
+        }
+        const status = document.getElementById("listenerStatus")?.value || "active";
+        const body = { status };
+        if (svcId) body.service_id = svcId;
+        try {
+            const res = await fetch("http://localhost:9999/api/listeners", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || (data && data.error)) {
+                if (data && data.error === "service_already_used") {
+                    alert("That service type is already assigned to a listener.");
+                    return;
+                }
+                throw new Error((data && (data.detail || data.error)) || res.status);
+            }
+            resetListenerForm();
+            listenersEditingId = null;
+            await loadListeners();
+        } catch (err) {
+            showResultModal("Add Listener", `Failed to add listener: ${err}`);
+        }
+    }
+
+    function editListener(id) {
+        listenersEditingId = String(id);
+        renderListenersTable();
+    }
+
+    function cancelEditListener() {
+        listenersEditingId = null;
+        renderListenersTable();
+    }
+
+    async function saveListener(id) {
+        const svcId = document.getElementById(`editService-${id}`)?.value || "";
+        const status = document.getElementById(`editStatus-${id}`)?.value || "";
+        const body = { status };
+        if (svcId) body.service_id = svcId;
+        try {
+            const res = await fetch(`http://localhost:9999/api/listeners/${encodeURIComponent(id)}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || (data && data.error)) {
+                if (data && data.error === "service_already_used") {
+                    alert("That service type is already assigned to a listener.");
+                    return;
+                }
+                throw new Error((data && (data.detail || data.error)) || res.status);
+            }
+            listenersEditingId = null;
+            await loadListeners();
+        } catch (err) {
+            showResultModal("Update Listener", `Failed to update listener: ${err}`);
+        }
+    }
+
+    async function deleteListener(id) {
+        if (!confirm("Delete this listener?")) return;
+        try {
+            const res = await fetch(`http://localhost:9999/api/listeners/${encodeURIComponent(id)}`, {
+                method: "DELETE",
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || (data && data.error)) {
+                throw new Error((data && (data.detail || data.error)) || res.status);
+            }
+            listenersEditingId = null;
+            await loadListeners();
+        } catch (err) {
+            showResultModal("Delete Listener", `Failed to delete listener: ${err}`);
+        }
+    }
+
+    async function refreshTopServices(id) {
+        if (!confirm("Refresh top services and check for new ones for this listener?")) return;
+        try {
+            const res = await fetch(`http://localhost:9999/api/listeners/${encodeURIComponent(id)}/refresh-top-services`, {
+                method: "POST",
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || (data && data.error)) {
+                throw new Error((data && (data.detail || data.error)) || res.status);
+            }
+            await loadListeners();
+        } catch (err) {
+            showResultModal("Refresh Top Services", `Failed to refresh: ${err}`);
+        }
+    }
+
+    function formatServiceLabel(serviceId) {
+        if (!serviceId) return "";
+        const sid = String(serviceId);
+        const match = serviceTypesCache.find((s) => String(s.service_id) === sid);
+        if (!match || !match.service_type) return sid;
+        const st = match.service_type;
+        const desc = st.description || "";
+        const name = st.name || "";
+        if (desc) return desc;
+        return name || sid;
+    }
+
+    function buildServiceSelect(selectedId, elementId) {
+        const opts = serviceOptionsHtml(selectedId);
+        const selId = elementId || "";
+        return `<select id="${selId}" class="select service-select" data-select-id="${selId}">${opts}</select>`;
+    }
+
+    function populateServiceSelect() {
+        const select = document.getElementById("listenerService");
+        if (!select) return;
+        updateSelectOptionsFromCache(select);
+        if (select.options.length) select.selectedIndex = 0;
+    }
+
+    function buildStatusSelect(selectedVal, elementId) {
+        const opts = [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+        ];
+        const inner = opts.map(o => {
+            const sel = String(selectedVal || "active").toLowerCase() === o.value ? "selected" : "";
+            return `<option value="${o.value}" ${sel}>${o.label}</option>`;
+        }).join("");
+        return `<select id="${elementId || ""}" class="select">${inner}</select>`;
+    }
+
+    function refreshServiceTypesForSelect(selectId) {
+        refreshServiceTypes(false, selectId);
+    }
+
+    document.addEventListener("focusin", (e) => {
+        const sel = e.target.closest(".service-select");
+        if (sel && sel.id) {
+            refreshServiceTypesForSelect(sel.id);
+        }
+    });
 </script>
 
 </body>

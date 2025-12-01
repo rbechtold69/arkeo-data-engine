@@ -250,12 +250,11 @@ td.value {
 .status-err { background: var(--err); color: #f8fafc; }
 
 .status-dot {
-    display: inline-block;
+    display: block;
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    margin-right: 8px;
-    vertical-align: middle;
+    margin: 0 auto;
     background: var(--warn);
 }
 .status-dot.ok { background: var(--ok); }
@@ -397,6 +396,126 @@ pre {
     color: var(--blue-accent);
 }
 
+.listener-form {
+    margin: 12px 0;
+    padding: 12px;
+    background: #0b1220;
+    border-radius: 8px;
+}
+.listener-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    align-items: end;
+}
+.listener-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+.listener-form input[type="text"],
+.listener-form input[type="number"],
+.table input[type="text"],
+.table input[type="number"] {
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-strong);
+    background: #0b1220;
+    color: var(--text);
+    box-sizing: border-box;
+}
+.table-wrap {
+    overflow-x: auto;
+}
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+    margin-top: 10px;
+}
+.table th,
+.table td {
+    padding: 10px 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+.col-status { width: 40px; white-space: nowrap; text-align: center; }
+.col-actions { width: 1%; white-space: nowrap; text-align: right; }
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    background: var(--warn);
+}
+.dot-ok { background: var(--ok); }
+.dot-err { background: var(--err); }
+.table th {
+    color: var(--muted-2);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+}
+.table td {
+    vertical-align: middle;
+}
+.listener-block {
+    display: table-row-group;
+}
+.listener-main td {
+    background: #0b1220;
+    border: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+.listener-sub td {
+    background: #0b1220;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+.listener-spacer td {
+    padding: 8px 0;
+    border: none;
+}
+.small {
+    font-size: 12px;
+    color: var(--muted);
+}
+.sub-row td {
+    background: #0b1220;
+    border-top: none;
+    border-bottom: 1px solid var(--border);
+}
+
+/* Listener table extras */
+.listener-notes td {
+    background: #0b1220;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+.full-input {
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-strong);
+    background: #0b1220;
+    color: var(--text);
+    box-sizing: border-box;
+}
+.select {
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-strong);
+    background: #0b1220;
+    color: var(--text);
+    box-sizing: border-box;
+}
+
 /* Loading overlay */
 .overlay {
     position: fixed;
@@ -457,4 +576,13 @@ pre {
     display: block;
     margin: 14px 0 6px;
     font-weight: 700;
+}
+.listener-actions-cell {
+    text-align: right;
+    white-space: nowrap;
+    width: 1%;
+}
+.danger-btn {
+    background: linear-gradient(135deg, var(--err), #b91c1c);
+    border: 1px solid #b91c1c;
 }
