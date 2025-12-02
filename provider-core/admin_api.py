@@ -1119,6 +1119,7 @@ def _write_export_bundle(
         raw_cfg = sentinel_config_raw_override
     if env_file is None:
         env_file = _load_env_file(SENTINEL_ENV_PATH)
+    provider_env_file = _load_env_file(PROVIDER_ENV_PATH)
     bundle = {
         "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "sentinel_env_path": SENTINEL_ENV_PATH,
@@ -1127,6 +1128,8 @@ def _write_export_bundle(
         "sentinel_config": parsed_cfg,
         "sentinel_config_raw": raw_cfg,
         "env_file": env_file,
+        "provider_env_file": provider_env_file,
+        "provider_env_path": PROVIDER_ENV_PATH,
     }
     if provider_form:
         bundle["provider_form"] = provider_form

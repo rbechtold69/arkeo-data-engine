@@ -796,7 +796,12 @@
             await navigator.clipboard.writeText(val);
             showResultModal("Copy Provider Pubkey", `Pubkey copied to clipboard:\n${val}`);
         } catch (e) {
-            showResultModal("Copy Provider Pubkey", "Failed to copy pubkey");
+            const msg = [
+                "Failed to copy pubkey (clipboard is blocked in insecure contexts).",
+                "You can copy it manually:",
+                val || "(unavailable)"
+            ].join("\n");
+            showResultModal("Copy Provider Pubkey", msg);
         }
     }
 
@@ -813,7 +818,12 @@
             await navigator.clipboard.writeText(val);
             showResultModal("Copy Provider Address", `Address copied to clipboard:\n${val}`);
         } catch (e) {
-            showResultModal("Copy Provider Address", "Failed to copy address");
+            const msg = [
+                "Failed to copy address (clipboard is blocked in insecure contexts).",
+                "You can copy it manually:",
+                val
+            ].join("\n");
+            showResultModal("Copy Provider Address", msg);
         }
     }
 
