@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Arkeo Marketplace | Testing Manager</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="images/favicon.ico">
+    <link rel="shortcut icon" href="images/favicon.ico">
+</head>
+<body>
+
+<div class="card header-card">
+    <div class="row-between header-top">
+        <div class="header-left">
+            <div class="header-brand-row">
+                <img src="images/arkeo-logo-200px_1.png" alt="Arkeo" class="header-logo">
+                <div class="header-brand">
+                    <span class="brand-main">Arkeo Marketplace</span>
+                    <span class="brand-sep">|</span>
+                    <span class="brand-sub">Testing Manager</span>
+                </div>
+            </div>
+            <h1 id="headerMoniker"></h1>
+            <div id="headerDescription" class="muted header-desc"></div>
+        </div>
+        <div class="header-right">
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="section-header">
+        <h2>Arkeo Bulk Address Testing</h2>
+        <div class="section-subtitle muted">Add an address to start testing.</div>
+    </div>
+    <div class="section">
+        <div class="add-form">
+            <div class="add-form-grid">
+                <div class="add-form-field">
+                    <label for="addAddressInput" class="muted">Test address</label>
+                    <input type="text" id="addAddressInput" placeholder="Enter address to test">
+                </div>
+                <div class="add-form-actions">
+                    <button class="primary" id="addAddressBtn">Add row</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="table-wrapper">
+            <table class="test-table" id="testTable">
+                <thead>
+                    <tr>
+                        <th class="narrow">#</th>
+                        <th>Address</th>
+                        <th class="status-col">Status</th>
+                        <th class="actions-col">Actions</th>
+                    </tr>
+                </thead>
+            </table>
+            <div id="emptyState" class="empty-state muted">No test rows yet. Add an address to get started.</div>
+        </div>
+    </div>
+</div>
+
+<div class="card footer-card">
+    <div class="footer-links">
+        <div class="footer-brand">
+            <img src="images/arkeo-logo-200px_1.png" alt="Arkeo" class="footer-logo">
+            <span class="footer-title">
+                <span class="brand-main">Arkeo Marketplace</span>
+                <span class="brand-sep">|</span>
+                <span class="brand-sub">Provider Manager</span>
+            </span>
+        </div>
+        <div class="footer-links-right">
+            <div><a href="https://arkeo.network/" target="_blank" rel="noopener">Arkeo Marketplace Website</a></div>
+            <div><a href="https://discord.gg/arkeo" target="_blank" rel="noopener">Arkeo Discord</a></div>
+        </div>
+    </div>
+</div>
+
+<div id="resultModal" class="overlay hidden">
+    <div class="overlay-card modal-card">
+        <h3 id="modalTitle">Result</h3>
+        <pre id="modalBody"></pre>
+        <button class="primary" onclick="closeModal()">OK</button>
+    </div>
+</div>
+
+<script>
+(() => {
+    const addInput = document.getElementById('addAddressInput');
+    const addBtn = document.getElementById('addAddressBtn');
+    const tableEl = document.getElementById('testTable');
+    const emptyState = document.getElementById('emptyState');
+
+    const payloadSets = {
+        evm: {
+            chainId: '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}',
+            blockNumber: '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":2}',
+            gasPrice: '{"jsonrpc":"2.0","method":"eth_gasPrice","params":[],"id":3}',
+            syncing: '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":4}',
+            netVersion: '{"jsonrpc":"2.0","method":"net_version","params":[],"id":5}'
+        },
+        cometbft: {
+            status: '{"jsonrpc":"2.0","method":"status","params":[],"id":1}',
+            health: '{"jsonrpc":"2.0","method":"health","params":[],"id":2}',
+            net_info: '{"jsonrpc":"2.0","method":"net_info","params":[],"id":3}',
+            abci_info: '{"jsonrpc":"2.0","method":"abci_info","params":[],"id":4}',
+            block_latest: '{"jsonrpc":"2.0","method":"block","params":[null],"id":5}',
+            validators_latest: '{"jsonrpc":"2.0","method":"validators","params":[null,1,30],"id":6}'
+        },
+        bitcoin: {
+            getblockchaininfo: '{"jsonrpc":"2.0","method":"getblockchaininfo","params":[],"id":1}',
+            getbestblockhash: '{"jsonrpc":"2.0","method":"getbestblockhash","params":[],"id":2}'
+        },
+        solana: {
+            getHealth: '{"jsonrpc":"2.0","id":1,"method":"getHealth","params":[]}',
+            getVersion: '{"jsonrpc":"2.0","id":2,"method":"getVersion","params":[]}',
+            getBlockHeight: '{"jsonrpc":"2.0","id":3,"method":"getBlockHeight","params":[]}'
+        },
+        substrate: {
+            system_health: '{"jsonrpc":"2.0","id":1,"method":"system_health","params":[]}',
+            chain_getBlockHash: '{"jsonrpc":"2.0","id":2,"method":"chain_getBlockHash","params":[]}'
+        },
+        sui: {
+            sui_getLatestCheckpointSequenceNumber: '{"jsonrpc":"2.0","id":1,"method":"sui_getLatestCheckpointSequenceNumber","params":[]}',
+            suix_getLatestSuiSystemState: '{"jsonrpc":"2.0","id":2,"method":"suix_getLatestSuiSystemState","params":[]}'
+        },
+        near: {
+            status: '{"jsonrpc":"2.0","id":1,"method":"status","params":[]}',
+            gas_price: '{"jsonrpc":"2.0","id":2,"method":"gas_price","params":[null]}'
+        },
+        filecoin: {
+            chainHead: '{"jsonrpc":"2.0","id":1,"method":"Filecoin.ChainHead","params":[]}',
+            stateNetworkName: '{"jsonrpc":"2.0","id":2,"method":"Filecoin.StateNetworkName","params":[]}'
+        },
+        blockbook: {
+            api: { method: 'GET', path: '/api' }
+        },
+        tron: {
+            listNodes: '{"jsonrpc":"2.0","id":1,"method":"listnodes","params":[]}',
+            getNowBlock: '{"jsonrpc":"2.0","id":2,"method":"eth_blockNumber","params":[]}'
+        },
+        aptos: {
+            ledgerInfo: { method: 'GET', path: '/v1' },
+            transactions: { method: 'GET', path: '/v1/transactions?limit=1' }
+        },
+        hedera: {
+            network: { method: 'GET', path: '/network' },
+            accounts: { method: 'GET', path: '/accounts?limit=1' }
+        },
+        stellar: {
+            root: { method: 'GET', path: '/' },
+            ledger: { method: 'GET', path: '/ledgers?limit=1' }
+        }
+    };
+
+    let rows = [];
+    let idCounter = 1;
+
+    const statusToClass = {
+        Idle: 'status-badge',
+        Running: 'status-badge status-warn',
+        Passed: 'status-badge status-ok',
+        Failed: 'status-badge status-err',
+        Stopped: 'status-badge status-warn'
+    };
+
+    function stamp() {
+        const now = new Date();
+        return now.toLocaleTimeString('en-US', { hour12: false });
+    }
+
+    function defaultConfig() {
+        return {
+            rateLimit: 10,
+            totalRequests: 10,
+            method: 'random',
+            baseType: 'unknown'
+        };
+    }
+
+    async function loadSavedRows() {
+        try {
+            const res = await fetch('/api/tests');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                rows = data
+                    .filter(item => item && item.address)
+                    .map(item => ({
+                        id: idCounter++,
+                        address: item.address,
+                        status: 'Idle',
+                        logs: [],
+                        editing: false,
+                        running: false,
+                        detecting: false,
+                        cancelRequested: false,
+                        controller: null,
+                        config: { ...defaultConfig(), ...(item.config || {}) }
+                    }));
+            }
+        } catch (err) {
+            console.warn('Failed to load saved tests:', err);
+        }
+    }
+
+    async function persistRows() {
+        const payload = rows.map(r => ({
+            address: r.address,
+            config: r.config
+        }));
+        try {
+            await fetch('/api/tests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch (err) {
+            console.warn('Failed to save tests:', err);
+        }
+    }
+
+    function addRow(address) {
+        rows.push({
+            id: idCounter++,
+            address,
+            status: 'Idle',
+            logs: [],
+            editing: false,
+            running: false,
+            detecting: false,
+            cancelRequested: false,
+            controller: null,
+            config: defaultConfig()
+        });
+        render();
+        persistRows();
+    }
+
+    function deleteRow(id) {
+        rows = rows.filter(r => r.id !== id);
+        render();
+        persistRows();
+    }
+
+    function startEdit(id) {
+        rows = rows.map(r => ({ ...r, editing: r.id === id }));
+        render();
+        const input = document.querySelector(`input[data-edit-id="${id}"]`);
+        if (input) {
+            input.focus();
+            input.select();
+        }
+    }
+
+    function cancelEdit(id) {
+        rows = rows.map(r => ({ ...r, editing: false }));
+        render();
+    }
+
+    function saveEdit(id, value) {
+        rows = rows.map(r => r.id === id ? { ...r, address: value, editing: false } : r);
+        render();
+        persistRows();
+    }
+
+    function updateConfig(id, key, value) {
+        const row = rows.find(r => r.id === id);
+        if (!row) return;
+        row.config[key] = value;
+        persistRows();
+    }
+
+    function appendLog(id, message) {
+        const row = rows.find(r => r.id === id);
+        if (!row) return;
+        row.logs.push(`${stamp()}  ${message}`);
+        if (row.logs.length > 200) row.logs.shift();
+        render();
+        requestAnimationFrame(() => {
+            const logEl = document.querySelector(`.debug-log[data-log-id="${id}"]`);
+            if (logEl) {
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+        });
+    }
+
+    function methodOptions(baseType) {
+        const map = payloadSets[baseType];
+        if (!map) {
+            return [{ value: 'random', label: 'Select base type first', disabled: true }];
+        }
+        const opts = [{ value: 'random', label: 'Random mix' }];
+        Object.keys(map).forEach(k => opts.push({ value: k, label: k }));
+        return opts;
+    }
+
+    function pickPayload(baseType, method) {
+        const map = payloadSets[baseType];
+        if (!map) return { label: 'unsupported', body: null, unsupported: true };
+        if (method === 'random') {
+            const keys = Object.keys(map);
+            const key = keys[Math.floor(Math.random() * keys.length)];
+            return { label: key, body: map[key] };
+        }
+        const body = map[method] || map[Object.keys(map)[0]];
+        return { label: method || 'random', body };
+    }
+
+    function decodeHexValue(val) {
+        if (typeof val !== 'string') return null;
+        if (!/^0x[0-9a-fA-F]+$/.test(val)) return null;
+        try {
+            const num = BigInt(val);
+            return num.toString(10);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function stripArkeoWrapper(resBody) {
+        const parsed = parseJsonSafe(resBody);
+        if (parsed && parsed.response) {
+            return JSON.stringify(parsed.response, null, 2);
+        }
+        return resBody;
+    }
+
+    function isLikelyHtml(body) {
+        if (typeof body !== 'string') return false;
+        const trimmed = body.trim();
+        return /^<!doctype html/i.test(trimmed) || /^<html/i.test(trimmed);
+    }
+
+    function hasHtmlPayload(rawBody) {
+        if (isLikelyHtml(rawBody)) return true;
+        const parsed = parseJsonSafe(rawBody);
+        if (parsed && typeof parsed === 'object' && typeof parsed.response === 'string') {
+            return isLikelyHtml(parsed.response);
+        }
+        return false;
+    }
+
+    function truncateBody(body, maxLen = 500) {
+        if (typeof body !== 'string') return body;
+        if (body.length <= maxLen) return body;
+        return `${body.slice(0, maxLen)}… [truncated]`;
+    }
+
+    function formatResponseSummary(resBody, methodLabel) {
+        const parsed = parseJsonSafe(resBody);
+        const rpc = parsed && parsed.response ? parsed.response : parsed;
+        if (!rpc || typeof rpc !== 'object') return null;
+        const { result, error } = rpc;
+        if (error) {
+            const msg = typeof error === 'string' ? error : (error.message || 'error');
+            return `RPC error: ${msg}`;
+        }
+        if (result !== undefined) {
+            const method = (methodLabel || '').toLowerCase();
+            const hexDecoded = decodeHexValue(result);
+            if (method.includes('blocknumber') && hexDecoded) {
+                return `Block number: ${hexDecoded} (${result})`;
+            }
+            if (method.includes('chainid') && hexDecoded) {
+                return `Chain ID: ${hexDecoded} (${result})`;
+            }
+            if (method.includes('netversion')) {
+                return `Network version: ${result}`;
+            }
+            if (method.includes('gasprice') && hexDecoded) {
+                const gwei = (BigInt(hexDecoded) / BigInt(1e9)).toString();
+                return `Gas price: ${hexDecoded} wei (${gwei} gwei)`;
+            }
+            if (hexDecoded) return `Result: ${hexDecoded} (${result})`;
+            if (typeof result === 'object') return `Result: ${JSON.stringify(result).slice(0, 200)}${JSON.stringify(result).length > 200 ? '…' : ''}`;
+            return `Result: ${String(result)}`;
+        }
+        return null;
+    }
+
+    function parseJsonSafe(str) {
+        try { return JSON.parse(str); } catch (_) { return null; }
+    }
+
+    function unwrapRpc(parsed) {
+        if (!parsed) return null;
+        if (parsed.result !== undefined || parsed.error) return parsed;
+        if (parsed.response && (parsed.response.result !== undefined || parsed.response.error)) return parsed.response;
+        return parsed;
+    }
+
+    async function detectBaseType(row) {
+        if (!row || row.running || row.detecting) return;
+        row.detecting = true;
+        render();
+        appendLog(row.id, 'Detecting base type…');
+
+        const probes = [
+            {
+                baseType: 'evm',
+                label: 'EVM',
+                method: 'POST',
+                payload: payloadSets.evm.chainId,
+                match: (parsed) => parsed && parsed.result !== undefined
+            },
+            {
+                baseType: 'cometbft',
+                label: 'Cosmos / CometBFT',
+                method: 'POST',
+                payload: payloadSets.cometbft.status,
+                match: (parsed) => parsed && parsed.result && (parsed.result.node_info || parsed.result.sync_info)
+            },
+            {
+                baseType: 'bitcoin',
+                label: 'Bitcoin JSON-RPC',
+                method: 'POST',
+                payload: payloadSets.bitcoin.getblockchaininfo,
+                match: (parsed) => parsed && (parsed.result !== undefined || parsed.error)
+            },
+            {
+                baseType: 'solana',
+                label: 'Solana',
+                method: 'POST',
+                payload: payloadSets.solana.getHealth,
+                match: (parsed) => parsed && (parsed.result !== undefined || parsed.error)
+            },
+            {
+                baseType: 'substrate',
+                label: 'Substrate / Polkadot',
+                method: 'POST',
+                payload: payloadSets.substrate.system_health,
+                match: (parsed) => parsed && parsed.result && parsed.result.isSyncing !== undefined
+            },
+            {
+                baseType: 'sui',
+                label: 'Sui',
+                method: 'POST',
+                payload: payloadSets.sui.sui_getLatestCheckpointSequenceNumber,
+                match: (parsed) => parsed && (parsed.result !== undefined || parsed.error)
+            },
+            {
+                baseType: 'near',
+                label: 'NEAR',
+                method: 'POST',
+                payload: payloadSets.near.status,
+                match: (parsed) => parsed && parsed.result && parsed.result.chain_id
+            },
+            {
+                baseType: 'filecoin',
+                label: 'Filecoin',
+                method: 'POST',
+                payload: payloadSets.filecoin.chainHead,
+                match: (parsed) => parsed && parsed.result && parsed.result.length !== undefined
+            },
+            {
+                baseType: 'blockbook',
+                label: 'Blockbook',
+                method: 'GET',
+                path: payloadSets.blockbook.api.path,
+                match: (parsed) => parsed && parsed.blockbook !== undefined
+            },
+            {
+                baseType: 'tron',
+                label: 'Tron',
+                method: 'POST',
+                payload: payloadSets.tron.listNodes,
+                match: (parsed) => parsed && (parsed.result !== undefined || parsed.error)
+            },
+            {
+                baseType: 'aptos',
+                label: 'Aptos',
+                method: payloadSets.aptos.ledgerInfo.method,
+                path: payloadSets.aptos.ledgerInfo.path,
+                match: (parsed) => parsed && (parsed.chain_id !== undefined || parsed.ledger_version !== undefined)
+            },
+            {
+                baseType: 'hedera',
+                label: 'Hedera',
+                method: payloadSets.hedera.network.method,
+                path: payloadSets.hedera.network.path,
+                match: (parsed) => parsed && (parsed.network !== undefined || parsed._links !== undefined)
+            },
+            {
+                baseType: 'stellar',
+                label: 'Stellar',
+                method: payloadSets.stellar.root.method,
+                path: payloadSets.stellar.root.path,
+                match: (parsed) => parsed && (parsed.horizon_version !== undefined || parsed._links !== undefined)
+            }
+        ];
+
+        for (const probe of probes) {
+            try {
+                let target = row.address;
+                let body = probe.payload;
+                let method = probe.method || 'POST';
+                if (probe.path) {
+                    try {
+                        const url = new URL(row.address);
+                        url.pathname = probe.path;
+                        target = url.toString();
+                    } catch (_) {
+                        target = row.address + probe.path;
+                    }
+                    method = probe.method || 'GET';
+                    body = probe.body || '';
+                }
+
+                const res = await proxyRequest(target, body, { method });
+                appendLog(row.id, `${probe.label} probe → HTTP ${res.status}`);
+                if (hasHtmlPayload(res.body)) {
+                    appendLog(row.id, 'Received HTML response (likely not JSON-RPC) — skipping.');
+                    continue;
+                }
+                if (res.status >= 400 && !parseJsonSafe(res.body)) {
+                    appendLog(row.id, 'Non-JSON error response suppressed.');
+                    continue;
+                }
+                if (res.body) appendLog(row.id, truncateBody(res.body));
+                const parsed = unwrapRpc(parseJsonSafe(res.body));
+                if (probe.match(parsed)) {
+                    updateConfig(row.id, 'baseType', probe.baseType);
+                    updateConfig(row.id, 'method', 'random');
+                    appendLog(row.id, `Detected base type: ${probe.label}`);
+                    row.detecting = false;
+                    render();
+                    return;
+                }
+            } catch (err) {
+                appendLog(row.id, `${probe.label} probe failed: ${err.message || err}`);
+            }
+        }
+
+        appendLog(row.id, 'Could not detect base type automatically.');
+        updateConfig(row.id, 'baseType', 'unknown');
+        row.detecting = false;
+        render();
+    }
+
+    function stopTest(id) {
+        const row = rows.find(r => r.id === id);
+        if (!row || !row.running) return;
+        row.cancelRequested = true;
+        if (row.controller) {
+            try { row.controller.abort(); } catch (e) {}
+        }
+        appendLog(row.id, 'Stop requested by user…');
+    }
+
+    async function proxyRequest(target, payload, opts = {}) {
+        const res = await fetch('/api/proxy', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ target, payload, method: opts.method || 'POST' })
+        });
+        if (!res.ok) {
+            throw new Error(`Proxy HTTP ${res.status}`);
+        }
+        return res.json();
+    }
+
+    async function runTest(id) {
+        const row = rows.find(r => r.id === id);
+        if (!row || row.running) return;
+        if (row.config.baseType === 'unknown' || !payloadSets[row.config.baseType]) {
+            appendLog(row.id, 'Base type unknown. Run detect before starting tests.');
+            return;
+        }
+        const { rateLimit, totalRequests, method } = row.config;
+        const safeRate = Math.max(1, Number(rateLimit) || 1);
+        const intervalMs = Math.max(50, (60 / safeRate) * 1000 * 1.1);
+        const total = Math.max(1, Number(totalRequests) || 1);
+
+        row.cancelRequested = false;
+        row.running = true;
+        row.status = 'Running';
+        row.logs = [
+            `${stamp()}  Starting test run...`,
+            `${stamp()}  Target: ${row.address}`,
+            `${stamp()}  Base type: ${row.config.baseType}`,
+            `${stamp()}  Method: ${method}`
+        ];
+        render();
+
+        let success = 0;
+        let failures = 0;
+
+        for (let i = 1; i <= total; i++) {
+            if (row.cancelRequested) break;
+            const payload = pickPayload(row.config.baseType, method);
+            if (payload.unsupported || !payload.body) {
+                appendLog(row.id, `Base type "${row.config.baseType}" not implemented yet. No requests sent.`);
+                failures++;
+                break;
+            }
+            appendLog(row.id, `Request #${i} — ${payload.label}`);
+            appendLog(row.id, `→ Payload: ${payload.body}`);
+            const started = performance.now();
+            const controller = new AbortController();
+            row.controller = controller;
+            try {
+                const res = await proxyRequest(row.address, payload.body);
+                const elapsed = (performance.now() - started).toFixed(1);
+                appendLog(row.id, `← HTTP ${res.status} (${elapsed} ms)`);
+                if (hasHtmlPayload(res.body)) {
+                    appendLog(row.id, 'Received HTML response (likely not JSON-RPC); treating as failure.');
+                    failures++;
+                } else if (res.body) {
+                    const summary = formatResponseSummary(res.body, payload.label);
+                    if (summary) appendLog(row.id, summary);
+                    const cleaned = truncateBody(stripArkeoWrapper(res.body));
+                    appendLog(row.id, cleaned);
+                }
+                if (res.status === 200) success++; else failures++;
+            } catch (err) {
+                const elapsed = (performance.now() - started).toFixed(1);
+                if (row.cancelRequested && (err.name === 'AbortError' || err.message === 'Aborted')) {
+                    appendLog(row.id, `← Stopped by user (${elapsed} ms)`);
+                    break;
+                } else {
+                    appendLog(row.id, `← Error (${elapsed} ms): ${err.message || err}`);
+                    failures++;
+                }
+            } finally {
+                row.controller = null;
+            }
+
+            if (row.cancelRequested) {
+                appendLog(row.id, `Stop requested. Exiting after ${i} of ${total} requests.`);
+                break;
+            }
+
+            const elapsedLoop = performance.now() - started;
+            const sleepMs = Math.max(0, intervalMs - elapsedLoop);
+            if (i < total && sleepMs > 0) {
+                await new Promise(r => setTimeout(r, sleepMs));
+            }
+        }
+
+        const finalRow = rows.find(r => r.id === id);
+        if (!finalRow) return;
+        finalRow.controller = null;
+        finalRow.running = false;
+        if (finalRow.cancelRequested) {
+            finalRow.status = 'Stopped';
+            appendLog(finalRow.id, `Run stopped. Completed ${success + failures} of ${total} requests.`);
+            finalRow.cancelRequested = false;
+        } else {
+            finalRow.status = failures === 0 ? 'Passed' : 'Failed';
+            appendLog(finalRow.id, `Run complete: ${success} ok, ${failures} errors. Approx. QPM target: ${safeRate}`);
+        }
+        render();
+    }
+
+    function render() {
+        const prevScroll = window.scrollY;
+
+        // Clear existing body blocks
+        while (tableEl.tBodies.length) {
+            tableEl.removeChild(tableEl.tBodies[0]);
+        }
+        if (!rows.length) {
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        emptyState.classList.add('hidden');
+
+        rows.forEach((row, idx) => {
+            const block = document.createElement('tbody');
+            block.className = 'test-block';
+
+            if (idx > 0) {
+                const spacer = document.createElement('tr');
+                spacer.className = 'spacer-row';
+                const spacerTd = document.createElement('td');
+                spacerTd.colSpan = 4;
+                spacer.appendChild(spacerTd);
+                block.appendChild(spacer);
+            }
+
+            const tr = document.createElement('tr');
+            tr.className = 'test-row';
+
+            const idxTd = document.createElement('td');
+            idxTd.className = 'narrow';
+            idxTd.textContent = idx + 1;
+
+            const addrTd = document.createElement('td');
+            const addrWrap = document.createElement('div');
+            addrWrap.className = 'address-cell';
+            const addrLabel = document.createElement('div');
+            addrLabel.className = row.editing ? 'hidden' : 'truncate';
+            addrLabel.textContent = row.address;
+            const addrInput = document.createElement('input');
+            addrInput.type = 'text';
+            addrInput.value = row.address;
+            addrInput.className = row.editing ? '' : 'hidden';
+            addrInput.setAttribute('data-edit-id', row.id);
+            addrInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const value = addrInput.value.trim();
+                    if (value) saveEdit(row.id, value);
+                }
+            });
+            addrWrap.append(addrLabel, addrInput);
+            addrTd.appendChild(addrWrap);
+
+            const statusTd = document.createElement('td');
+            statusTd.className = 'status-col';
+            const badge = document.createElement('span');
+            badge.className = statusToClass[row.status] || 'status-badge';
+            badge.textContent = row.status;
+            statusTd.appendChild(badge);
+
+            const actionsTd = document.createElement('td');
+            actionsTd.className = 'actions-col';
+            const actionsWrap = document.createElement('div');
+            actionsWrap.className = 'action-buttons';
+
+            if (row.editing) {
+                const saveBtn = createButton('Save', 'primary', () => {
+                    const value = addrInput.value.trim();
+                    if (value) saveEdit(row.id, value);
+                });
+                const cancelBtn = createButton('Cancel', 'btn-ghost', () => cancelEdit(row.id));
+                actionsWrap.append(saveBtn, cancelBtn);
+            } else {
+                const runBtn = createButton(row.running ? 'Running…' : 'Start', 'btn-start', () => runTest(row.id));
+                runBtn.disabled = row.running || row.config.baseType === 'unknown' || !payloadSets[row.config.baseType];
+                const stopBtn = createButton('Stop', 'btn-stop', () => stopTest(row.id));
+                stopBtn.disabled = !row.running || row.config.baseType === 'unknown' || !payloadSets[row.config.baseType];
+                const editBtn = createButton('Edit', 'btn-ghost', () => startEdit(row.id));
+                editBtn.disabled = row.running;
+                const delBtn = createButton('Delete', 'btn-ghost', () => deleteRow(row.id));
+                delBtn.disabled = row.running;
+                actionsWrap.append(runBtn, stopBtn, editBtn, delBtn);
+            }
+            actionsTd.appendChild(actionsWrap);
+
+            tr.append(idxTd, addrTd, statusTd, actionsTd);
+            block.appendChild(tr);
+
+            const debugTr = document.createElement('tr');
+            debugTr.className = 'debug-row';
+            const debugTd = document.createElement('td');
+            debugTd.colSpan = 4;
+            const debugPanel = document.createElement('div');
+            debugPanel.className = 'debug-panel';
+            const debugHeader = document.createElement('div');
+            debugHeader.className = 'debug-header';
+            const debugTitle = document.createElement('div');
+            debugTitle.className = 'debug-title';
+            debugTitle.textContent = 'Debug output';
+            const debugMeta = document.createElement('div');
+            debugMeta.className = 'muted small';
+            debugMeta.textContent = 'Shows the output of every test run for this row.';
+            debugHeader.append(debugTitle, debugMeta);
+
+            const configPanel = document.createElement('div');
+            configPanel.className = 'test-config';
+            const configGrid = document.createElement('div');
+            configGrid.className = 'config-grid';
+
+            const baseField = document.createElement('div');
+            baseField.className = 'config-field base-type-field';
+            const baseLabel = document.createElement('label');
+            baseLabel.className = 'muted small';
+            baseLabel.textContent = 'Base type';
+            const baseRow = document.createElement('div');
+            baseRow.className = 'base-row';
+            const baseDisplay = document.createElement('div');
+            baseDisplay.className = 'base-display';
+            baseDisplay.textContent = row.config.baseType === 'unknown'
+                ? 'Unidentified RPC'
+                : row.config.baseType;
+            const detectBtn = createButton('Detect', 'btn-ghost', () => detectBaseType(row));
+            if (row.detecting) detectBtn.textContent = 'Detecting…';
+            detectBtn.disabled = row.running || row.detecting;
+            baseRow.append(baseDisplay, detectBtn);
+            baseField.append(baseLabel, baseRow);
+
+            const rateField = document.createElement('div');
+            rateField.className = 'config-field';
+            const rateLabel = document.createElement('label');
+            rateLabel.className = 'muted small';
+            rateLabel.textContent = 'QPM limit';
+            const rateInput = createNumberInput(row.config.rateLimit, (val) => updateConfig(row.id, 'rateLimit', val), { min: 1, max: 1000 });
+            rateField.append(rateLabel, rateInput);
+
+            const totalField = document.createElement('div');
+            totalField.className = 'config-field';
+            const totalLabel = document.createElement('label');
+            totalLabel.className = 'muted small';
+            totalLabel.textContent = 'Requests per run';
+            const totalInput = createNumberInput(row.config.totalRequests, (val) => updateConfig(row.id, 'totalRequests', val), { min: 1, max: 500 });
+            totalField.append(totalLabel, totalInput);
+
+            const methodField = document.createElement('div');
+            methodField.className = 'config-field';
+            const methodLabel = document.createElement('label');
+            methodLabel.className = 'muted small';
+            methodLabel.textContent = 'JSON-RPC method';
+            const methodSelect = createSelect(methodOptions(row.config.baseType), row.config.method, (val) => updateConfig(row.id, 'method', val));
+            methodSelect.disabled = row.config.baseType === 'unknown';
+            methodField.append(methodLabel, methodSelect);
+
+            configGrid.append(baseField, rateField, totalField, methodField);
+            configPanel.appendChild(configGrid);
+
+            const log = document.createElement('div');
+            log.className = 'debug-log';
+            log.setAttribute('data-log-id', row.id);
+
+            if (row.logs.length === 0) {
+                const emptyLine = document.createElement('div');
+                emptyLine.className = 'muted small';
+                emptyLine.textContent = 'No output yet. Run the test to see results.';
+                log.appendChild(emptyLine);
+            } else {
+                row.logs.forEach((line) => {
+                    const lineEl = document.createElement('div');
+                    lineEl.className = 'log-line';
+                    lineEl.textContent = line;
+                    log.appendChild(lineEl);
+                });
+            }
+
+            debugPanel.append(debugHeader, configPanel, log);
+            debugTd.appendChild(debugPanel);
+            debugTr.appendChild(debugTd);
+            block.appendChild(debugTr);
+            tableEl.appendChild(block);
+        });
+
+        // Restore scroll position to avoid jumping when re-rendering
+        window.scrollTo(0, prevScroll);
+    }
+
+    function createButton(label, className, handler) {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.className = className;
+        btn.addEventListener('click', handler);
+        return btn;
+    }
+
+    function createNumberInput(value, onChange, opts = {}) {
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.value = value;
+        if (opts.min !== undefined) input.min = opts.min;
+        if (opts.max !== undefined) input.max = opts.max;
+        input.addEventListener('change', () => {
+            let val = Number(input.value);
+            if (!Number.isFinite(val)) {
+                val = opts.min !== undefined ? opts.min : value;
+                input.value = val;
+            }
+            if (opts.min !== undefined && val < opts.min) {
+                val = opts.min;
+                input.value = val;
+            }
+            if (opts.max !== undefined && val > opts.max) {
+                val = opts.max;
+                input.value = val;
+            }
+            onChange(val);
+        });
+        return input;
+    }
+
+    function createSelect(options, value, onChange) {
+        const select = document.createElement('select');
+        options.forEach((opt) => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            select.appendChild(option);
+        });
+        select.value = value;
+        select.addEventListener('change', () => onChange(select.value));
+        return select;
+    }
+
+    addBtn.addEventListener('click', () => {
+        const value = addInput.value.trim();
+        if (!value) {
+            addInput.focus();
+            return;
+        }
+        addRow(value);
+        addInput.value = '';
+        addInput.focus();
+    });
+
+    addInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addBtn.click();
+        }
+    });
+
+    (async function init() {
+        await loadSavedRows();
+        render();
+    })();
+})();
+</script>
+</body>
+</html>
