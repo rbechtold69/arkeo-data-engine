@@ -2255,6 +2255,8 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
         # refresh contracts once and iterate provider candidates (failover)
         t0_fetch = time.time()
         contracts = _fetch_contracts(node, timeout=PROXY_CONTRACT_TIMEOUT, active_only=True, client_filter=client_pub)
+        t_fetch_end = time.time()
+        fetch_ms = int((t_fetch_end - t0_fetch) * 1000)
         if not contracts and (time.time() - t0_fetch) >= PROXY_CONTRACT_TIMEOUT:
             self._log("error", "contract_lookup_timeout")
             return self._send_json(503, {"error": "contract_lookup_timeout"})
@@ -2283,6 +2285,10 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
             if not provider_filter:
                 continue
             auto_created_this_request = False
+            select_ms = 0
+            sign_ms = 0
+            forward_ms = 0
+            t_candidate_start = time.time()
             self._log("info", f"candidate {idx}/{len(candidates)} provider={provider_filter} sentinel={sentinel}")
 
             # cooldown check
@@ -2363,6 +2369,7 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
 
             cid = str(active.get("id"))
             contract_client = str(active.get("client", ""))
+            select_ms = int((time.time() - t_candidate_start) * 1000)
             if contract_client and contract_client != client_pub:
                 self._log("error", f"client_key_mismatch contract_client={contract_client} local={client_pub}")
                 meta = _build_arkeo_meta_clean(active, None, svc_id, service, active.get("provider") if active else "", contract_client, sentinel, 0)
@@ -2374,11 +2381,13 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                 return self._send_json(503, {"arkeo": meta, "error": "client_key_mismatch"}, extra_headers=headers)
 
             nonce = _claims_highest_nonce(sentinel, cid, contract_client) + 1
+            sign_start = time.time()
             sig_hex, sig_err = _sign_message(
                 client_key, cid, nonce, cfg.get("sign_template", PROXY_SIGN_TEMPLATE)
             )
+            sign_ms = int((time.time() - sign_start) * 1000)
             if not sig_hex:
-                self._log("error", f"sign_failed: {sig_err}")
+                self._log("error", f"sign_failed: {sig_err} timing_ms fetch={fetch_ms} select={select_ms} sign={sign_ms}")
                 meta = _build_arkeo_meta_clean(active, nonce, svc_id, service, active.get("provider") if active else "", contract_client, sentinel, response_time_sec)
                 headers = {
                     "X-Arkeo-Contract-Id": meta.get("contract_id", ""),
@@ -2418,8 +2427,9 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
             # Prefer total time for metrics if available
             if total_time_sec > response_time_sec:
                 response_time_sec = total_time_sec
+            forward_ms = int((time.time() - t0) * 1000)
 
-            self._log("info", f"timings total_ms={int(total_time_sec*1000)} forward_ms={int((time.time()-t0)*1000)} auto_create={auto_created_this_request}")
+            self._log("info", f"timings total_ms={int(total_time_sec*1000)} fetch_ms={fetch_ms} select_ms={select_ms} sign_ms={sign_ms} forward_ms={forward_ms} auto_create={auto_created_this_request}")
 
             meta_full = _build_arkeo_meta_clean(active, nonce, svc_id, service, provider_filter, contract_client, sentinel, response_time_sec)
             self.server.last_code = code
