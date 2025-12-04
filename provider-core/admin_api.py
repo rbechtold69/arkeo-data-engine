@@ -1884,7 +1884,7 @@ def provider_claims():
                     "--sequence",
                     str(seq_override),
                     "-b",
-                    "block",
+                    "sync",
                     "-y",
                     "-o",
                     "json",
