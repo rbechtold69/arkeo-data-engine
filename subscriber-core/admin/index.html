@@ -134,6 +134,28 @@
     </div>
 </div>
 
+<div id="adminPasswordGate" class="overlay overlay-strong hidden">
+    <div class="overlay-card password-card">
+        <div class="password-title">
+            <span>Arkeo Data Marketplace</span>
+            <span class="sep">|</span>
+            <span class="sub highlight">Subscriber Manager</span>
+        </div>
+        <form onsubmit="submitAdminPasswordGate(); return false;">
+            <div class="password-body password-panel">
+                <h3 class="mt-6 mb-0">Password Required</h3>
+                <p class="muted">Enter the admin password to continue.</p>
+                <input type="text" name="admin-username-filler" autocomplete="username" value="admin" class="hidden" aria-hidden="true" tabindex="-1" />
+                <input type="password" id="adminPasswordGateInput" autocomplete="current-password" placeholder="Admin password" />
+            </div>
+            <div class="actions center password-actions">
+                <button class="primary" type="submit">Unlock</button>
+            </div>
+            <div id="adminPasswordGateStatus" class="muted mt-6"></div>
+        </form>
+    </div>
+</div>
+
 <script>
     let currentPubkey = "";
     let currentAddress = "";
@@ -177,6 +199,75 @@
     const apiPort = new URLSearchParams(window.location.search).get("api_port") || window.API_PORT || API_PORT_DEFAULT;
     const API_BASE = `${window.location.protocol}//${window.location.hostname}${apiPort ? ":" + apiPort : ""}`;
     const apiUrl = (path) => `${API_BASE}${path}`;
+    let adminPasswordEnabled = false;
+    let adminSessionAuthed = false;
+
+    function requirePasswordGate() {
+        sessionStorage.removeItem("adminAuthed");
+        adminSessionAuthed = false;
+        const gate = document.getElementById("adminPasswordGate");
+        if (gate) gate.classList.remove("hidden");
+    }
+
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (url, options = {}) =>
+        realFetch(url, { credentials: "include", ...options }).then((resp) => {
+            if (resp && resp.status === 401) {
+                requirePasswordGate();
+            }
+            return resp;
+        });
+
+    async function fetchAdminPasswordStatus(showGate = true) {
+        try {
+            const res = await fetch(apiUrl("/api/session"), { cache: "no-store" });
+            const data = await res.json();
+            adminPasswordEnabled = !!(data && data.enabled);
+            adminSessionAuthed = !!(data && data.authed);
+        } catch (e) {
+            adminPasswordEnabled = false;
+            adminSessionAuthed = false;
+        }
+        if (adminPasswordEnabled && !adminSessionAuthed) {
+            sessionStorage.removeItem("adminAuthed");
+        }
+        const gate = document.getElementById("adminPasswordGate");
+        const gateAuthed = sessionStorage.getItem("adminAuthed") === "1" || adminSessionAuthed;
+        if (gate) {
+            if (showGate && adminPasswordEnabled && !gateAuthed) {
+                gate.classList.remove("hidden");
+            } else {
+                gate.classList.add("hidden");
+            }
+        }
+    }
+
+    async function submitAdminPasswordGate() {
+        const input = document.getElementById("adminPasswordGateInput");
+        const statusEl = document.getElementById("adminPasswordGateStatus");
+        const pwd = (input && input.value) || "";
+        if (statusEl) statusEl.textContent = "Verifying...";
+        try {
+            const res = await fetch(apiUrl("/api/login"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ password: pwd }),
+            });
+            const data = await res.json();
+            if (data && data.ok) {
+                sessionStorage.setItem("adminAuthed", "1");
+                adminSessionAuthed = true;
+                const gate = document.getElementById("adminPasswordGate");
+                if (gate) gate.classList.add("hidden");
+                if (statusEl) statusEl.textContent = "";
+                window.location.reload();
+            } else {
+                if (statusEl) statusEl.textContent = "Incorrect password.";
+            }
+        } catch (e) {
+            if (statusEl) statusEl.textContent = `Failed to verify: ${e}`;
+        }
+    }
 
     function escapeHtml(str) {
         if (str === undefined || str === null) return "";
@@ -432,6 +523,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", async () => {
+        await fetchAdminPasswordStatus(true);
         const ok = await ensureSubscriberSettingsExists();
         if (!ok) return;
         refreshHeader();

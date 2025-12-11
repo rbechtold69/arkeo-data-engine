@@ -106,10 +106,6 @@
             <td class="value"><input type="text" id="arkeodNode" placeholder="tcp://127.0.0.1:26657" /></td>
         </tr>
         <tr>
-            <td class="label">Arkeo REST API</td>
-            <td class="value"><input type="text" id="arkeodRest" placeholder="http://127.0.0.1:1317" /></td>
-        </tr>
-        <tr>
             <td class="label">Admin UI Port</td>
             <td class="value"><input type="text" id="adminPort" placeholder="8079" autocomplete="on" /></td>
         </tr>
@@ -143,6 +139,13 @@
             </td>
             <td class="value"><textarea id="hotwalletMnemonic" rows="3"></textarea></td>
         </tr>
+        <tr>
+            <td class="label">
+                Admin Password
+                <div class="hint">Leave blank to disable. When set, a password prompt can be required on this page.</div>
+            </td>
+            <td class="value"><input type="password" id="adminPasswordInput" class="full" autocomplete="new-password" placeholder="(optional)" /></td>
+        </tr>
         <tr class="hidden">
             <td class="label">Derived Pubkey</td>
             <td class="value"><div id="subscriberPubkeyDisplay" class="muted">(loading...)</div></td>
@@ -169,12 +172,52 @@
     </div>
 </div>
 
+<div id="adminPasswordGate" class="overlay overlay-strong hidden">
+    <div class="overlay-card password-card">
+        <div class="password-title">
+            <span>Arkeo Data Marketplace</span>
+            <span class="sep">|</span>
+            <span class="sub">Subscriber Manager</span>
+        </div>
+        <form onsubmit="submitAdminPasswordGate(); return false;">
+            <div class="password-body">
+                <h3 class="mt-6 mb-0">Password Required</h3>
+                <p class="muted">Enter the admin password to continue.</p>
+                <input type="text" name="admin-username-filler" autocomplete="username" value="admin" class="hidden" aria-hidden="true" tabindex="-1" />
+                <input type="password" id="adminPasswordGateInput" autocomplete="current-password" placeholder="Admin password" />
+            </div>
+            <div class="actions center mt-6">
+                <button class="primary" type="submit">Unlock</button>
+            </div>
+            <div id="adminPasswordGateStatus" class="muted mt-6"></div>
+        </form>
+    </div>
+</div>
+
 <script>
     const DEFAULT_ADMIN_API_PORT = "9998";
     const DEFAULT_ADMIN_UI_PORT = "8079";
     let adminHost = (window.location && window.location.hostname) || "localhost";
     let adminApiBase = buildBaseUrl(adminHost, DEFAULT_ADMIN_API_PORT);
     let subscriberSettingsCache = {};
+    let adminPasswordEnabled = false;
+    let adminSessionAuthed = false;
+
+    function requirePasswordGate() {
+        sessionStorage.removeItem("adminAuthed");
+        adminSessionAuthed = false;
+        const gate = document.getElementById("adminPasswordGate");
+        if (gate) gate.classList.remove("hidden");
+    }
+
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (url, options = {}) =>
+        realFetch(url, { credentials: "include", ...options }).then((resp) => {
+            if (resp && resp.status === 401) {
+                requirePasswordGate();
+            }
+            return resp;
+        });
 
     function buildBaseUrl(host, port) {
         const proto = (window.location && window.location.protocol === "https:") ? "https:" : "http:";
@@ -299,7 +342,6 @@
         CHAIN_ID: "arkeo-main-v1",
         ARKEOD_HOME: "/root/.arkeo",
         ARKEOD_NODE: "tcp://127.0.0.1:26657",
-        ARKEO_REST_API: "http://127.0.0.1:1317",
         ADMIN_PORT: "8079",
         ADMIN_API_PORT: "9998",
         CACHE_FETCH_INTERVAL: "150",
@@ -333,6 +375,7 @@
                 throw new Error(data && data.error ? data.error : res.statusText);
             }
             subscriberSettingsCache = data.settings || {};
+            await loadAdminPassword();
             setInputWithDefault("subscriberName", subscriberSettingsCache.SUBSCRIBER_NAME, "SUBSCRIBER_NAME");
             setInputWithDefault("keyName", subscriberSettingsCache.KEY_NAME, "KEY_NAME");
             const backendLabel = document.getElementById("keyBackendLabel");
@@ -347,8 +390,6 @@
             if (homeLabel) homeLabel.textContent = homeText ? `(${homeText})` : "";
             if (homeVal) homeVal.textContent = homeText || "(read-only)";
             setInputWithDefault("arkeodNode", subscriberSettingsCache.ARKEOD_NODE, "ARKEOD_NODE");
-            const restApiVal = subscriberSettingsCache.ARKEO_REST_API || subscriberSettingsCache.EXTERNAL_ARKEO_REST_API;
-            setInputWithDefault("arkeodRest", restApiVal, "ARKEO_REST_API");
             setInputWithDefault("adminPort", subscriberSettingsCache.ADMIN_PORT, "ADMIN_PORT");
             setInputWithDefault("adminApiPort", subscriberSettingsCache.ADMIN_API_PORT, "ADMIN_API_PORT");
             setInputWithDefault("cacheFetchInterval", subscriberSettingsCache.CACHE_FETCH_INTERVAL, "CACHE_FETCH_INTERVAL");
@@ -392,7 +433,6 @@
                 CHAIN_ID: document.getElementById("chainId")?.value || DEFAULTS.CHAIN_ID,
                 ARKEOD_HOME: subscriberSettingsCache.ARKEOD_HOME || DEFAULTS.ARKEOD_HOME,
                 ARKEOD_NODE: normalizeRpc(document.getElementById("arkeodNode")?.value || DEFAULTS.ARKEOD_NODE),
-                ARKEO_REST_API: document.getElementById("arkeodRest")?.value || DEFAULTS.ARKEO_REST_API,
                 ADMIN_PORT: document.getElementById("adminPort")?.value || DEFAULTS.ADMIN_PORT,
                 ADMIN_API_PORT: document.getElementById("adminApiPort")?.value || DEFAULTS.ADMIN_API_PORT,
                 CACHE_FETCH_INTERVAL: document.getElementById("cacheFetchInterval")?.value || DEFAULTS.CACHE_FETCH_INTERVAL,
@@ -400,6 +440,7 @@
                 KEY_MNEMONIC: document.getElementById("hotwalletMnemonic")?.value || "",
             },
         };
+        const adminPasswordVal = document.getElementById("adminPasswordInput")?.value || "";
         const resultEl = document.getElementById("subscriberSettingsResult");
         let finalMessage = "Saving settings...";
         let isError = false;
@@ -430,6 +471,16 @@
                     overviewEl.textContent = "(unavailable)";
                 }
             }
+            try {
+                await fetch(resolveApi("/api/admin-password"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ password: adminPasswordVal }),
+                });
+                adminPasswordEnabled = !!adminPasswordVal;
+            } catch (e) {
+                // ignore password save errors to avoid blocking settings save
+            }
             if (resultEl) {
                 const rotated = data.mnemonic_rotated ? "Hotwallet re-imported with new mnemonic. " : "";
                 finalMessage = `${rotated}Saved subscriber settings${data.subscriber_settings_path ? ` to ${data.subscriber_settings_path}` : ""}.`;
@@ -446,7 +497,72 @@
         }
     }
 
+    async function loadAdminPassword() {
+        try {
+            const res = await fetch(resolveApi("/api/admin-password"), { cache: "no-store" });
+            const data = await res.json();
+            adminPasswordEnabled = !!(data && data.enabled);
+            const pwd = data && data.password ? data.password : "";
+            const adminPwdInput = document.getElementById("adminPasswordInput");
+            if (adminPwdInput) adminPwdInput.value = pwd;
+        } catch (e) {
+            // ignore errors when loading admin password
+        }
+    }
+
+    async function fetchAdminPasswordStatus(showGate = true) {
+        try {
+            const res = await fetch(resolveApi("/api/session"), { cache: "no-store" });
+            const data = await res.json();
+            adminPasswordEnabled = !!(data && data.enabled);
+            adminSessionAuthed = !!(data && data.authed);
+        } catch (e) {
+            adminPasswordEnabled = false;
+            adminSessionAuthed = false;
+        }
+        if (adminPasswordEnabled && !adminSessionAuthed) {
+            sessionStorage.removeItem("adminAuthed");
+        }
+        const gate = document.getElementById("adminPasswordGate");
+        const gateAuthed = sessionStorage.getItem("adminAuthed") === "1" || adminSessionAuthed;
+        if (gate) {
+            if (showGate && adminPasswordEnabled && !gateAuthed) {
+                gate.classList.remove("hidden");
+            } else {
+                gate.classList.add("hidden");
+            }
+        }
+    }
+
+    async function submitAdminPasswordGate() {
+        const input = document.getElementById("adminPasswordGateInput");
+        const statusEl = document.getElementById("adminPasswordGateStatus");
+        const pwd = (input && input.value) || "";
+        if (statusEl) statusEl.textContent = "Verifying...";
+        try {
+            const res = await fetch(resolveApi("/api/login"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ password: pwd }),
+            });
+            const data = await res.json();
+            if (data && data.ok) {
+                sessionStorage.setItem("adminAuthed", "1");
+                adminSessionAuthed = true;
+                const gate = document.getElementById("adminPasswordGate");
+                if (gate) gate.classList.add("hidden");
+                if (statusEl) statusEl.textContent = "";
+                window.location.href = "index.html";
+            } else {
+                if (statusEl) statusEl.textContent = "Incorrect password.";
+            }
+        } catch (e) {
+            if (statusEl) statusEl.textContent = `Failed to verify: ${e}`;
+        }
+    }
+
     window.addEventListener("load", () => {
+        fetchAdminPasswordStatus(true);
         loadAdminInfo();
         loadSubscriberSettings();
         setInterval(loadAdminInfo, 5000);

@@ -22,8 +22,7 @@ docker run --rm --name dashboard-core-dev \
 Environment hints for `dashboard.env`:
 ```
 # Which node and REST API to use for cache fetches
-ARKEOD_NODE=tcp://provider1.innovationtheory.com:26657
-EXTERNAL_ARKEO_REST_API=http://provider1.innovationtheory.com:1317
+ARKEOD_NODE=tcp://127.0.0.1:26657
 
 # Optional port overrides inside the container
 ENV_ADMIN_PORT=8077

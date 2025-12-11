@@ -4,6 +4,7 @@ import binascii
 import json
 import os
 from pathlib import Path
+import secrets
 import re
 import shlex
 import socket
@@ -35,7 +36,16 @@ LISTENERS_FILE = os.path.join(CACHE_DIR, "listeners.json")
 LISTENER_PORT_START = int(os.getenv("LISTENER_PORT_START", "62001"))
 LISTENER_PORT_END = int(os.getenv("LISTENER_PORT_END", "62100"))
 ACTIVE_SERVICE_TYPES_FILE = os.path.join(CACHE_DIR, "active_service_types.json")
+SUBSCRIBER_INFO_FILE = os.path.join(CACHE_DIR, "subscriber_info.json")
 LOG_DIR = os.path.join(CACHE_DIR, "logs")
+ADMIN_PASSWORD_PATH = os.getenv("ADMIN_PASSWORD_PATH") or (
+    os.path.join(CACHE_DIR or "/app/cache", "admin_password.txt")
+)
+ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET") or secrets.token_hex(16)
+ADMIN_SESSION_NAME = os.getenv("ADMIN_SESSION_NAME") or "admin_session"
+ADMIN_UI_ORIGIN = os.getenv("ADMIN_UI_ORIGIN") or "http://localhost:8079"
+# token -> expiry_ts
+ADMIN_SESSIONS: dict[str, float] = {}
 _LISTENER_SERVERS: dict[int, dict] = {}
 _LISTENER_LOCK = threading.Lock()
 _NONCE_CACHE: dict[str, int] = {}
@@ -149,6 +159,9 @@ SUBSCRIBER_ENV_PATH = os.getenv("SUBSCRIBER_ENV_PATH", "/app/config/subscriber.e
 SUBSCRIBER_SETTINGS_PATH = os.getenv("SUBSCRIBER_SETTINGS_PATH") or os.path.join(
     CACHE_DIR or "/app/cache", "subscriber-settings.json"
 )
+ADMIN_PASSWORD_PATH = os.getenv("ADMIN_PASSWORD_PATH") or (
+    os.path.join(CACHE_DIR or "/app/cache", "admin_password.txt")
+)
 
 # PAYG proxy defaults (can be overridden via env; per-listener overrides later)
 PROXY_AUTO_CREATE = True
@@ -209,6 +222,135 @@ def run_with_input(cmd: list[str], input_text: str) -> tuple[int, str]:
         return proc.returncode, proc.stdout.decode("utf-8")
     except Exception as e:
         return 1, str(e)
+
+
+def _load_admin_password() -> str:
+    """Return stored admin password (plain) or empty string."""
+    if not ADMIN_PASSWORD_PATH or not os.path.isfile(ADMIN_PASSWORD_PATH):
+        return ""
+    try:
+        with open(ADMIN_PASSWORD_PATH, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def _write_admin_password(password: str) -> bool:
+    """Persist admin password; returns True on success."""
+    if not ADMIN_PASSWORD_PATH:
+        return False
+    try:
+        os.makedirs(os.path.dirname(ADMIN_PASSWORD_PATH), exist_ok=True)
+        with open(ADMIN_PASSWORD_PATH, "w", encoding="utf-8") as f:
+            f.write(password.strip())
+        return True
+    except OSError:
+        return False
+
+
+def _remove_admin_password() -> bool:
+    """Remove stored admin password; returns True on success or not present."""
+    if not ADMIN_PASSWORD_PATH:
+        return False
+    try:
+        if os.path.isfile(ADMIN_PASSWORD_PATH):
+            os.remove(ADMIN_PASSWORD_PATH)
+        return True
+    except OSError:
+        return False
+
+
+def _is_auth_required() -> bool:
+    return bool(_load_admin_password())
+
+
+def _purge_sessions() -> None:
+    now = time.time()
+    expired = [tok for tok, exp in ADMIN_SESSIONS.items() if exp <= now]
+    for tok in expired:
+        ADMIN_SESSIONS.pop(tok, None)
+
+
+def _generate_session_token(ttl_seconds: int = 3600) -> str:
+    _purge_sessions()
+    token = secrets.token_hex(32)
+    ADMIN_SESSIONS[token] = time.time() + ttl_seconds
+    return token
+
+
+def _validate_session(token: str | None) -> bool:
+    if not token:
+        return False
+    _purge_sessions()
+    exp = ADMIN_SESSIONS.get(token)
+    if not exp:
+        return False
+    if exp <= time.time():
+        ADMIN_SESSIONS.pop(token, None)
+        return False
+    return True
+
+
+def _is_local_request() -> bool:
+    """Return True when the caller is loopback/localhost."""
+    addr = (request.remote_addr or "").strip()
+    return addr in ("127.0.0.1", "::1", "0:0:0:0:0:0:0:1")
+
+
+def _auth_exempt(path: str) -> bool:
+    if not path.startswith("/api/"):
+        return True
+    exempt = {
+        "/api/admin-password",
+        "/api/admin-password/check",
+        "/api/session",
+        "/api/login",
+        "/api/logout",
+        "/api/ping",
+    }
+    if path in exempt:
+        return True
+    return False
+
+
+def _origin_allowed(origin: str | None) -> bool:
+    if not origin:
+        return False
+    try:
+        parsed = urllib.parse.urlparse(origin)
+    except Exception:
+        return False
+    origin_host = parsed.netloc or parsed.path
+    if not origin_host:
+        return False
+    try:
+        ui_parsed = urllib.parse.urlparse(ADMIN_UI_ORIGIN)
+        ui_host = ui_parsed.netloc or ui_parsed.path
+        if origin_host == ui_host:
+            return True
+    except Exception:
+        pass
+    api_host = request.host.split(":")[0] if request.host else ""
+    if api_host and origin_host.startswith(api_host):
+        return True
+    return False
+
+
+def _cors_headers():
+    origin = request.headers.get("Origin")
+    headers = {}
+    if _origin_allowed(origin):
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Vary"] = "Origin"
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Cache-Control"
+        # allow full CRUD for listener/admin operations
+        headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        headers["Access-Control-Max-Age"] = "3600"
+    return headers
+
+def _is_auth_required() -> bool:
+    return bool(_load_admin_password())
 
 
 def _expand_tilde(val: str | None) -> str:
@@ -460,10 +602,26 @@ _apply_subscriber_settings(_merge_subscriber_settings())
 
 @app.after_request
 def add_cors(resp):
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
-    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    headers = _cors_headers()
+    for k, v in headers.items():
+        resp.headers[k] = v
     return resp
+
+
+@app.before_request
+def _require_auth():
+    """Require session auth when admin password is set."""
+    if request.method == "OPTIONS":
+        resp = app.make_response(("", 204, _cors_headers()))
+        return resp
+    if _auth_exempt(request.path):
+        return
+    if not _is_auth_required():
+        return
+    token = request.cookies.get(ADMIN_SESSION_NAME)
+    if _validate_session(token):
+        return
+    return jsonify({"error": "unauthorized"}), 401
 
 
 def _timestamp() -> str:
@@ -1196,6 +1354,86 @@ def subscriber_settings_save():
             "pubkey": {"raw": raw_pk, "bech32": bech32_pk, "error": pub_err},
         }
     )
+
+
+@app.get("/api/admin-password")
+def admin_password_get():
+    """Return whether an admin password is set and the current value (for local UI use)."""
+    pwd = _load_admin_password()
+    return jsonify({"enabled": bool(pwd), "path": ADMIN_PASSWORD_PATH, "password": pwd})
+
+
+@app.post("/api/admin-password")
+def admin_password_set():
+    """Set or clear admin password (empty disables)."""
+    payload = request.get_json(force=True, silent=True) or {}
+    password = (payload.get("password") or "").strip() if isinstance(payload, dict) else ""
+    # If a password is set, require valid session to change it
+    if _is_auth_required() and not _validate_session(request.cookies.get(ADMIN_SESSION_NAME)):
+        return jsonify({"error": "unauthorized"}), 401
+    if not password:
+        ok = _remove_admin_password()
+        ADMIN_SESSIONS.clear()
+        return jsonify({"status": "disabled", "enabled": False, "ok": ok, "path": ADMIN_PASSWORD_PATH})
+    ok = _write_admin_password(password)
+    if not ok:
+        return jsonify({"error": "failed to write admin password", "path": ADMIN_PASSWORD_PATH}), 500
+    return jsonify({"status": "saved", "enabled": True, "ok": True, "path": ADMIN_PASSWORD_PATH})
+
+
+@app.post("/api/admin-password/check")
+def admin_password_check():
+    """Validate submitted admin password."""
+    payload = request.get_json(force=True, silent=True) or {}
+    submitted = (payload.get("password") or "").strip() if isinstance(payload, dict) else ""
+    stored = _load_admin_password()
+    if not stored:
+        return jsonify({"ok": True, "enabled": False})
+    ok = stored == submitted
+    return jsonify({"ok": ok, "enabled": True})
+
+
+@app.post("/api/login")
+def admin_login():
+    """Login and set session cookie if password is correct."""
+    payload = request.get_json(force=True, silent=True) or {}
+    submitted = (payload.get("password") or "").strip() if isinstance(payload, dict) else ""
+    stored = _load_admin_password()
+    if not stored:
+        resp = jsonify({"ok": True, "enabled": False})
+        return resp
+    if submitted != stored:
+        return jsonify({"ok": False, "enabled": True, "error": "invalid_password"}), 401
+    token = _generate_session_token()
+    resp = jsonify({"ok": True, "enabled": True})
+    resp.set_cookie(
+        ADMIN_SESSION_NAME,
+        token,
+        httponly=True,
+        secure=False,
+        samesite="Lax",
+        max_age=3600,
+        path="/",
+    )
+    return resp
+
+
+@app.post("/api/logout")
+def admin_logout():
+    token = request.cookies.get(ADMIN_SESSION_NAME)
+    if token:
+        ADMIN_SESSIONS.pop(token, None)
+    resp = jsonify({"ok": True})
+    resp.set_cookie(ADMIN_SESSION_NAME, "", expires=0, path="/")
+    return resp
+
+
+@app.get("/api/session")
+def admin_session_status():
+    """Return whether auth is enabled and whether current session is valid."""
+    enabled = _is_auth_required()
+    authed = _validate_session(request.cookies.get(ADMIN_SESSION_NAME)) if enabled else True
+    return jsonify({"enabled": enabled, "authed": authed})
 
 
 @app.get("/api/payg-status")
@@ -3373,6 +3611,10 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                         upstream = json.loads(body_text)
                     except Exception:
                         upstream = body_text
+                    if isinstance(upstream, dict):
+                        merged = dict(upstream)
+                        merged["arkeo"] = meta_full
+                        return self._send_json(code, merged)
                     return self._send_json(code, {"arkeo": meta_full, "response": upstream})
 
                 if isinstance(resp_body, (bytes, bytearray)):

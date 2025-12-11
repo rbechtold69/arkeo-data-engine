@@ -1,9 +1,5 @@
 {
   "fetched_at": "2025-12-08T22:54:58.941325+00:00",
-  "exit_code": 0,
-  "cmd": [
-    "http://host.docker.internal:1317/arkeo/services"
-  ],
   "data": {
     "services": [
       {

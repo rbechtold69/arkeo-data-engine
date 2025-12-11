@@ -14,18 +14,12 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
-from urllib import request, error
+from urllib import request
 from urllib.parse import urlparse
 
 ARKEOD_HOME = os.path.expanduser(os.getenv("ARKEOD_HOME", "/root/.arkeo"))
 # These are dynamically refreshed from subscriber-settings.json before each fetch cycle (if present)
-ARKEOD_NODE = os.getenv("ARKEOD_NODE") or os.getenv("EXTERNAL_ARKEOD_NODE") or "tcp://provider1.innovationtheory.com:26657"
-ARKEO_REST_API = (
-    os.getenv("ARKEO_REST_API_PORT")
-    or os.getenv("ARKEO_REST_API")
-    or os.getenv("EXTERNAL_ARKEO_REST_API")
-    or "http://provider1.innovationtheory.com:1317"
-)
+ARKEOD_NODE = os.getenv("ARKEOD_NODE") or "tcp://127.0.0.1:26657"
 CACHE_DIR = os.getenv("CACHE_DIR", "/app/cache")
 STATUS_FILE = os.path.join(CACHE_DIR, "_sync_status.json")
 SUBSCRIBER_SETTINGS_PATH = os.path.join(CACHE_DIR, "subscriber-settings.json")
@@ -105,7 +99,7 @@ def build_commands() -> Dict[str, List[str]]:
         "provider-services": [*base, "query", "arkeo", "list-providers", "-o", "json"],
         "provider-contracts": [*base, "query", "arkeo", "list-contracts", "-o", "json"],
         "validators": [*base, "query", "staking", "validators", "--page-limit", "1000", "--page-count-total", "--status", "BOND_STATUS_BONDED", "-o", "json"],
-        # services/types are fetched via REST API (no pagination)
+        # service-types fetch disabled (no REST)
         "service-types": [],
     }
 
@@ -124,31 +118,6 @@ def normalize_result(name: str, code: int, out: str, cmd: List[str]) -> Dict[str
     else:
         payload["error"] = out
     return payload
-
-
-def fetch_services_rest() -> Dict[str, Any]:
-    """Fetch services via REST endpoint without pagination."""
-    url = f"{ARKEO_REST_API.rstrip('/')}/arkeo/services"
-    try:
-        with request.urlopen(url, timeout=15) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-    except error.URLError as e:
-        return {
-            "fetched_at": timestamp(),
-            "exit_code": 1,
-            "cmd": [url],
-            "error": str(e),
-        }
-    try:
-        data = json.loads(body)
-    except json.JSONDecodeError:
-        data = body
-    return {
-        "fetched_at": timestamp(),
-        "exit_code": 0,
-        "cmd": [url],
-        "data": data,
-    }
 
 
 def fetch_metadata_uri(url: str, timeout: float = 5.0) -> Tuple[Any, str | None, int]:
@@ -260,28 +229,18 @@ def _is_localhost_uri(uri: str | None) -> bool:
 
 
 def _refresh_runtime_settings() -> None:
-    """Reload ARKEOD_NODE and ARKEO_REST_API from subscriber-settings.json if present."""
-    global ARKEOD_NODE, ARKEO_REST_API, ALLOW_LOCALHOST_SENTINEL_URIS
+    """Reload ARKEOD_NODE from env (preferred) or subscriber-settings.json."""
+    global ARKEOD_NODE, ALLOW_LOCALHOST_SENTINEL_URIS
     settings = {}
     try:
         with open(SUBSCRIBER_SETTINGS_PATH, "r", encoding="utf-8") as f:
             settings = json.load(f) or {}
     except Exception:
         settings = {}
-    node_val = settings.get("ARKEOD_NODE") or os.getenv("ARKEOD_NODE") or os.getenv("EXTERNAL_ARKEOD_NODE") or ARKEOD_NODE
-    rest_val = (
-        settings.get("ARKEO_REST_API_PORT")
-        or settings.get("ARKEO_REST_API")
-        or os.getenv("ARKEO_REST_API_PORT")
-        or os.getenv("ARKEO_REST_API")
-        or os.getenv("EXTERNAL_ARKEO_REST_API")
-        or ARKEO_REST_API
-    )
+    node_val = os.getenv("ARKEOD_NODE") or settings.get("ARKEOD_NODE") or ARKEOD_NODE
     allow_local = settings.get("ALLOW_LOCALHOST_SENTINEL_URIS") or os.getenv("ALLOW_LOCAL_METADATA") or os.getenv("ALLOW_LOCALHOST_SENTINEL_URIS") or "0"
     if node_val:
         ARKEOD_NODE = str(node_val).strip()
-    if rest_val:
-        ARKEO_REST_API = str(rest_val).strip()
     ALLOW_LOCALHOST_SENTINEL_URIS = str(allow_local).lower() in {"1", "true", "yes", "y", "on"}
 
 
@@ -553,7 +512,6 @@ def build_active_providers_from_active_services(active_services_payload: Dict[st
         "metadata_uri_sources": {
             "allow_localhost": ALLOW_LOCALHOST_SENTINEL_URIS,
             "node": ARKEOD_NODE,
-            "rest_api": ARKEO_REST_API,
         },
         "debug_counts": {
             "active_services": len(active_services),
@@ -694,8 +652,7 @@ def fetch_once(commands: Dict[str, List[str]] | None = None, record_status: bool
         metadata_cache: dict[str, dict[str, Any]] | None = None
         for name, cmd in commands.items():
             if name == "service-types":
-                payload = fetch_services_rest()
-                payload = merge_service_types_with_resources(payload)
+                payload = {"fetched_at": timestamp(), "exit_code": 0, "cmd": [], "data": []}
             else:
                 code, out = run_list(cmd)
                 payload = normalize_result(name, code, out, cmd)
@@ -783,7 +740,7 @@ def main() -> None:
     interval_raw = CACHE_FETCH_INTERVAL
     if interval_raw <= 0:
         print(
-            f"[cache] background fetch loop disabled (CACHE_FETCH_INTERVAL={CACHE_FETCH_INTERVAL}); cache dir={CACHE_DIR}; node={ARKEOD_NODE}; rest_api={ARKEO_REST_API}",
+            f"[cache] background fetch loop disabled (CACHE_FETCH_INTERVAL={CACHE_FETCH_INTERVAL}); cache dir={CACHE_DIR}; node={ARKEOD_NODE}",
             flush=True,
         )
         while True:
@@ -791,7 +748,7 @@ def main() -> None:
 
     interval = max(60, interval_raw) if interval_raw > 0 else 60
     print(
-        f"[cache] starting fetch loop every {interval}s; cache dir={CACHE_DIR}; node={ARKEOD_NODE}; rest_api={ARKEO_REST_API}",
+        f"[cache] starting fetch loop every {interval}s; cache dir={CACHE_DIR}; node={ARKEOD_NODE}",
         flush=True,
     )
     if args.once:

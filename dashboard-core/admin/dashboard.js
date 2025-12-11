@@ -140,14 +140,10 @@ KEY_MNEMONIC=
 CHAIN_ID="arkeo-main-v1"
 
 ARKEOD_HOME=~/.arkeo
-EXTERNAL_ARKEOD_NODE=tcp://provider1.innovationtheory.com:26657
-ARKEO_REST_API_PORT=http://provider1.innovationtheory.com:1317
+ARKEOD_NODE=tcp://127.0.0.1:26657
 
-SENTINEL_NODE=http://provider-core-1.innovationtheory.com
-SENTINEL_PORT=3636
-
-ADMIN_PORT=8080
-ADMIN_API_PORT=9999`;
+ADMIN_PORT=8077
+ADMIN_API_PORT=9996`;
     const PROVIDER_RUN_CMD = `# create host dirs
 mkdir -p ~/provider-core/config ~/provider-core/cache ~/provider-core/arkeo
 
@@ -175,9 +171,8 @@ KEY_MNEMONIC=
 CHAIN_ID="arkeo-main-v1"
 
 ARKEOD_HOME=~/.arkeo
-EXTERNAL_ARKEOD_NODE=tcp://provider1.innovationtheory.com:26657
-EXTERNAL_ARKEO_REST_API=http://provider1.innovationtheory.com:1317
-EXTERNAL_SENTINEL_NODE=http://docker.innovationtheory.com:3636
+ARKEOD_NODE=tcp://127.0.0.1:26657
+EXTERNAL_SENTINEL_NODE=http://127.0.0.1:3636
 
 ADMIN_PORT=8079
 ADMIN_API_PORT=9998`;

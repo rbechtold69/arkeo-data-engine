@@ -16,8 +16,7 @@ from typing import Tuple
 ARKEOD_HOME = os.path.expanduser(os.getenv("ARKEOD_HOME", "/root/.arkeo"))
 ARKEOD_NODE = (
     os.getenv("ARKEOD_NODE")
-    or os.getenv("EXTERNAL_ARKEOD_NODE")
-    or "tcp://provider1.innovationtheory.com:26657"
+    or "tcp://127.0.0.1:26657"
 )
 CACHE_DIR = os.getenv("CACHE_DIR", "/app/cache")
 DASHBOARD_INFO_FILE = os.getenv("DASHBOARD_INFO_FILE", os.path.join(CACHE_DIR, "dashboard_info.json"))

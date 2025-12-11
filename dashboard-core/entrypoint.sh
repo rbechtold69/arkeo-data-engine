@@ -5,9 +5,7 @@ echo "Dashboard-core (cache sync + web UI only)"
 
 ARKEOD_HOME=${ARKEOD_HOME:-/root/.arkeo}
 ARKEOD_HOME=${ARKEOD_HOME/#\~/$HOME}
-ARKEOD_NODE=${ARKEOD_NODE:-${EXTERNAL_ARKEOD_NODE:-tcp://provider1.innovationtheory.com:26657}}
-ARKEO_REST_API=${ARKEO_REST_API_PORT:-${EXTERNAL_ARKEO_REST_API:-http://provider1.innovationtheory.com:1317}}
-
+ARKEOD_NODE=${ARKEOD_NODE:-tcp://127.0.0.1:26657}
 ADMIN_PORT=${ADMIN_PORT:-${ENV_ADMIN_PORT:-8077}}
 ADMIN_API_PORT=${ADMIN_API_PORT:-${ENV_ADMIN_API_PORT:-9996}}
 CACHE_DIR=${CACHE_DIR:-/app/cache}
@@ -20,7 +18,6 @@ BLOCK_TIME_SECONDS=${BLOCK_TIME_SECONDS:-5.79954919}
 echo "Using:"
 echo "  ARKEOD_HOME          = $ARKEOD_HOME"
 echo "  ARKEOD_NODE          = $ARKEOD_NODE"
-echo "  ARKEO_REST_API       = $ARKEO_REST_API"
 echo "  ADMIN_PORT           = $ADMIN_PORT"
 echo "  ADMIN_API_PORT       = $ADMIN_API_PORT"
 echo "  CACHE_DIR            = $CACHE_DIR"

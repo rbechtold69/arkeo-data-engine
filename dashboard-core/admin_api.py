@@ -18,7 +18,7 @@ app = Flask(__name__)
 
 CACHE_DIR = os.getenv("CACHE_DIR", "/app/cache")
 ARKEOD_HOME = os.path.expanduser(os.getenv("ARKEOD_HOME", "/root/.arkeo"))
-ARKEOD_NODE = os.getenv("ARKEOD_NODE") or os.getenv("EXTERNAL_ARKEOD_NODE") or "tcp://provider1.innovationtheory.com:26657"
+ARKEOD_NODE = os.getenv("ARKEOD_NODE") or "tcp://127.0.0.1:26657"
 NODE_ARGS = ["--node", ARKEOD_NODE] if ARKEOD_NODE else []
 API_PORT = int(os.getenv("ADMIN_API_PORT") or os.getenv("ENV_ADMIN_API_PORT") or "9996")
 LOG_FILES = {
