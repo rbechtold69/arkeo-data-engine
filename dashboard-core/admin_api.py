@@ -161,7 +161,20 @@ def providers_with_contracts():
     providers_list = providers_raw.get("providers") or []
     if not isinstance(providers_list, list):
         providers_list = []
-    providers_list = [p for p in providers_list if isinstance(p, dict) and (p.get("status") == 1 or p.get("status") == "1")]
+
+    def provider_is_active(prov: dict) -> bool:
+        """Treat truthy/online status values as active (active_providers are already pre-filtered)."""
+        if not isinstance(prov, dict):
+            return False
+        status_val = prov.get("status")
+        if status_val is None:
+            return True
+        if isinstance(status_val, bool):
+            return bool(status_val)
+        status_str = str(status_val).strip().lower()
+        return status_str in ("1", "online", "true", "on", "up", "running")
+
+    providers_list = [p for p in providers_list if provider_is_active(p)]
     contracts_list = contracts_raw.get("data", {}).get("contracts") or contracts_raw.get("data", {}).get("contract") or []
     if not isinstance(contracts_list, list):
         contracts_list = []

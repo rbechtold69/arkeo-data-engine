@@ -5,21 +5,21 @@ Cache-only admin UI + API that reuses the subscriber-core sync pipeline (arkeod 
 ## Quick dev run
 ```bash
 # build
-docker build -t arkeonetwork/dashbord-core:dev .
+docker build -t arkeonetwork/dashboard-core:dev .
 
 # run (UI defaults to 8077 in the container, API to 9996)
-mkdir -p ~/dashbord-core/config ~/dashbord-core/cache ~/dashbord-core/arkeo
-docker run --rm --name dashbord-core-dev \
-    --env-file dashbord.env \
+mkdir -p ~/dashboard-core/config ~/dashboard-core/cache ~/dashboard-core/arkeo
+docker run --rm --name dashboard-core-dev \
+    --env-file dashboard.env \
     -e ENV_ADMIN_PORT=8079 \
     -p 8079:8077 -p 9996:9996 \
-    -v ~/dashbord-core/config:/app/config \
-    -v ~/dashbord-core/cache:/app/cache \
-    -v ~/dashbord-core/arkeo:/root/.arkeo \
-    arkeonetwork/dashbord-core:dev
+    -v ~/dashboard-core/config:/app/config \
+    -v ~/dashboard-core/cache:/app/cache \
+    -v ~/dashboard-core/arkeo:/root/.arkeo \
+    arkeonetwork/dashboard-core:dev
 ```
 
-Environment hints for `dashbord.env`:
+Environment hints for `dashboard.env`:
 ```
 # Which node and REST API to use for cache fetches
 ARKEOD_NODE=tcp://provider1.innovationtheory.com:26657

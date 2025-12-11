@@ -241,15 +241,46 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
     // Location regions for filtering
     const REGIONS = [
       { id: 'all', name: 'All Regions', icon: '🌍' },
-      { id: 'na-east', name: 'North America - East', icon: '🇺🇸' },
-      { id: 'na-west', name: 'North America - West', icon: '🇺🇸' },
-      { id: 'eu-west', name: 'Europe - West', icon: '🇪🇺' },
-      { id: 'eu-central', name: 'Europe - Central', icon: '🇪🇺' },
-      { id: 'asia-east', name: 'Asia - East', icon: '🌏' },
-      { id: 'asia-south', name: 'Asia - Southeast', icon: '🌏' },
+      { id: 'africa', name: 'Africa', icon: '🌍' },
+      { id: 'africa-northern', name: 'Africa – Northern', icon: '🌍' },
+      { id: 'africa-eastern', name: 'Africa – Eastern', icon: '🌍' },
+      { id: 'africa-middle', name: 'Africa – Middle', icon: '🌍' },
+      { id: 'africa-western', name: 'Africa – Western', icon: '🌍' },
+      { id: 'africa-southern', name: 'Africa – Southern', icon: '🌍' },
+      { id: 'americas', name: 'Americas', icon: '🌎' },
+      { id: 'americas-northern', name: 'Americas – Northern', icon: '🌎' },
+      { id: 'americas-caribbean', name: 'Americas – Caribbean', icon: '🌎' },
+      { id: 'americas-central', name: 'Americas – Central', icon: '🌎' },
+      { id: 'americas-south', name: 'Americas – South', icon: '🌎' },
+      { id: 'asia', name: 'Asia', icon: '🌏' },
+      { id: 'asia-central', name: 'Asia – Central', icon: '🌏' },
+      { id: 'asia-eastern', name: 'Asia – Eastern', icon: '🌏' },
+      { id: 'asia-southeastern', name: 'Asia – Southeastern', icon: '🌏' },
+      { id: 'asia-southern', name: 'Asia – Southern', icon: '🌏' },
+      { id: 'asia-western', name: 'Asia – Western', icon: '🌏' },
+      { id: 'europe', name: 'Europe', icon: '🇪🇺' },
+      { id: 'europe-northern', name: 'Europe – Northern', icon: '🇪🇺' },
+      { id: 'europe-eastern', name: 'Europe – Eastern', icon: '🇪🇺' },
+      { id: 'europe-southern', name: 'Europe – Southern', icon: '🇪🇺' },
+      { id: 'europe-western', name: 'Europe – Western', icon: '🇪🇺' },
       { id: 'oceania', name: 'Oceania', icon: '🇦🇺' },
-      { id: 'sa', name: 'South America', icon: '🌎' },
+      { id: 'oceania-aus-nz', name: 'Oceania – Australia & New Zealand', icon: '🇦🇺' },
+      { id: 'oceania-melanesia', name: 'Oceania – Melanesia', icon: '🇦🇺' },
+      { id: 'oceania-micronesia', name: 'Oceania – Micronesia', icon: '🇦🇺' },
+      { id: 'oceania-polynesia', name: 'Oceania – Polynesia', icon: '🇦🇺' },
+      { id: 'antarctica', name: 'Antarctica', icon: '🧊' },
     ];
+    const REGION_IDS = new Set(REGIONS.map(r => r.id));
+    const regionSlug = (val) => {
+      if (!val) return null;
+      const slug = String(val)
+        .toLowerCase()
+        .replace(/[\u2013\u2014]/g, '-') // normalize en/em dash
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/--+/g, '-');
+      return REGION_IDS.has(slug) ? slug : null;
+    };
 
     const SMART_SELECT_CRITERIA = [
       { id: 'price', label: 'Lowest Price', icon: '💰', description: 'Find the cheapest rate per query' },
@@ -295,8 +326,8 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
     ];
 
     const SORT_OPTIONS = [
-      { id: 'cost', label: 'Best Cost' },
-      { id: 'reliability', label: 'Reliability' },
+      { id: 'earnings', label: 'Highest Earnings' },
+      { id: 'cost', label: 'Lowest Cost' },
     ];
 
     // Icons
@@ -394,7 +425,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
 
     // Stats Card
     const StatsCard = ({ icon, label, value, subvalue, color }) => (
-      <div className="card-surface backdrop-blur rounded-2xl p-5 transition-all hover:border-arkeo/60">
+      <div className="card-surface card-shadow backdrop-blur rounded-2xl p-5 transition-all hover:border-arkeo/60">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-secondaryText text-sm mb-1">{label}</p>
@@ -423,21 +454,19 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
 
       return (
         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-emerald-400 text-xs font-medium flex items-center gap-1">
-              <Icons.DollarSign /> Earnings
-            </span>
-            <div className="flex gap-1">
-              {periods.map(p => (
-                <button
-                  key={p.id}
-                  onClick={(e) => { e.stopPropagation(); onRangeChange?.(p.id); if (!range) setPeriod(p.id); }}
-                  className={`px-2 py-0.5 rounded text-xs font-medium transition-all ${activePeriod === p.id ? 'bg-emerald-500 text-slate-900' : 'text-emerald-400 hover:bg-emerald-500/20'}`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+          <div className="flex items-center gap-1 text-emerald-400 text-xs font-medium mb-2">
+            <Icons.DollarSign /> <span>Earnings</span>
+          </div>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {periods.map(p => (
+              <button
+                key={p.id}
+                onClick={(e) => { e.stopPropagation(); onRangeChange?.(p.id); if (!range) setPeriod(p.id); }}
+                className={`px-2 py-0.5 rounded text-xs font-medium transition-all ${activePeriod === p.id ? 'bg-emerald-500 text-slate-900' : 'text-emerald-400 hover:bg-emerald-500/20'}`}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
           <p className="text-xl font-bold text-emerald-400">{formatArkeo(earnings[activePeriod], decimals)} <span className="text-sm font-normal">ARKEO</span></p>
         </div>
@@ -447,24 +476,36 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
     // Location Filter Dropdown
     const LocationFilter = ({ selectedRegion, onSelect }) => {
       const [isOpen, setIsOpen] = useState(false);
+      const [query, setQuery] = useState('');
       const selected = REGIONS.find(r => r.id === selectedRegion) || REGIONS[0];
+      const filteredRegions = REGIONS.filter(r => (r.name || '').toLowerCase().includes((query || '').toLowerCase()));
 
       return (
-        <div className="relative">
+        <div className="relative min-w-0">
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="flex items-center gap-2 card-surface rounded-xl px-4 py-3 text-white hover:border-arkeo/60 transition-all min-w-[200px]"
+            className="flex items-center gap-2 card-surface rounded-xl px-4 py-3 text-white hover:border-arkeo/60 transition-all min-w-[200px] w-full"
+            style={{ minWidth: '220px' }}
           >
             <Icons.MapPin />
-            <span className="flex-1 text-left text-sm">{selected.icon} {selected.name}</span>
+            <span className="flex-1 text-left text-sm truncate">{selected.icon} {selected.name}</span>
             <Icons.ChevronDown />
           </button>
           
           {isOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-              <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl py-2 z-50 max-h-64 overflow-y-auto">
-                {REGIONS.map(region => (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl py-2 z-50 max-h-80 overflow-y-auto">
+                <div className="px-3 pb-2">
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search regions..."
+                    className="w-full bg-[#1E222C] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-white placeholder-secondaryText focus:border-arkeo focus:ring-1 focus:ring-arkeo"
+                  />
+                </div>
+                {filteredRegions.map(region => (
                   <button
                     key={region.id}
                     onClick={() => { onSelect(region.id); setIsOpen(false); }}
@@ -474,6 +515,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
                     <span>{region.name}</span>
                   </button>
                 ))}
+                {filteredRegions.length === 0 && <p className="text-secondaryText text-xs px-4 py-2.5">No regions</p>}
               </div>
             </>
           )}
@@ -490,13 +532,13 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
         icon: o?.icon || '🌐',
         iconUrl: o?.iconUrl || '',
       }));
-      const opts = [{ id: 'all', name: 'Active Types', icon: '🌐', iconUrl: '' }, ...normalizedOpts];
+      const opts = [{ id: 'all', name: 'All Data Types', icon: '🌐', iconUrl: '' }, ...normalizedOpts];
       const active = opts.find(o => o.id === selected) || opts[0];
       const filtered = opts.filter(o => (o.name || '').toLowerCase().includes((query || '').toLowerCase()));
 
       return (
-        <div className="relative">
-          <button onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-2 card-surface rounded-xl px-4 py-3 text-white hover:border-arkeo/60 transition-all min-w-[220px]">
+        <div className="relative min-w-0">
+          <button onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-2 card-surface rounded-xl px-4 py-3 text-white hover:border-arkeo/60 transition-all min-w-[200px] w-full">
             <Icons.Server />
             <span className="flex-1 text-left text-sm truncate">{active.name}</span>
             <Icons.ChevronDown />
@@ -542,10 +584,10 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
       const [isOpen, setIsOpen] = useState(false);
       const active = options.find(o => o.id === selected) || options[0];
       return (
-        <div className="relative">
-          <button className="flex items-center gap-2 card-surface rounded-xl px-4 py-3 text-white hover:border-arkeo/60 transition-all min-w-[180px]" onClick={() => setIsOpen(!isOpen)}>
+        <div className="relative min-w-0">
+          <button className="flex items-center gap-2 card-surface rounded-xl px-4 py-3 text-white hover:border-arkeo/60 transition-all min-w-[200px] w-full" onClick={() => setIsOpen(!isOpen)}>
             <span className="text-sm text-secondaryText">{label}</span>
-            <span className="flex-1 text-left text-sm text-white">{active.label}</span>
+            <span className="flex-1 text-left text-sm text-white truncate">{active.label}</span>
             <Icons.ChevronDown />
           </button>
           {isOpen && (
@@ -568,29 +610,34 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
       );
     };
 
-    const SortDropdown = ({ selected, options, onChange, showOffline, onToggleOffline }) => {
+    const SortDropdown = ({ selected, options, onChange, showOffline, onToggleOffline, disableCost }) => {
       const [isOpen, setIsOpen] = useState(false);
       const active = options.find(o => o.id === selected) || options[0];
       return (
-        <div className="relative">
-          <button className="flex items-center gap-2 card-surface rounded-xl px-4 py-3 text-white hover:border-arkeo/60 transition-all min-w-[180px]" onClick={() => setIsOpen(!isOpen)}>
+        <div className="relative min-w-0">
+          <button className="flex items-center gap-2 card-surface rounded-xl px-4 py-3 text-white hover:border-arkeo/60 transition-all min-w-[200px] w-full" onClick={() => setIsOpen(!isOpen)}>
             <span className="text-sm text-secondaryText">Sort By</span>
-            <span className="flex-1 text-left text-sm text-white">{active.label}</span>
+            <span className="flex-1 text-left text-sm text-white truncate">{active.label}</span>
             <Icons.ChevronDown />
           </button>
           {isOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
               <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl py-2 z-50">
-                {options.map(opt => (
+                {options.map(opt => {
+                  const disabled = disableCost && opt.id === 'cost';
+                  return (
                   <button
                     key={opt.id}
-                    onClick={() => { onChange(opt.id); setIsOpen(false); }}
-                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${opt.id === selected ? 'bg-arkeo/15 text-white' : 'text-secondaryText hover:bg-[#1E222C]'}`}
+                    onClick={() => { if (disabled) return; onChange(opt.id); setIsOpen(false); }}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center justify-between ${opt.id === selected ? 'bg-arkeo/15 text-white' : 'text-secondaryText hover:bg-[#1E222C]'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    disabled={disabled}
                   >
-                    {opt.label}
+                    <span>{opt.label}</span>
+                    {disabled && <span className="text-[10px] text-secondaryText">Select a data type</span>}
                   </button>
-                ))}
+                  );
+                })}
                 <div className="border-t border-[var(--border)] mt-1 pt-1">
                   <button
                     onClick={() => { onToggleOffline?.(!showOffline); setIsOpen(false); }}
@@ -616,7 +663,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
         : null;
     
     return (
-        <div className={`card-surface backdrop-blur rounded-2xl overflow-hidden transition-all ${isOnline ? 'hover:border-arkeo/60 hover:shadow-[0_10px_30px_rgba(59,224,255,0.12)]' : 'opacity-70'}`}>
+        <div className={`card-surface card-shadow backdrop-blur rounded-2xl overflow-hidden transition-all ${isOnline ? 'hover:border-arkeo/60 hover:shadow-[0_10px_30px_rgba(59,224,255,0.12)]' : 'opacity-70'}`}>
             <div className="p-5">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -709,7 +756,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
 
       return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-          <div className="card-surface rounded-2xl max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="card-surface card-shadow rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-6 border-b border-[var(--border)]">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-arkeo/15 text-arkeo"><Icons.Wand /></div>
@@ -830,7 +877,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
 
       return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-          <div className="card-surface rounded-2xl max-w-3xl w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="card-surface card-shadow rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-6 border-b border-[var(--border)]">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-arkeo/15 text-arkeo"><Icons.Server /></div>
@@ -848,21 +895,21 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
                   <div className="flex items-center gap-2 text-arkeo mb-4"><Icons.Docker /><span className="font-medium">Docker Setup</span></div>
                   <h3 className="text-lg font-semibold text-white mb-4">Quick Start</h3>
                   <div className="space-y-4">
-                    <div className="card-surface rounded-xl p-4 relative">
+                    <div className="card-surface card-shadow rounded-xl p-4 relative">
                       <button onClick={() => onCopy?.(providerEnvExample)} className="absolute top-3 right-3 text-xs bg-[var(--surface)] border border-[var(--border)] text-secondaryText px-2 py-1 rounded hover:border-arkeo">Copy</button>
                       <p className="text-sm text-secondaryText mb-2">1. Create your env file (~/provider.env)</p>
                       <code className="block whitespace-pre bg-[var(--bg-main)] rounded-lg p-3 text-arkeo text-xs font-mono border border-[var(--border)] whitespace-pre-wrap">
                         {providerEnvExample}
                       </code>
                     </div>
-                    <div className="card-surface rounded-xl p-4 relative">
+                    <div className="card-surface card-shadow rounded-xl p-4 relative">
                       <button onClick={() => onCopy?.(providerRunCmd)} className="absolute top-3 right-3 text-xs bg-[var(--surface)] border border-[var(--border)] text-secondaryText px-2 py-1 rounded hover:border-arkeo">Copy</button>
                       <p className="text-sm text-secondaryText mb-2">2. Pull and run the container</p>
                       <code className="block whitespace-pre bg-[var(--bg-main)] rounded-lg p-3 text-arkeo text-xs font-mono border border-[var(--border)] whitespace-pre-wrap">
                         {providerRunCmd}
                       </code>
                     </div>
-                    <div className="card-surface rounded-xl p-4 relative">
+                    <div className="card-surface card-shadow rounded-xl p-4 relative">
                       <button onClick={() => onCopy?.('http://localhost:8080')} className="absolute top-3 right-3 text-xs bg-[var(--surface)] border border-[var(--border)] text-secondaryText px-2 py-1 rounded hover:border-arkeo">Copy</button>
                       <p className="text-sm text-secondaryText mb-2">3. Open the Admin UI</p>
                       <code className="block bg-[var(--bg-main)] rounded-lg p-3 text-arkeo text-sm font-mono border border-[var(--border)] whitespace-pre-wrap">http://localhost:8080</code>
@@ -914,21 +961,21 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
                   <div className="flex items-center gap-2 text-arkeo mb-4"><Icons.Docker /><span className="font-medium">Docker Setup</span></div>
                   <h3 className="text-lg font-semibold text-white mb-4">Quick Start</h3>
                   <div className="space-y-4">
-                    <div className="card-surface rounded-xl p-4 relative">
+                    <div className="card-surface card-shadow rounded-xl p-4 relative">
                       <button onClick={() => onCopy?.(subscriberEnvExample)} className="absolute top-3 right-3 text-xs bg-[var(--surface)] border border-[var(--border)] text-secondaryText px-2 py-1 rounded hover:border-arkeo">Copy</button>
                       <p className="text-sm text-secondaryText mb-2">1. Create your env file (~/subscriber.env)</p>
                       <code className="block whitespace-pre bg-[var(--bg-main)] rounded-lg p-3 text-arkeo text-xs font-mono border border-[var(--border)] whitespace-pre-wrap">
                         {subscriberEnvExample}
                       </code>
                     </div>
-                    <div className="card-surface rounded-xl p-4 relative">
+                    <div className="card-surface card-shadow rounded-xl p-4 relative">
                       <button onClick={() => onCopy?.(subscriberRunCmd)} className="absolute top-3 right-3 text-xs bg-[var(--surface)] border border-[var(--border)] text-secondaryText px-2 py-1 rounded hover:border-arkeo">Copy</button>
                       <p className="text-sm text-secondaryText mb-2">2. Pull and run the container</p>
                       <code className="block whitespace-pre bg-[var(--bg-main)] rounded-lg p-3 text-arkeo text-xs font-mono border border-[var(--border)] whitespace-pre-wrap">
                         {subscriberRunCmd}
                       </code>
                     </div>
-                    <div className="card-surface rounded-xl p-4 relative">
+                    <div className="card-surface card-shadow rounded-xl p-4 relative">
                       <button onClick={() => onCopy?.('http://localhost:8079')} className="absolute top-3 right-3 text-xs bg-[var(--surface)] border border-[var(--border)] text-secondaryText px-2 py-1 rounded hover:border-arkeo">Copy</button>
                       <p className="text-sm text-secondaryText mb-2">3. Open the Admin UI</p>
                       <code className="block bg-[var(--bg-main)] rounded-lg p-3 text-arkeo text-sm font-mono border border-[var(--border)] whitespace-pre-wrap">http://localhost:8079</code>
@@ -1120,7 +1167,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
       const [regionFilter, setRegionFilter] = useState('all');
       const [providerSearch, setProviderSearch] = useState('');
       const [timeRange, setTimeRange] = useState('all_time');
-      const [sortBy, setSortBy] = useState('cost');
+      const [sortBy, setSortBy] = useState('earnings');
       const [showOffline, setShowOffline] = useState(false);
       const [notification, setNotification] = useState(null);
       const [hideInfoBlock, setHideInfoBlock] = useState(false);
@@ -1158,7 +1205,10 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
           const name = meta.name || meta.moniker || raw.moniker || raw.name || `Provider ${idx + 1}`;
           const description = meta.description || meta.desc || raw.description || raw.desc || '';
           const location = meta.location || meta.geo || metaConfig.location || raw.location || '';
-          const region = meta.region || metaConfig.region || raw.region || 'all';
+          const region =
+            regionSlug(meta.region || metaConfig.region || raw.region) ||
+            regionSlug(meta.location || meta.geo || metaConfig.location || raw.location) ||
+            'all';
           const statusVal = p.status;
           const isOnline = statusVal === 1 || statusVal === '1' || statusVal === true || (typeof statusVal === 'string' && statusVal.toLowerCase() === 'online');
           const servicesRaw = Array.isArray(p.services) ? p.services : [];
@@ -1238,18 +1288,42 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
         }, 60000);
         return () => clearInterval(interval);
       }, [loadData, fetchRangeTotals, timeRange]);
+
+      // If user switches to "All Data Types" while on "Lowest Cost", snap back to Highest Earnings
+      useEffect(() => {
+        if (serviceFilter === 'all' && sortBy === 'cost') {
+          setSortBy('earnings');
+        }
+      }, [serviceFilter, sortBy]);
       const timeRangeLabel = useMemo(() => TIME_RANGES.find(t => t.id === timeRange)?.label || 'All Time', [timeRange]);
+
+      const regionGroups = useMemo(() => ({
+        africa: ['africa', 'africa-northern', 'africa-eastern', 'africa-middle', 'africa-western', 'africa-southern'],
+        americas: ['americas', 'americas-northern', 'americas-caribbean', 'americas-central', 'americas-south'],
+        asia: ['asia', 'asia-central', 'asia-eastern', 'asia-southeastern', 'asia-southern', 'asia-western'],
+        europe: ['europe', 'europe-northern', 'europe-eastern', 'europe-southern', 'europe-western'],
+        oceania: ['oceania', 'oceania-aus-nz', 'oceania-melanesia', 'oceania-micronesia', 'oceania-polynesia'],
+        antarctica: ['antarctica'],
+      }), []);
 
       const filteredProviders = useMemo(() => {
         const filtered = providers.filter(p => {
           if (!showOffline && p.status !== 'ONLINE') return false;
           if (serviceFilter !== 'all' && !p.services.some(s => String(s.id) === String(serviceFilter))) return false;
-          if (regionFilter !== 'all' && p.region !== regionFilter) return false;
+          if (regionFilter !== 'all') {
+            const allowedRegions = regionGroups[regionFilter] || [regionFilter];
+            if (!allowedRegions.includes(p.region)) return false;
+          }
           if (providerSearch && !p.moniker.toLowerCase().includes(providerSearch.toLowerCase())) return false;
           return true;
         });
 
         const sorted = filtered.sort((a, b) => {
+          if (sortBy === 'earnings') {
+            const ea = buildEarnings(a)?.[timeRange] || 0;
+            const eb = buildEarnings(b)?.[timeRange] || 0;
+            return eb - ea;
+          }
           if (sortBy === 'cost') {
             const rateFor = (p) => {
               const rates = serviceFilter === 'all' ? p.services : p.services.filter(s => String(s.id) === String(serviceFilter));
@@ -1364,12 +1438,12 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
     if (!ctx || typeof Chart === 'undefined') return;
     const labels = providerEarningsChartData.map(d => d.label);
     const values = providerEarningsChartData.map(d => d.value);
+    // Destroy/recreate to avoid state issues when toggling between empty/non-empty datasets
     if (chartInstanceRef.current) {
-      chartInstanceRef.current.data.labels = labels;
-      chartInstanceRef.current.data.datasets[0].data = values;
-      chartInstanceRef.current.update();
-      return;
+      chartInstanceRef.current.destroy();
+      chartInstanceRef.current = null;
     }
+    if (labels.length === 0) return;
     chartInstanceRef.current = new Chart(ctx, {
       type: 'bar',
       data: {
@@ -1387,6 +1461,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        backgroundColor: 'transparent',
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -1481,7 +1556,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
             </div>
           )}
 
-          <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/90 border-b border-border relative overflow-hidden">
+          <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/90 border-b border-border relative overflow-hidden header-shadow">
             <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(59,224,255,0.12),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(59,224,255,0.08),transparent_45%)]" />
             <div className="max-w-7xl mx-auto px-4 py-4 relative z-10">
               <div className="flex items-center justify-between">
@@ -1511,7 +1586,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
           <main className="max-w-7xl mx-auto px-4 py-8">
             {loading && <div className="mb-4 px-4 py-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-secondaryText text-sm">Loading latest marketplace data…</div>}
             {error && <div className="mb-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/40 text-red-200 text-sm">{error}</div>}
-            <div className="card-surface rounded-2xl p-6 mb-8 relative overflow-hidden">
+            <div className="card-surface card-shadow rounded-2xl p-6 mb-8 relative overflow-hidden">
               <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(59,224,255,0.18),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(59,224,255,0.12),transparent_45%)]" />
               <div className="relative z-10 grid md:grid-cols-3 gap-6 items-stretch">
                 <div className="space-y-3 md:col-span-1">
@@ -1531,7 +1606,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
                   </div>
                 </div>
                 <div className="md:col-span-2 h-full">
-                  <div className="card-surface rounded-2xl p-4 border border-[var(--border)] h-full flex flex-col">
+                  <div className="chart-card rounded-2xl p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-3">
                       <div>
                         <p className="text-sm text-white font-semibold">Top Providers (by ARKEO Earnings)</p>
@@ -1631,7 +1706,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
             )}
 
             {/* Filters */}
-            <div className="grid gap-3 lg:grid-cols-5 xl:grid-cols-5 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 grid-flow-row-dense mb-6">
               <div className="relative">
                 <input type="text" placeholder="Search providers..." value={providerSearch} onChange={e => setProviderSearch(e.target.value)} className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-xl pl-11 pr-4 py-3 text-white placeholder-secondaryText focus:border-arkeo focus:ring-1 focus:ring-arkeo" style={{ paddingLeft: '2.75rem' }} />
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-secondaryText"><Icons.Search /></div>
@@ -1639,7 +1714,14 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
               <DataServiceFilter selected={serviceFilter} onSelect={setServiceFilter} options={serviceOptions} />
               <LocationFilter selectedRegion={regionFilter} onSelect={setRegionFilter} />
               <SimpleDropdown label="Time Range" selected={timeRange} options={TIME_RANGES} onChange={setTimeRange} />
-              <SortDropdown selected={sortBy} options={SORT_OPTIONS} onChange={setSortBy} showOffline={showOffline} onToggleOffline={setShowOffline} />
+              <SortDropdown
+                selected={sortBy}
+                options={SORT_OPTIONS}
+                onChange={setSortBy}
+                showOffline={showOffline}
+                onToggleOffline={setShowOffline}
+                disableCost={serviceFilter === 'all'}
+              />
             </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
