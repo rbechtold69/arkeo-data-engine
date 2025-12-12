@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -91,6 +92,32 @@ def mark_sync_end(ok: bool = True, error: str | None = None) -> None:
     _write_status(payload)
 
 
+def _parse_service_types_text(raw: str) -> Dict[str, Any] | None:
+    """Parse text output from `arkeod query arkeo all-services` into {"services": [...]}."""
+    if not isinstance(raw, str):
+        return None
+    services = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("Arkeo Supported Provider Service List"):
+            continue
+        # Expect lines like "- name : id (Description)"
+        m = re.match(r"-\s*(.+?)\s*:\s*([0-9]+)\s*\((.*?)\)\s*$", line)
+        if not m:
+            continue
+        name = m.group(1).strip()
+        sid = m.group(2).strip()
+        desc = m.group(3).strip()
+        try:
+            sid_int = int(sid)
+        except ValueError:
+            sid_int = sid
+        services.append({"service_id": sid_int, "name": name, "description": desc})
+    if not services:
+        return None
+    return {"services": services}
+
+
 def build_commands() -> Dict[str, List[str]]:
     base = ["arkeod", "--home", ARKEOD_HOME]
     if ARKEOD_NODE:
@@ -99,8 +126,7 @@ def build_commands() -> Dict[str, List[str]]:
         "provider-services": [*base, "query", "arkeo", "list-providers", "-o", "json"],
         "provider-contracts": [*base, "query", "arkeo", "list-contracts", "-o", "json"],
         "validators": [*base, "query", "staking", "validators", "--page-limit", "1000", "--page-count-total", "--status", "BOND_STATUS_BONDED", "-o", "json"],
-        # service-types fetch disabled (no REST)
-        "service-types": [],
+        "service-types": [*base, "query", "arkeo", "all-services", "-o", "json"],
     }
 
 
@@ -163,14 +189,14 @@ def merge_service_types_with_resources(payload: Dict[str, Any]) -> Dict[str, Any
         if name_val:
             name_lookup[str(name_val).lower()] = chain_val
 
-    data_live = payload.get("data")
-    live_list = []
-    if isinstance(data_live, list):
-        live_list = data_live
-    elif isinstance(data_live, dict):
-        live_list = data_live.get("services") or data_live.get("service") or data_live.get("result") or []
-    if not isinstance(live_list, list):
-        return payload
+        data_live = payload.get("data")
+        live_list = []
+        if isinstance(data_live, list):
+            live_list = data_live
+        elif isinstance(data_live, dict):
+            live_list = data_live.get("services") or data_live.get("service") or data_live.get("result") or []
+        if not isinstance(live_list, list):
+            return payload
     changed = False
     for svc in live_list:
         if not isinstance(svc, dict):
@@ -534,7 +560,14 @@ def build_active_service_types(active_services_payload: Dict[str, Any], service_
     if isinstance(st_data, list):
         service_types_list = st_data
     elif isinstance(st_data, dict):
-        service_types_list = st_data.get("services") or st_data.get("service") or st_data.get("result") or []
+        service_types_list = (
+            st_data.get("services")
+            or st_data.get("service")
+            or st_data.get("result")
+            or st_data.get("data")
+            or st_data.get("entries")
+            or []
+        )
     if not isinstance(service_types_list, list):
         service_types_list = []
 
@@ -651,14 +684,20 @@ def fetch_once(commands: Dict[str, List[str]] | None = None, record_status: bool
     try:
         metadata_cache: dict[str, dict[str, Any]] | None = None
         for name, cmd in commands.items():
-            if name == "service-types":
-                payload = {"fetched_at": timestamp(), "exit_code": 0, "cmd": [], "data": []}
-            else:
-                code, out = run_list(cmd)
-                payload = normalize_result(name, code, out, cmd)
-                if code != 0:
-                    ok = False
-                    error_msg = f"{name} exit={code}"
+            code, out = run_list(cmd)
+            payload = normalize_result(name, code, out, cmd)
+            if name == "service-types" and payload.get("exit_code") == 0:
+                payload = merge_service_types_with_resources(payload)
+            if code != 0:
+                ok = False
+                error_msg = f"{name} exit={code}"
+            if name == "service-types" and payload.get("exit_code") == 0:
+                # If the output was plaintext, parse into structured services list
+                if isinstance(payload.get("data"), str):
+                    parsed = _parse_service_types_text(payload.get("data"))
+                    if parsed:
+                        payload["data"] = parsed
+                payload = merge_service_types_with_resources(payload)
             if name == "provider-services" and payload.get("exit_code") == 0:
                 metadata_cache = _update_metadata_cache_from_providers(payload)
                 try:

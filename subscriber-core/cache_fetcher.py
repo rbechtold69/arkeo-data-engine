@@ -116,29 +116,112 @@ def normalize_result(name: str, code: int, out: str, cmd: List[str]) -> Dict[str
     return payload
 
 
+def _parse_services_text(text: str) -> list[dict[str, Any]]:
+    """Parse textual arkeod all-services output into a structured list."""
+    services: list[dict[str, Any]] = []
+    if not text or not isinstance(text, str):
+        return services
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("- "):
+            continue
+        # Expected pattern: "- name : id (Description)"
+        try:
+            # remove leading "- "
+            body = line[2:].strip()
+            if " :" not in body:
+                continue
+            name_part, rest = body.split(" :", 1)
+            name = name_part.strip()
+            rest = rest.strip()
+            # id then optional description in parentheses
+            service_id_str = rest.split(" ", 1)[0].strip()
+            try:
+                service_id = int(service_id_str)
+            except ValueError:
+                # sometimes format could be "id (desc)"
+                if "(" in service_id_str:
+                    service_id_str = service_id_str.split("(")[0].strip()
+                try:
+                    service_id = int(service_id_str)
+                except Exception:
+                    continue
+            desc = ""
+            if "(" in rest and rest.endswith(")"):
+                desc = rest[rest.find("(") + 1 : -1].strip()
+            services.append(
+                {
+                    "service_id": service_id,
+                    "name": name,
+                    "description": desc,
+                }
+            )
+        except Exception:
+            continue
+    return services
+
+
 def fetch_services_rest() -> Dict[str, Any]:
-    """Fetch services via REST endpoint without pagination."""
-    url = f"{ARKEO_REST_API.rstrip('/')}/arkeo/services"
+    """Fetch services via REST endpoint without pagination (falls back to Tendermint RPC if REST unavailable)."""
+    rest_url = ARKEO_REST_API.rstrip("/") if ARKEO_REST_API else ""
+    url = f"{rest_url}/arkeo/services" if rest_url else ""
+    # Try REST first if configured
+    if url:
+        try:
+            with request.urlopen(url, timeout=15) as resp:
+                body = resp.read().decode("utf-8", errors="replace")
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                data = body
+            return {
+                "fetched_at": timestamp(),
+                "exit_code": 0,
+                "cmd": [url],
+                "data": data,
+            }
+        except error.URLError as e:
+            rest_err = str(e)
+        except Exception as e:
+            rest_err = str(e)
+    else:
+        rest_err = "ARKEO_REST_API not set"
+
+    # Fallback: use arkeod query all-services via RPC
+    cmd = [
+        "arkeod",
+        "--home",
+        ARKEOD_HOME,
+        "--node",
+        ARKEOD_NODE,
+        "query",
+        "arkeo",
+        "all-services",
+        "-o",
+        "json",
+    ]
     try:
-        with request.urlopen(url, timeout=15) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-    except error.URLError as e:
+        code, out = run_list(cmd)
+    except Exception as e:
         return {
             "fetched_at": timestamp(),
             "exit_code": 1,
-            "cmd": [url],
-            "error": str(e),
+            "cmd": [url or "arkeod query arkeo all-services"],
+            "error": f"rest_err={rest_err}; rpc_exec_err={e}",
         }
-    try:
-        data = json.loads(body)
-    except json.JSONDecodeError:
-        data = body
-    return {
-        "fetched_at": timestamp(),
-        "exit_code": 0,
-        "cmd": [url],
-        "data": data,
-    }
+    payload = normalize_result("service-types", code, out, cmd)
+    if code != 0:
+        payload["error"] = f"rest_err={rest_err}; rpc_err={payload.get('error', out)}"
+    else:
+        data_val = payload.get("data")
+        if isinstance(data_val, str):
+            parsed = _parse_services_text(data_val)
+            if parsed:
+                payload["data"] = {"services": parsed}
+                payload["parsed_from"] = "arkeod all-services"
+            else:
+                payload["error"] = f"rest_err={rest_err}; rpc_parse_failed"
+    return payload
 
 
 def fetch_metadata_uri(url: str, timeout: float = 5.0) -> Tuple[Any, str | None, int]:

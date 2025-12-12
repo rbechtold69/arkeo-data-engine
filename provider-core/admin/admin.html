@@ -99,15 +99,15 @@
         </tr>
         <tr>
             <td class="label">Arkeod Node (RPC)</td>
-            <td class="value"><input type="text" id="arkeodNode" placeholder="tcp://provider1.innovationtheory.com:26657" /></td>
+            <td class="value"><input type="text" id="arkeodNode" placeholder="tcp://127.0.0.1:26657" /></td>
         </tr>
         <tr>
             <td class="label">Arkeo REST API</td>
-            <td class="value"><input type="text" id="arkeodRest" placeholder="http://host:1317" /></td>
+            <td class="value"><input type="text" id="arkeodRest" placeholder="http://127.0.0.1" /></td>
         </tr>
         <tr>
             <td class="label">Sentinel Node</td>
-            <td class="value"><input type="text" id="sentinelNode" placeholder="http://host" /></td>
+            <td class="value"><input type="text" id="sentinelNode" placeholder="http://127.0.0.1" /></td>
         </tr>
         <tr>
             <td class="label">Sentinel Port</td>
@@ -435,7 +435,7 @@
             if (homeLabel) homeLabel.textContent = homeText ? `(${homeText})` : "";
             if (homeVal) homeVal.textContent = homeText || "(read-only)";
             setProviderInput("arkeodNode", providerSettingsCache.ARKEOD_NODE);
-            setProviderInput("arkeodRest", providerSettingsCache.ARKEO_REST_API_PORT);
+            setProviderInput("arkeodRest", providerSettingsCache.ARKEO_REST_API_PORT || providerSettingsCache.PROVIDER_HUB_URI);
             setProviderInput("sentinelNode", providerSettingsCache.SENTINEL_NODE);
             setProviderInput("sentinelPort", providerSettingsCache.SENTINEL_PORT);
             setProviderInput("adminPort", providerSettingsCache.ADMIN_PORT);
@@ -476,6 +476,7 @@
                 ARKEOD_HOME: providerSettingsCache.ARKEOD_HOME || "",
                 ARKEOD_NODE: normalizeRpc(document.getElementById("arkeodNode")?.value || ""),
                 ARKEO_REST_API_PORT: document.getElementById("arkeodRest")?.value || "",
+                PROVIDER_HUB_URI: document.getElementById("arkeodRest")?.value || "",
                 SENTINEL_NODE: document.getElementById("sentinelNode")?.value || "",
                 SENTINEL_PORT: document.getElementById("sentinelPort")?.value || "",
                 ADMIN_PORT: document.getElementById("adminPort")?.value || "",

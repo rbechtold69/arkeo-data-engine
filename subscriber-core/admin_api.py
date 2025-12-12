@@ -48,6 +48,63 @@ ADMIN_UI_ORIGIN = os.getenv("ADMIN_UI_ORIGIN") or "http://localhost:8079"
 ADMIN_SESSIONS: dict[str, float] = {}
 _LISTENER_SERVERS: dict[int, dict] = {}
 _LISTENER_LOCK = threading.Lock()
+
+def _service_slug_for_id(service_id: str) -> str:
+    """Return the service name/slug for a given service_id, if known."""
+    sid = str(service_id or "").strip()
+    if not sid:
+        return ""
+    # 1) active_service_types (derived from active_services)
+    try:
+        with open(ACTIVE_SERVICE_TYPES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        items = data.get("active_service_types") if isinstance(data, dict) else []
+        if not isinstance(items, list):
+            items = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("service_id")) != sid:
+                continue
+            st = item.get("service_type") if isinstance(item.get("service_type"), dict) else {}
+            name = item.get("service_name") or st.get("name") or st.get("service_name") or ""
+            if name:
+                return str(name).strip()
+    except Exception:
+        pass
+
+    # 2) full service-types cache (supports inactive/REST services)
+    try:
+        svc_types_path = os.path.join(CACHE_DIR, "service-types.json")
+        with open(svc_types_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        svc_data = data.get("data") if isinstance(data, dict) else {}
+        items = []
+        if isinstance(svc_data, list):
+            items = svc_data
+        elif isinstance(svc_data, dict):
+            items = svc_data.get("services") or svc_data.get("service") or svc_data.get("result") or []
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                sid_val = item.get("service_id") or item.get("id") or item.get("service")
+                if str(sid_val) != sid:
+                    continue
+                name = item.get("name") or item.get("service") or ""
+                if name:
+                    return str(name).strip()
+    except Exception:
+        pass
+
+    # 3) best-effort RPC lookup
+    try:
+        lookup = _all_services_lookup()
+        if sid in lookup and lookup[sid]:
+            return str(lookup[sid]).strip()
+    except Exception:
+        pass
+    return ""
 _NONCE_CACHE: dict[str, int] = {}
 _NONCE_LOCK = threading.Lock()
 
@@ -186,7 +243,7 @@ PROXY_DECORATE_RESPONSE = str(os.getenv("PROXY_DECORATE_RESPONSE", "true")).lowe
 PROXY_ARKAUTH_AS_HEADER = str(os.getenv("PROXY_ARKAUTH_AS_HEADER", "false")).lower() in ("1", "true", "yes", "on")
 PROXY_CONTRACT_TIMEOUT = int(os.getenv("PROXY_CONTRACT_TIMEOUT", "10"))
 PROXY_CONTRACT_LIMIT = int(os.getenv("PROXY_CONTRACT_LIMIT", "5000"))
-PROXY_OPEN_COOLDOWN = int(os.getenv("PROXY_OPEN_COOLDOWN", "300"))  # seconds to cool down a provider after open failure
+PROXY_OPEN_COOLDOWN = int(os.getenv("PROXY_OPEN_COOLDOWN", "0"))  # seconds to cool down a provider after open failure
 PROXY_CONTRACT_CACHE_TTL = int(os.getenv("PROXY_CONTRACT_CACHE_TTL", "45"))  # seconds; 0 disables TTL check
 SIGNHERE_HOME = os.path.join(Path.home(), ".arkeo")
 
@@ -2047,6 +2104,12 @@ def _enrich_listener_for_response(listener: dict) -> dict:
                     sent = _sentinel_from_metadata_uri(mu)
             if sent:
                 l["sentinel_url"] = sent
+    if not l.get("health_method"):
+        l["health_method"] = "POST"
+    if l.get("health_payload") is None:
+        l["health_payload"] = ""
+    if l.get("health_header") is None:
+        l["health_header"] = ""
     return l
 def _safe_int(val, default: int = 0) -> int:
     try:
@@ -2979,22 +3042,49 @@ def _sign_message(
     return sig_hex, ""
 
 
-def _forward_to_sentinel(sentinel: str, service: str, body: bytes, arkauth: str, timeout: int = PROXY_TIMEOUT_SECS, as_header: bool = False):
-    url = f"{sentinel.rstrip('/')}/{service}"
+def _forward_to_sentinel(
+    sentinel: str,
+    service_path: str,
+    body: bytes | None,
+    arkauth: str,
+    timeout: int = PROXY_TIMEOUT_SECS,
+    as_header: bool = False,
+    method: str = "POST",
+    query_string: str | None = None,
+) -> tuple[int, bytes, dict, str, dict]:
+    """Forward the request to the sentinel, supporting POST and GET."""
+    method = (method or "POST").upper()
+    url = f"{sentinel.rstrip('/')}/{service_path.lstrip('/')}"
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    final_headers = dict(headers)
+    qs = query_string or ""
+    if qs and qs.startswith("?"):
+        qs = qs[1:]
     if as_header:
-        headers["arkauth"] = arkauth
-        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        final_headers["arkauth"] = arkauth
     else:
-        url = f"{url}?arkauth={urllib.parse.quote(arkauth, safe='')}"
-        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        # Append arkauth to existing query, preserving any user-supplied params
+        qs_parts = []
+        if qs:
+            qs_parts.append(qs)
+        qs_parts.append(f"arkauth={urllib.parse.quote(arkauth, safe='')}")
+        url = f"{url}?{'&'.join(qs_parts)}" if qs_parts else url
+    # For GET we must not send a body or urllib will coerce to POST.
+    data_bytes = body if method != "GET" else None
+    req = urllib.request.Request(url, data=data_bytes, headers=final_headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status, r.read(), dict(r.getheaders())
+            return r.status, r.read(), dict(r.getheaders()), url, final_headers
     except urllib.error.HTTPError as e:
-        return e.code, e.read(), dict(e.headers)
+        return e.code, e.read(), dict(e.headers), url, final_headers
     except Exception as e:
-        return 502, json.dumps({"error": "proxy_upstream_error", "detail": str(e)}).encode(), {"Content-Type": "application/json"}
+        return (
+            502,
+            json.dumps({"error": "proxy_upstream_error", "detail": str(e)}).encode(),
+            {"Content-Type": "application/json"},
+            url,
+            final_headers,
+        )
 
 
 _TXHASH_RE = re.compile(r'(?i)\btxhash\b[:\s"]+([0-9A-Fa-f]{64})')
@@ -3155,6 +3245,7 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
         self.close_connection = True
 
     def do_GET(self):
+        # Special status endpoint for health of the listener itself
         if self.path.strip("/").split("?")[0] == "status":
             payload = {
                 "client_pub_local": getattr(self.server, "client_pubkey", ""),
@@ -3172,8 +3263,13 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
             except Exception:
                 payload["height"] = None
             return self._send_json(200, payload)
-        self.send_response(404)
-        self.end_headers()
+        # Forward GET requests through the same payg flow (needed for REST-style services/tests)
+        try:
+            return self._do_post_inner(method="GET")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self._log("error", f"unhandled proxy exception (GET): {e}\n{tb}")
+            return self._send_json(502, {"error": "proxy_exception", "detail": str(e)})
 
     def do_POST(self):
         try:
@@ -3199,21 +3295,39 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
             }
             return self._send_json(502, payload)
 
-    def _do_post_inner(self):
+    def _do_post_inner(self, method: str = "POST"):
         cfg = self.server.cfg
         node = cfg.get("node_rpc") or ARKEOD_NODE
         sentinel = cfg.get("provider_sentinel_api") or SENTINEL_URI_DEFAULT
         service = cfg.get("service_name") or cfg.get("service_slug") or cfg.get("service_id") or ""
         svc_id = _safe_int(cfg.get("service_id"), 0)
         client_key = cfg.get("client_key") or KEY_NAME
+        method = (method or "POST").upper()
+        parsed_path = urllib.parse.urlparse(self.path or "/")
+        incoming_path = parsed_path.path or "/"
+        service_path = service
+        orig_query = parsed_path.query or ""
+        if method == "GET":
+            # Preserve path after the service name for REST-style GETs
+            path_no_slash = incoming_path[1:] if incoming_path.startswith("/") else incoming_path
+            if service and path_no_slash.startswith(service):
+                remainder = path_no_slash[len(service):]
+                remainder = remainder[1:] if remainder.startswith("/") else remainder
+            else:
+                remainder = path_no_slash
+            if remainder:
+                service_path = f"{service}/{remainder}" if service else remainder
         try:
             length = _safe_int(self.headers.get("Content-Length", "0"))
         except Exception:
             length = 0
-        body = self.rfile.read(length) if length > 0 else b"{}"
+        if method == "GET":
+            body = b""
+        else:
+            body = self.rfile.read(length) if length > 0 else b"{}"
         response_time_sec = 0
         t_total_start = time.time()
-        self._log("info", f"req start service={service} svc_id={svc_id} provider_filter={cfg.get('provider_pubkey')} sentinel={sentinel} bytes={len(body)}")
+        self._log("info", f"req start service={service} svc_id={svc_id} bytes={len(body)} method={method}")
 
         # IP whitelist
         wl = _parse_whitelist(cfg.get("whitelist_ips") or PROXY_WHITELIST_IPS)
@@ -3278,13 +3392,14 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
             self._log("info", f"candidate {idx}/{len(candidates)} provider={provider_filter} sentinel={sentinel}")
 
             # cooldown check
-            now = time.time()
-            cool_until = cooldowns.get(provider_filter)
-            if cool_until and cool_until > now:
-                self._log("warning", f"candidate {idx} provider={provider_filter} on cooldown until {cool_until:.0f}; skipping")
-                last_err = "provider_cooldown"
-                last_meta = _build_arkeo_meta_clean(None, None, svc_id, service, provider_filter, client_pub, sentinel, 0)
-                continue
+            if method != "GET":
+                now = time.time()
+                cool_until = cooldowns.get(provider_filter)
+                if cool_until and cool_until > now:
+                    self._log("warning", f"candidate {idx} provider={provider_filter} on cooldown until {cool_until:.0f}; skipping")
+                    last_err = "provider_cooldown"
+                    last_meta = _build_arkeo_meta_clean(None, None, svc_id, service, provider_filter, client_pub, sentinel, 0)
+                    continue
 
             # ensure cache map exists
             if not hasattr(self.server, "contract_cache"):
@@ -3333,6 +3448,11 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                         return self._send_json(503, {"error": "contract_lookup_timeout"})
                     self._log("info", f"contracts fetched count={len(contracts) if isinstance(contracts,list) else 0}")
                 active = _select_active_contract(contracts or [], client_pub, svc_id, cur_h, provider_filter=provider_filter)
+                if active:
+                    try:
+                        self._log("info", f"using active contract id={active.get('id')} height={active.get('height')} provider={active.get('provider')}")
+                    except Exception:
+                        pass
 
             if not active and str(cfg.get("auto_create", PROXY_AUTO_CREATE)).lower() in ("1", "true", "yes", "on"):
                 self._log("info", f"no active contract -> attempting auto-create (provider={provider_filter})")
@@ -3450,26 +3570,56 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                 arkauth4 = f"{cid}:{contract_client}:{nonce_val}:{sig_hex_local}"
                 self._log("info", f"forwarding 4-part to sentinel={sentinel} svc={service} cid={cid} nonce={nonce_val} provider={provider_filter}")
                 forward_start_time = time.time()
-                code_local, resp_body_local, _ = _forward_to_sentinel(
+                code_local, resp_body_local, resp_hdrs_local, fwd_url_local, fwd_headers_local = _forward_to_sentinel(
                     sentinel,
-                    service,
+                    service_path,
                     body,
                     arkauth4,
                     timeout=_safe_int(cfg.get("timeout_secs", PROXY_TIMEOUT_SECS), PROXY_TIMEOUT_SECS),
                     as_header=bool(cfg.get("arkauth_as_header", PROXY_ARKAUTH_AS_HEADER)),
+                    method=method,
+                    query_string=orig_query,
                 )
+                try:
+                    body_preview = body.decode(errors="ignore")[:200] if isinstance(body, (bytes, bytearray)) else str(body)[:200]
+                    self._log(
+                        "info",
+                        f"sentinel request url={fwd_url_local} headers={json.dumps(fwd_headers_local)} body_preview={body_preview}",
+                    )
+                except Exception:
+                    pass
                 if code_local == 401:
                     self._log("warning", "401 on 4-part arkauth -> retrying 3-part")
                     arkauth3 = f"{cid}:{nonce_val}:{sig_hex_local}"
-                    code_local, resp_body_local, _ = _forward_to_sentinel(
+                    code_local, resp_body_local, resp_hdrs_local, fwd_url_local, fwd_headers_local = _forward_to_sentinel(
                         sentinel,
-                        service,
+                        service_path,
                         body,
                         arkauth3,
                         timeout=_safe_int(cfg.get("timeout_secs", PROXY_TIMEOUT_SECS), PROXY_TIMEOUT_SECS),
                         as_header=bool(cfg.get("arkauth_as_header", PROXY_ARKAUTH_AS_HEADER)),
+                        method=method,
+                        query_string=orig_query,
                     )
+                    try:
+                        body_preview = body.decode(errors="ignore")[:200] if isinstance(body, (bytes, bytearray)) else str(body)[:200]
+                        self._log(
+                            "info",
+                            f"sentinel request (3-part) url={fwd_url_local} headers={json.dumps(fwd_headers_local)} body_preview={body_preview}",
+                        )
+                    except Exception:
+                        pass
                 forward_ms = int((time.time() - forward_start_time) * 1000)
+                try:
+                    self.server.last_upstream = {
+                        "code": code_local,
+                        "body": resp_body_local.decode(errors="ignore") if isinstance(resp_body_local, (bytes, bytearray)) else str(resp_body_local),
+                        "url": fwd_url_local,
+                        "headers": fwd_headers_local,
+                        "method": method,
+                    }
+                except Exception:
+                    pass
                 return code_local, resp_body_local, sig_hex_local, sign_ms_local
 
             code, resp_body, sig_hex, sign_ms = _sign_and_forward(nonce)
@@ -3590,10 +3740,10 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                         _update_top_service_metrics(cfg.get("listener_id"), provider_filter, response_time_sec)
                 except Exception:
                     pass
-            if success:
-                self.server.active_contract = active
-                if hasattr(self.server, "active_contracts"):
-                    self.server.active_contracts[provider_filter] = active
+                if success:
+                    self.server.active_contract = active
+                    if hasattr(self.server, "active_contracts"):
+                        self.server.active_contracts[provider_filter] = active
                 try:
                     contract_cache[provider_filter] = {"contract": active, "cached_at": time.time(), "height_cached": _safe_int(active.get("height"))}
                 except Exception:
@@ -3605,6 +3755,17 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                     body_text = resp_body.decode() if isinstance(resp_body, (bytes, bytearray)) else str(resp_body)
                 except Exception:
                     body_text = ""
+
+                try:
+                    prev = getattr(self.server, "last_upstream", {}) if hasattr(self.server, "last_upstream") else {}
+                    merged_last = {"code": code, "body": body_text}
+                    if isinstance(prev, dict):
+                        for k in ("url", "headers", "method"):
+                            if k in prev:
+                                merged_last[k] = prev[k]
+                    self.server.last_upstream = merged_last
+                except Exception:
+                    pass
 
                 if decorate:
                     try:
@@ -3646,6 +3807,19 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                 pass
             last_err = f"upstream_status_{code}"
             last_meta = _build_arkeo_meta_clean(active, nonce, svc_id, service, provider_filter, contract_client, sentinel, 0)
+            try:
+                prev = getattr(self.server, "last_upstream", {}) if hasattr(self.server, "last_upstream") else {}
+                merged_last = {
+                    "code": code,
+                    "body": resp_body.decode(errors="ignore") if isinstance(resp_body, (bytes, bytearray)) else str(resp_body),
+                }
+                if isinstance(prev, dict):
+                    for k in ("url", "headers", "method"):
+                        if k in prev:
+                            merged_last[k] = prev[k]
+                self.server.last_upstream = merged_last
+            except Exception:
+                pass
             self._log("warning", f"upstream non-2xx code={code} provider={provider_filter} sentinel={sentinel}; trying next candidate")
             # optionally set short cooldown to avoid hammering a bad upstream
             if PROXY_OPEN_COOLDOWN > 0:
@@ -3660,6 +3834,16 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
             "X-Arkeo-Nonce": str(meta.get("nonce_request", "")),
             "X-Arkeo-Cost": meta.get("cost_request", ""),
         }
+        try:
+            prev = getattr(self.server, "last_upstream", {}) if hasattr(self.server, "last_upstream") else {}
+            merged_last = {"code": 503, "body": err}
+            if isinstance(prev, dict):
+                for k in ("url", "headers", "method"):
+                    if k in prev:
+                        merged_last[k] = prev[k]
+            self.server.last_upstream = merged_last
+        except Exception:
+            pass
         return self._send_json(503, {"arkeo": meta, "error": err}, extra_headers=headers)
 
 
@@ -3813,10 +3997,22 @@ def _test_payload_for_service(service_id, service_name):
     return evm_payload()
 
 
-def _test_listener_port(port: int, payload: bytes, headers: dict, timeout: float = 12.0) -> tuple[bool, str | None, str | None, dict]:
-    """Attempt a JSON-RPC POST against the listener; return headers too."""
-    url = f"http://127.0.0.1:{port}/"
-    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+def _test_listener_port(
+    port: int,
+    payload: bytes | None,
+    headers: dict,
+    timeout: float = 12.0,
+    method: str = "POST",
+    path: str = "/",
+) -> tuple[bool, str | None, str | None, dict]:
+    """Attempt an HTTP request against the listener; return headers too."""
+    method = (method or "POST").upper()
+    path = path or "/"
+    if not str(path).startswith("/"):
+        path = f"/{path}"
+    url = f"http://127.0.0.1:{port}{path}"
+    data_bytes = None if method == "GET" else payload
+    req = urllib.request.Request(url, data=data_bytes, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8", errors="replace")
@@ -4246,6 +4442,10 @@ def _sanitize_listener_payload(payload: dict, existing_ports: set[int], current_
     provider_pubkey = (payload.get("provider_pubkey") or "").strip()
     sentinel_url = (payload.get("sentinel_url") or "").strip()
     whitelist_ips = (payload.get("whitelist_ips") or "").strip()
+    health_method_raw = (payload.get("health_method") or payload.get("healthMethod") or "POST").strip().upper()
+    health_method = "GET" if health_method_raw == "GET" else "POST"
+    health_payload = (payload.get("health_payload") or payload.get("healthPayload") or "").strip()
+    health_header = (payload.get("health_header") or payload.get("healthHeader") or "").strip()
     port_val = payload.get("port")
     port: int | None = None
     if port_val not in (None, ""):
@@ -4265,6 +4465,9 @@ def _sanitize_listener_payload(payload: dict, existing_ports: set[int], current_
         "provider_pubkey": provider_pubkey,
         "sentinel_url": sentinel_url,
         "whitelist_ips": whitelist_ips,
+        "health_method": health_method,
+        "health_payload": health_payload,
+        "health_header": health_header,
     }, None
 
 
@@ -4314,6 +4517,9 @@ def create_listener():
         "service_id": clean.get("service_id") or "",
         "top_services": best,
         "whitelist_ips": clean.get("whitelist_ips") or "",
+        "health_method": clean.get("health_method") or "POST",
+        "health_payload": clean.get("health_payload") or "",
+        "health_header": clean.get("health_header") or "",
         "created_at": now,
         "updated_at": now,
     }
@@ -4382,6 +4588,9 @@ def update_listener(listener_id: str):
         if "provider_pubkey" in l:
             l.pop("provider_pubkey", None)
         l["whitelist_ips"] = clean.get("whitelist_ips") if clean.get("whitelist_ips") is not None else l.get("whitelist_ips", "")
+        l["health_method"] = clean.get("health_method") or l.get("health_method") or "POST"
+        l["health_payload"] = clean.get("health_payload") if clean.get("health_payload") is not None else l.get("health_payload", "")
+        l["health_header"] = clean.get("health_header") if clean.get("health_header") is not None else l.get("health_header", "")
         l["updated_at"] = _timestamp()
         updated = l
         break
@@ -4501,14 +4710,58 @@ def test_listener(listener_id: str):
         except Exception:
             return jsonify({"error": "invalid port"}), 400
 
-        payload_bytes, headers, label = _test_payload_for_service(target.get("service_id"), target.get("service_name"))
-        ok, resp, err, resp_headers = _test_listener_port(port, payload_bytes, headers)
+        # Build health check strictly from listener config
+        hm = (target.get("health_method") or "POST").upper()
+        hp = target.get("health_payload") or ""
+        hh = target.get("health_header") or ""
+        headers = {}
+        if hh:
+            headers["Content-Type"] = hh
+        payload_bytes = b""
+        label = ""
+        path = "/"
+        if hm == "GET":
+            # If payload is a full URL, use it directly; otherwise prefix with best-guess service name for sentinel routing.
+            if hp.startswith("http://") or hp.startswith("https://"):
+                path = hp.strip()
+            else:
+                svc_prefix = (
+                    target.get("service_name")
+                    or _service_slug_for_id(target.get("service_id"))
+                    or target.get("service_description")
+                    or target.get("service")
+                    or target.get("service_id")
+                    or ""
+                ).strip("/")
+                base_path = hp.strip().lstrip("/")
+                if svc_prefix:
+                    path = f"/{svc_prefix}/{base_path}" if base_path else f"/{svc_prefix}"
+                else:
+                    path = f"/{base_path}" if base_path else "/"
+            label = f"GET {path}"
+        else:
+            payload_bytes = hp.encode() if hp else b""
+            label = "custom health payload" if hp else "empty payload"
+            if not hh:
+                headers["Content-Type"] = "application/json"
+            path = "/"  # POSTs go to root; payload determines behavior
+        req_path = path if path else "/"
+        if not req_path.startswith("http://") and not req_path.startswith("https://"):
+            if not str(req_path).startswith("/"):
+                req_path = f"/{req_path}"
+            req_url = f"http://127.0.0.1:{port}{req_path}"
+        else:
+            req_url = req_path
+        ok, resp, err, resp_headers = _test_listener_port(port, payload_bytes if hm != "GET" else None, headers, method=hm, path=req_path)
         headers_cli = " ".join([f"-H '{k}: {v}'" for k, v in headers.items()])
-        cmd = (
-            "curl -X POST http://127.0.0.1:"
-            f"{port} {headers_cli} "
-            f"--data '{payload_bytes.decode()}'"
-        )
+        if hm == "GET":
+            cmd = f"curl -X GET http://127.0.0.1:{port}{path} {headers_cli}".strip()
+        else:
+            cmd = (
+                "curl -X POST http://127.0.0.1:"
+                f"{port}{path} {headers_cli} "
+                f"--data '{payload_bytes.decode()}'"
+            ).strip()
 
         provider_pk, sentinel_url, provider_moniker = _resolve_listener_target(target)
         sentinel_norm = _normalize_sentinel_url(sentinel_url or SENTINEL_URI_DEFAULT)
@@ -4537,8 +4790,8 @@ def test_listener(listener_id: str):
             "ok": ok,
             "port": port,
             "command": cmd,
-        "service_id": target.get("service_id"),
-        "service_name": target.get("service_name"),
+            "service_id": target.get("service_id"),
+            "service_name": target.get("service_name"),
         "provider_pubkey": provider_pk,
         "provider_moniker": provider_moniker,
         "sentinel_url": sentinel_norm,
@@ -4546,7 +4799,26 @@ def test_listener(listener_id: str):
             "response_headers": resp_headers or {},
             "candidate_sentinel": cand_sentinel,
             "candidate_provider": cand_provider,
+            "health_method": hm,
+            "health_header": hh,
+            "health_payload": hp,
+            "request_url": req_url,
+            "request_method": hm,
+            "request_headers": headers,
+            "request_body": hp if hm != "GET" else "",
         }
+        # show the upstream target we expect the sentinel to hit (best-effort)
+        health_url_example = None
+        if cand_sentinel:
+            if hm == "GET":
+                if hp.startswith("http://") or hp.startswith("https://"):
+                    health_url_example = hp
+                else:
+                    health_url_example = f"{cand_sentinel.rstrip('/')}/{hp.lstrip('/')}" if hp else cand_sentinel
+            else:
+                health_url_example = cand_sentinel
+        if health_url_example:
+            payload["health_url_example"] = health_url_example
 
         # Expose last proxy status if available
         srv_entry = _LISTENER_SERVERS.get(port)
@@ -4560,6 +4832,8 @@ def test_listener(listener_id: str):
             if isinstance(last_up, dict):
                 payload["last_upstream_code"] = last_up.get("code")
                 payload["last_upstream_body"] = last_up.get("body")
+                payload["last_upstream_url"] = last_up.get("url")
+                payload["last_upstream_headers"] = last_up.get("headers")
             last_cand = getattr(srv, "last_candidate", None)
             if isinstance(last_cand, dict):
                 payload["last_candidate_provider"] = last_cand.get("provider")

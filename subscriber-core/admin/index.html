@@ -279,6 +279,19 @@
             .replace(/'/g, "&#39;");
     }
 
+    function isTestOk(res, data) {
+        if (!res || !res.ok) return false;
+        if (!data || typeof data !== "object") return false;
+        if (data.error) return false;
+        const upCode = data.last_upstream_code;
+        if (upCode !== undefined && upCode !== null) {
+            const codeNum = Number(upCode);
+            if (Number.isFinite(codeNum) && codeNum >= 400) return false;
+        }
+        if (data.response && typeof data.response === "object" && data.response.error) return false;
+        return true;
+    }
+
     async function refreshHeader() {
         const fetchNoStore = (url) => fetch(url, { cache: "no-store" });
         const parseSafe = async (settled) => {
@@ -887,11 +900,11 @@
                             }
                         }
                         return `<tr>
-                            <td class="ts-col-num">${idx + 1}</td>
-                            <td class="ts-col-name">${escapeHtml(name)}${inactive ? " (Inactive)" : ""}</td>
-                            <td class="ts-col-rate">${escapeHtml(rate)}</td>
+                            <td class="ts-col-num"><span class="muted small" style="color:#fff; font-weight:700;">${idx + 1}</span></td>
+                            <td class="ts-col-name"><span class="muted small" style="color:#fff; font-weight:700;">${escapeHtml(name)}${inactive ? " (Inactive)" : ""}</span></td>
+                            <td class="ts-col-rate"><span class="muted small" style="color:#fff; font-weight:700;">${escapeHtml(rate)}</span></td>
                             <td class="ts-col-status">${statusDot}</td>
-                            <td class="ts-col-rt">${escapeHtml(rtDisplay)}</td>
+                            <td class="ts-col-rt"><span class="muted small" style="color:#fff; font-weight:700;">${escapeHtml(rtDisplay)}</span></td>
                             ${isEditing ? `<td class="ts-col-actions">${actions}</td>` : ""}
                         </tr>`;
                     }).join("") : `<tr><td colspan="6" class="muted small">No providers yet.</td></tr>`;
@@ -954,11 +967,11 @@
                                 }
                             }
                             return `<tr>
-                                <td class="ts-col-num">${idx + 1}</td>
-                                <td class="ts-col-name">${escapeHtml(name)}${inactive ? " (Inactive)" : ""}</td>
-                                <td class="ts-col-rate">${escapeHtml(rate)}</td>
+                                <td class="ts-col-num"><span class="muted small" style="color:#fff; font-weight:700;">${idx + 1}</span></td>
+                                <td class="ts-col-name"><span class="muted small" style="color:#fff; font-weight:700;">${escapeHtml(name)}${inactive ? " (Inactive)" : ""}</span></td>
+                                <td class="ts-col-rate"><span class="muted small" style="color:#fff; font-weight:700;">${escapeHtml(rate)}</span></td>
                                 <td class="ts-col-status">${statusDot}</td>
-                                <td class="ts-col-rt">${escapeHtml(rtDisplay)}</td>
+                                <td class="ts-col-rt"><span class="muted small" style="color:#fff; font-weight:700;">${escapeHtml(rtDisplay)}</span></td>
                             </tr>`;
                         }).join("");
                         const head = `<tr><th>#</th><th>Provider</th><th>Price</th><th>Status</th><th>Response Time</th></tr>`;
@@ -987,22 +1000,42 @@
                 </tr>
                 <tr class="listener-sub">
                     <td colspan="4">
-                        <div class="muted small" style="padding-bottom:4px;">Whitelist IPs:</div>
-                        <input id="editWhitelist-${l.id}" class="input" value="${l.whitelist_ips ? escapeHtml(l.whitelist_ips) : ""}" placeholder="0.0.0.0" />
-                    </td>
-                </tr>
-                <tr class="listener-sub">
-                    <td colspan="4">
-                        <div class="muted small">Endpoint:</div>
-                        <div class="muted endpoint-row">
-                            <span class="mono">${escapeHtml(endpointUrl)}</span>
-                            ${portSafe ? `<button class="copy-btn" onclick="copyListenerEndpoint('${escapeHtml(endpointUrl)}')">Copy</button>` : ""}
+                    <div class="muted small" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; align-items:start;">
+                        <div style="display:flex; flex-direction:column; gap:4px;">
+                            <div class="muted small">Endpoint:</div>
+                            <div class="muted"><span class="mono" style="color:#fff;"><strong>${escapeHtml(endpointUrl)}</strong></span> ${portSafe ? `<button class="copy-btn" onclick="copyListenerEndpoint('${escapeHtml(endpointUrl)}')">Copy</button>` : ""}</div>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:4px;">
+                            <div class="muted small">Whitelist IPs:</div>
+                            <div class="muted"><span class="mono" style="color:#fff;"><strong>${l.whitelist_ips ? escapeHtml(l.whitelist_ips) : "0.0.0.0 (all)"}</strong></span></div>
+                        </div>
+                    </div>
+                        <div class="muted small" style="margin-top:8px;">Polling Options</div>
+                        <div class="muted small" style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;">
+                            <label class="inline" style="gap:4px;">
+                                <select id="editHealthMethod-${l.id}" class="select" style="width:auto;">
+                                    <option value="POST" ${String(l.health_method || "POST").toUpperCase() === "POST" ? "selected" : ""}>POST</option>
+                                    <option value="GET" ${String(l.health_method || "POST").toUpperCase() === "GET" ? "selected" : ""}>GET</option>
+                                </select>
+                            </label>
+                            <label class="inline" style="gap:4px;">
+                                <select id="editHealthHeader-${l.id}" class="select" style="width:auto;">
+                                    <option value="">(no header)</option>
+                                    <option value="application/json" ${String(l.health_header || "application/json").toLowerCase() === "application/json" ? "selected" : ""}>Content-Type: application/json</option>
+                                    <option value="application/x-www-form-urlencoded" ${String(l.health_header || "").toLowerCase() === "application/x-www-form-urlencoded" ? "selected" : ""}>Content-Type: application/x-www-form-urlencoded</option>
+                                    <option value="text/plain" ${String(l.health_header || "").toLowerCase() === "text/plain" ? "selected" : ""}>Content-Type: text/plain</option>
+                                    <option value="application/octet-stream" ${String(l.health_header || "").toLowerCase() === "application/octet-stream" ? "selected" : ""}>Content-Type: application/octet-stream</option>
+                                </select>
+                            </label>
+                            <div style="flex:1; min-width:200px;">
+                                <textarea id="editHealthPayload-${l.id}" rows="2" class="full-input" placeholder="Payload for POST or URL/path for GET">${escapeHtml(l.health_payload || "")}</textarea>
+                            </div>
                         </div>
                     </td>
                 </tr>
                 <tr class="listener-sub">
                     <td colspan="4">
-                        <div class="muted small">Top services (sorted by lowest PAYG):</div>
+                        <div class="muted small">Top services:</div>
                         <div class="muted">${topServicesDisplay}</div>
                     </td>
                 </tr>
@@ -1025,17 +1058,26 @@
             </tr>
             <tr class="listener-sub">
                 <td colspan="4">
-                    <div class="muted small">Whitelist IPs:</div>
-                    <div class="muted">${whitelist}</div>
+                    <div class="muted small" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; align-items:start;">
+                        <div style="display:flex; flex-direction:column; gap:4px;">
+                            <div class="muted small">Endpoint:</div>
+                            <div class="muted"><span class="mono" style="color:#fff;"><strong>${escapeHtml(endpointUrl)}</strong></span> ${portSafe ? `<button class="copy-btn" onclick="copyListenerEndpoint('${escapeHtml(endpointUrl)}')">Copy</button>` : ""}</div>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:4px;">
+                            <div class="muted small">Whitelist IPs:</div>
+                            <div class="muted small"><span class="mono" style="color:#fff;"><strong>${whitelist}</strong></span></div>
+                        </div>
+                    </div>
                 </td>
             </tr>
             <tr class="listener-sub">
                 <td colspan="4">
-                    <div class="muted small">Endpoint:</div>
-                    <div class="muted endpoint-row">
-                        <span class="mono">${escapeHtml(endpointUrl)}</span>
-                        ${portSafe ? `<button class="copy-btn" onclick="copyListenerEndpoint('${escapeHtml(endpointUrl)}')">Copy</button>` : ""}
-                    </div>
+                    <div class="muted small" style="padding-bottom:4px;">Polling Options:</div>
+                    <div class="muted small"><span style="color:#fff;"><strong>
+                        Method: ${escapeHtml((l.health_method || "POST").toString().toUpperCase())}
+                        | Content-Type: ${escapeHtml(l.health_header || "(none)")}
+                        | Payload/URL: ${escapeHtml(l.health_payload || "(default)")}
+                    </strong></span></div>
                 </td>
             </tr>
             <tr class="listener-sub">
@@ -1069,7 +1111,13 @@
             alert("Please select a service type before adding a listener.");
             return;
         }
-        const body = { status: "active", whitelist_ips: "" };
+        const body = {
+            status: "active",
+            whitelist_ips: "",
+            health_method: "POST",
+            health_payload: "",
+            health_header: "application/json",
+        };
         if (svcId) body.service_id = svcId;
         try {
             const res = await fetch(apiUrl("/api/listeners"), {
@@ -1123,7 +1171,13 @@
         const status = document.getElementById(`editStatus-${id}`)?.value || "";
         const whitelist = document.getElementById(`editWhitelist-${id}`)?.value || "";
         const current = listenersCache.find((l) => String(l.id) === String(id));
-        const body = { status, whitelist_ips: whitelist };
+        const body = {
+            status,
+            whitelist_ips: whitelist,
+            health_method: document.getElementById(`editHealthMethod-${id}`)?.value || "",
+            health_payload: document.getElementById(`editHealthPayload-${id}`)?.value || "",
+            health_header: document.getElementById(`editHealthHeader-${id}`)?.value || "",
+        };
         if (svcId) {
             body.service_id = svcId;
         } else if (current && current.service_id) {
@@ -1297,7 +1351,7 @@
         listenersCache.forEach((l) => fetchListenerLog(l.id, `log-${l.id}`));
     }
 
-    async function runListenerTests(id, runs, titlePrefix, refreshAfter = false) {
+    async function runListenerTests(id, runs = 1, titlePrefix, refreshAfter = false) {
         const listener = listenersCache.find((l) => String(l.id) === String(id));
         const port = listener && listener.port ? listener.port : "–";
         const svcLabel = listener
@@ -1337,7 +1391,7 @@
                 });
                 const data = await res.json().catch(() => ({}));
                 const cmd = data && data.command ? data.command : "";
-                const ok = res.ok && !(data && data.error && data.ok === false);
+                const ok = isTestOk(res, data);
                 const err = ok ? null : (data && (data.detail || data.error)) || res.statusText || res.status;
                 let resp = data && data.response;
                 let respPretty = resp || "(no data)";
@@ -1376,6 +1430,10 @@
                     nonceCached: data && data.nonce_cached,
                     nonceCacheKey: data && data.nonce_cache_key,
                     lastUpstreamBody: data && data.last_upstream_body,
+                    requestUrl: data && data.request_url,
+                    requestMethod: data && data.request_method,
+                    requestHeaders: data && data.request_headers,
+                    requestBody: data && data.request_body,
                 });
                 if (err) {
                     failures.push(i);
@@ -1391,11 +1449,15 @@
                 });
                 failures.push(i);
             }
-            summaryHtml = `<div class="muted small">Success: ${successes.length ? successes.join(", ") : "0"} | Failed: ${failures.length ? failures.join(", ") : "0"}</div>`;
-            const summaryEl = summaryContainer();
-            if (summaryEl) summaryEl.innerHTML = summaryHtml;
             const metaLines = [];
             const last = results[results.length - 1] || {};
+            if (last.health_method) metaLines.push(`Method: ${last.health_method}`);
+            if (last.health_header) metaLines.push(`Content-Type: ${last.health_header}`);
+            if (last.health_payload) metaLines.push(`Payload/URL: ${last.health_payload}`);
+            if (last.health_url_example) metaLines.push(`Target: ${last.health_url_example}`);
+            if (last.requestUrl) metaLines.push(`Request URL: ${last.requestUrl}`);
+            if (last.requestMethod) metaLines.push(`Request Method: ${last.requestMethod}`);
+            if (last.requestBody) metaLines.push(`Request Body: ${last.requestBody}`);
             const sentinelDisplay = last.candidateSentinel || last.lastCandSentinel || last.sentinel_target || last.sentinel;
             if (sentinelDisplay) {
                 metaLines.push(`Sentinel: ${sentinelDisplay}`);
@@ -1403,6 +1465,10 @@
             const providerDisplay = last.provider || last.candidateProvider || last.lastCandProvider;
             const providerMonDisplay = last.providerMon;
             if (providerDisplay) metaLines.push(`Provider: ${providerDisplay}${providerMonDisplay ? ` (${providerMonDisplay})` : ""}`);
+            if (last.health_method) metaLines.push(`Method: ${last.health_method}`);
+            if (last.health_header) metaLines.push(`Content-Type: ${last.health_header}`);
+            if (last.health_payload) metaLines.push(`Payload/URL: ${last.health_payload}`);
+            if (last.health_url_example) metaLines.push(`Target: ${last.health_url_example}`);
             if (last.serviceId || last.serviceName) {
                 metaLines.push(`Service: ${last.serviceName || ""}${last.serviceId ? ` [${last.serviceId}]` : ""}`);
             }
@@ -1423,6 +1489,12 @@
             }
             if (last.lastUpstreamBody) {
                 metaLines.push(`Upstream body: ${last.lastUpstreamBody}`);
+            }
+            if (last.last_upstream_url) {
+                metaLines.push(`Upstream URL: ${last.last_upstream_url}`);
+            }
+            if (last.last_upstream_headers) {
+                metaLines.push(`Upstream Headers: ${JSON.stringify(last.last_upstream_headers)}`);
             }
             if (last.activeContractId) {
                 metaLines.push(`Active contract: ${last.activeContractId}${last.activeContractHeight ? ` @height ${last.activeContractHeight}` : ""}`);
@@ -1447,6 +1519,7 @@
                 results[results.length - 1].err ? `Error: ${results[results.length - 1].err}` : `Response:\n${results[results.length - 1].respPretty}`
             ].filter(Boolean).join("\n");
             appendLog(block);
+            summaryHtml = `<div class="muted small">Success: ${successes.length ? successes.join(", ") : "0"} | Failed: ${failures.length ? failures.join(", ") : "0"}</div>`;
         }
         // Final summary update
         const summaryEl = summaryContainer();
@@ -1534,7 +1607,7 @@
     }
 
     async function testListener(id) {
-        await runListenerTests(id, 3, "Testing", true);
+        await runListenerTests(id, 1, "Testing", true);
     }
 
     async function pollListener(id) {
@@ -1604,8 +1677,8 @@
                 for (let i = 0; i < runs; i++) {
                     try {
                         const res = await fetch(apiUrl(`/api/listeners/${encodeURIComponent(id)}/test`), { method: "GET", cache: "no-store" });
-                        const ok = res.ok;
                         const data = await res.json().catch(() => ({}));
+                        const ok = isTestOk(res, data);
                         const err = !ok ? (data && (data.detail || data.error)) || res.statusText || res.status : "";
                         appendPollLog(`  Test ${i + 1}/${runs}: ${ok ? "OK" : `Error ${err}`}`);
                     } catch (e) {
@@ -1731,6 +1804,7 @@
             refreshServiceTypesForSelect(sel.id);
         }
     });
+
 </script>
 
 </body>

@@ -831,7 +831,11 @@ window.fetch = (url, options = {}) =>
 
     function applyPendingEdit() {
         if (!pendingEditService) return;
-        if (!servicesLoaded) return;
+        if (!servicesLoaded) {
+            const select = document.getElementById("bondService");
+            if (select) select.selectedIndex = 0;
+            return;
+        }
         const svc = pendingEditService;
         const select = document.getElementById("bondService");
         const svcId =
@@ -899,7 +903,13 @@ window.fetch = (url, options = {}) =>
     }
 
     function applyCachedProviderForm() {
-        if (!cachedProviderForm || editingExisting) return;
+        // If editing an existing service, keep the select as chosen by applyPendingEdit.
+        if (editingExisting) return;
+        if (!cachedProviderForm) {
+            const select = document.getElementById("bondService");
+            if (select) select.selectedIndex = 0;
+            return;
+        }
         const cf = cachedProviderForm;
         const setVal = (id, val) => {
             const el = document.getElementById(id);
@@ -931,12 +941,9 @@ window.fetch = (url, options = {}) =>
         if (cf.rpc_url) setVal("rpcUrl", cf.rpc_url);
         if (cf.rpc_user) setVal("rpcUser", cf.rpc_user);
         if (cf.rpc_pass) setVal("rpcPass", cf.rpc_pass);
-        if (cf.service && servicesLoaded) {
-            const select = document.getElementById("bondService");
-            setSelectFromCandidates(select, [cf.service]);
-        } else if (cf.service) {
-            cachedServiceChoice = cf.service;
-        }
+        // Always default to placeholder for new form; do not auto-select service from cached form.
+        const select = document.getElementById("bondService");
+        if (select) select.selectedIndex = 0;
     }
 
     function txSucceeded(tx) {

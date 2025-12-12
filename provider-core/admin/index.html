@@ -348,12 +348,13 @@ let earningsChartCache = {};
         if (headerPill) headerPill.style.display = "inline-block";
         try {
             const fetchNoStore = (url) => fetch(url, { cache: "no-store" });
-            const [provRes, keyRes, sentRes, sCfgRes, metaRes] = await Promise.allSettled([
+            const [provRes, keyRes, sentRes, sCfgRes, metaRes, settingsRes] = await Promise.allSettled([
                 fetchNoStore(resolveApi("/api/provider-info")),
                 fetchNoStore(resolveApi("/api/key")),
                 fetchNoStore(resolveApi("/api/sentinel-status")),
                 fetchNoStore(resolveApi("/api/sentinel-config")),
                 fetchNoStore(resolveApi("/api/sentinel-metadata?quiet=1")),
+                fetchNoStore(resolveApi("/api/provider-settings")),
             ]);
             const parseSafe = async (settled) => {
                 if (settled.status !== "fulfilled" || !settled.value) return { error: String(settled.reason || "request failed") };
@@ -372,6 +373,7 @@ let earningsChartCache = {};
             const sentinelStatus = await parseSafe(sentRes);
             const sentinelConfig = await parseSafe(sCfgRes);
             const meta = await parseSafe(metaRes);
+            const settings = await parseSafe(settingsRes);
             // cache sentinel config for service rendering
             lastSentinelConfig = sentinelConfig && !sentinelConfig.error ? sentinelConfig : null;
             // Provider summary at top
@@ -418,7 +420,7 @@ let earningsChartCache = {};
                 if (addrEl) addrEl.textContent = shortAddress || "(unavailable)";
                 headerAddrEl.dataset.fullAddress = bech32Address || "";
             }
-            renderEndpointPanel(sentinelConfig, prov, envMeta);
+            renderEndpointPanel(sentinelConfig, prov, envMeta, settings);
             debugEl.textContent = JSON.stringify(
                 {
                     provider_info: prov,
@@ -1317,7 +1319,7 @@ let earningsChartCache = {};
         return true;
     }
 
-    async function renderEndpointPanel(sCfg, provObj, envMeta) {
+    async function renderEndpointPanel(sCfg, provObj, envMeta, providerSettings) {
         const el = document.getElementById("endpointList");
         if (!el) return;
         const envLower = (sCfg && sCfg.env) || {};
@@ -1330,7 +1332,17 @@ let earningsChartCache = {};
         const pickMeta = (key) => meta[key] || meta[key.toUpperCase()] || meta[key.toLowerCase()] || "";
 
         const arkeodNode = pickEnv("ARKEOD_NODE") || pickMeta("ARKEOD_NODE");
-        const restApi = pickEnv("ARKEO_REST_API_PORT") || pickMeta("ARKEO_REST_API_PORT");
+        // Prefer PROVIDER_HUB_URI verbatim (do not force port changes)
+        const ps = (providerSettings && providerSettings.settings) || providerSettings || {};
+        const restApi =
+            envFile.PROVIDER_HUB_URI ||
+            envLower["provider_hub_uri"] ||
+            ps.PROVIDER_HUB_URI ||
+            envFile.ARKEO_REST_API_PORT ||
+            envLower["arkeo_rest_api_port"] ||
+            ps.ARKEO_REST_API_PORT ||
+            pickMeta("PROVIDER_HUB_URI") ||
+            pickMeta("ARKEO_REST_API_PORT");
         const sentinelNode = pickEnv("SENTINEL_NODE") || pickMeta("SENTINEL_NODE");
         const sentinelPort = pickEnv("SENTINEL_PORT") || pickMeta("SENTINEL_PORT") || "3636";
         const resolvedHost = extractHostFromValue(sentinelNode) || adminHost;
@@ -1356,7 +1368,7 @@ let earningsChartCache = {};
         el.innerHTML = [
             `<div class="endpoint-section-title"><h3>External Access</h3></div>`,
             makeRow("Arkeo Node", arkeodNode, "arkeod-status"),
-            makeRow("Arkeo RPC", restApi, "arkeorpc-status"),
+            makeRow("Arkeo Rest", restApi, "arkeorpc-status"),
             makeRow("Sentinel RPC (External)", sentinelExternalUrl, "sentinel-external-status"),
             `<div class="endpoint-section-title"><h3>Internal Access</h3></div>`,
             makeRow("Sentinel RPC (Internal)", sentinelInternalUrl, "internal-sentinel-status"),

@@ -119,6 +119,7 @@ ENV_EXPORT_KEYS = [
     "LOCATION",
     "PORT",
     "SOURCE_CHAIN",
+    "PROVIDER_HUB_URI",
     "ARKEO_REST_API_PORT",
     "EVENT_STREAM_HOST",
     "FREE_RATE_LIMIT",
@@ -264,8 +265,8 @@ def _auth_exempt(path: str) -> bool:
     }
     if path in exempt:
         return True
-    # Allow loopback callers for specific internal endpoints even when auth is enabled
-    if path in internal_exempt and _is_local_request():
+    # Allow specific internal endpoints regardless of auth (used by background jobs/cron)
+    if path in internal_exempt:
         return True
     return False
 
@@ -1456,6 +1457,7 @@ def _default_provider_settings() -> dict:
         "ARKEOD_HOME": _expand_tilde(os.getenv("ARKEOD_HOME") or DEFAULT_ARKEOD_HOME),
         "ARKEOD_NODE": _strip_quotes(os.getenv("ARKEOD_NODE") or os.getenv("EXTERNAL_ARKEOD_NODE") or DEFAULT_ARKEOD_NODE),
         "ARKEO_REST_API_PORT": os.getenv("ARKEO_REST_API_PORT") or DEFAULT_ARKEO_REST,
+        "PROVIDER_HUB_URI": os.getenv("PROVIDER_HUB_URI") or os.getenv("ARKEO_REST_API_PORT") or DEFAULT_ARKEO_REST,
         "SENTINEL_NODE": os.getenv("SENTINEL_NODE") or DEFAULT_SENTINEL_NODE,
         "SENTINEL_PORT": os.getenv("SENTINEL_PORT") or DEFAULT_SENTINEL_PORT,
         "ADMIN_PORT": os.getenv("ADMIN_PORT") or DEFAULT_ADMIN_PORT,
@@ -1476,7 +1478,8 @@ def _merge_provider_settings(overrides: dict | None = None) -> dict:
     # Normalize legacy PROVIDER_HUB_URI into ARKEO_REST_API_PORT and drop it
     if not merged.get("ARKEO_REST_API_PORT") and merged.get("PROVIDER_HUB_URI"):
         merged["ARKEO_REST_API_PORT"] = merged.get("PROVIDER_HUB_URI")
-    merged.pop("PROVIDER_HUB_URI", None)
+    # Keep PROVIDER_HUB_URI in sync with ARKEO_REST_API_PORT
+    merged["PROVIDER_HUB_URI"] = merged.get("ARKEO_REST_API_PORT")
     # Prefer ARKEOD_NODE; drop EXTERNAL_ARKEOD_NODE
     if merged.get("EXTERNAL_ARKEOD_NODE") and not merged.get("ARKEOD_NODE"):
         merged["ARKEOD_NODE"] = merged["EXTERNAL_ARKEOD_NODE"]
@@ -1508,6 +1511,7 @@ def _apply_provider_settings(settings: dict) -> None:
         "ARKEOD_HOME": ARKEOD_HOME,
         "ARKEOD_NODE": ARKEOD_NODE,
         "ARKEO_REST_API_PORT": settings.get("ARKEO_REST_API_PORT", ""),
+        "PROVIDER_HUB_URI": settings.get("PROVIDER_HUB_URI", settings.get("ARKEO_REST_API_PORT", "")),
         "SENTINEL_NODE": settings.get("SENTINEL_NODE", ""),
         "SENTINEL_PORT": settings.get("SENTINEL_PORT", ""),
         "ADMIN_PORT": settings.get("ADMIN_PORT", ""),
@@ -2048,7 +2052,8 @@ def sentinel_config():
     """Return sentinel-related env values and parsed sentinel.yaml if present."""
     env_data = {k.lower(): os.getenv(k) for k in ENV_EXPORT_KEYS}
     export_bundle = _load_export_bundle()
-    env_file = (export_bundle and export_bundle.get("env_file")) or _load_env_file(SENTINEL_ENV_PATH)
+    # Prefer the live sentinel.env on disk; fall back to any cached export bundle
+    env_file = _load_env_file(SENTINEL_ENV_PATH) or ((export_bundle and export_bundle.get("env_file")) or {})
     parsed, raw = _load_sentinel_config()
     return jsonify(
         {
@@ -2169,6 +2174,18 @@ def provider_settings_save():
 
     _apply_provider_settings(merged)
     _write_provider_settings_file(merged)
+    # Keep sentinel env in sync for REST API URI
+    try:
+        rest_val = merged.get("ARKEO_REST_API_PORT") or merged.get("PROVIDER_HUB_URI") or ""
+        env_file = _load_env_file(SENTINEL_ENV_PATH)
+        if rest_val:
+            env_file["PROVIDER_HUB_URI"] = rest_val
+            env_file["ARKEO_REST_API_PORT"] = rest_val
+        with open(SENTINEL_ENV_PATH, "w", encoding="utf-8") as f:
+            for k, v in env_file.items():
+                f.write(f"{k}={shlex.quote(str(v))}\n")
+    except Exception:
+        app.logger.warning("provider-settings-save: failed to sync PROVIDER_HUB_URI to sentinel env", exc_info=True)
 
     raw_pk, bech32_pk, pub_err = derive_pubkeys(
         merged.get("KEY_NAME") or KEY_NAME, merged.get("KEY_KEYRING_BACKEND") or KEYRING
@@ -2292,7 +2309,7 @@ def endpoint_checks():
     arkeod_node = pick("ARKEOD_NODE")
     arkeod_base = _normalize_base(arkeod_node)
 
-    rest_api = pick("ARKEO_REST_API_PORT")
+    rest_api = pick("PROVIDER_HUB_URI") or pick("ARKEO_REST_API_PORT")
     rest_base = _normalize_base(rest_api)
 
     admin_api_port = pick("ADMIN_API_PORT") or "9999"
@@ -2512,6 +2529,7 @@ def update_sentinel_config():
     _set_env("SENTINEL_NODE", settings_sentinel_node)
     _set_env("SENTINEL_PORT", settings_sentinel_port)
     _set_env("ARKEO_REST_API_PORT", settings_rest)
+    _set_env("PROVIDER_HUB_URI", settings_rest)
     _set_env("PORT", settings_sentinel_port)
     _set_env("SOURCE_CHAIN", settings_chain_id)
     # Sync from provider env vars if present (EXTERNAL_ARKEOD_NODE, ARKEO_REST_API_PORT, SENTINEL_NODE)
@@ -2693,6 +2711,7 @@ def provider_claims():
             break
 
         processed_this_iter = 0
+        app.logger.info("provider-claims: found %s pending claim(s) (iteration %s)", len(pending), iterations)
 
         for claim in pending:
             contract_id = claim.get("contract_id")
