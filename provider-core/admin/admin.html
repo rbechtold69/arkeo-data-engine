@@ -197,8 +197,22 @@
 </div>
 
 <script>
-    const DEFAULT_ADMIN_API_PORT = "9999";
-    const DEFAULT_ADMIN_UI_PORT = "8080";
+    const DEFAULT_ADMIN_API_PORT = (() => {
+        try {
+            const url = new URL(window.location.href);
+            return url.searchParams.get("api_port") || "9999";
+        } catch (e) {
+            return "9999";
+        }
+    })();
+    const DEFAULT_ADMIN_UI_PORT = (() => {
+        try {
+            const url = new URL(window.location.href);
+            return url.searchParams.get("ui_port") || "8080";
+        } catch (e) {
+            return "8080";
+        }
+    })();
     let adminHost = (window.location && window.location.hostname) || "localhost";
     let adminApiBase = buildBaseUrl(adminHost, DEFAULT_ADMIN_API_PORT);
     let providerSettingsCache = {};
@@ -228,6 +242,54 @@
     function resolveApi(path) {
         if (!path.startsWith("/")) path = `/${path}`;
         return `${adminApiBase}${path}`;
+    }
+
+    async function detectAdminApiBase() {
+        const tried = new Set();
+        let apiHostOverride = null;
+        let apiPortOverride = null;
+        try {
+            const u = new URL(window.location.href);
+            apiHostOverride = u.searchParams.get("api_host") || null;
+            apiPortOverride = u.searchParams.get("api_port") || null;
+        } catch (e) {}
+
+        // If api_port explicitly provided, honor it and stop.
+        if (apiPortOverride) {
+            adminApiBase = buildBaseUrl(apiHostOverride || adminHost, apiPortOverride);
+            return;
+        }
+
+        const candidatePorts = [
+            "9990",
+            DEFAULT_ADMIN_API_PORT,
+            "9999",
+        ].filter(Boolean);
+        for (const port of candidatePorts) {
+            const base = buildBaseUrl(apiHostOverride || adminHost, port);
+            if (tried.has(base)) continue;
+            tried.add(base);
+            try {
+                const res = await fetch(`${base}/api/ping`, { cache: "no-store" });
+                if (res.ok) {
+                    adminApiBase = base;
+                    return;
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+        // fallback: keep existing adminApiBase
+    }
+
+    async function fetchProviderSettingsWithFallback() {
+        await detectAdminApiBase();
+        try {
+            const res = await fetch(`${adminApiBase}/api/provider-settings`, { cache: "no-store" });
+            return res;
+        } catch (e) {
+            throw e;
+        }
     }
 
     function formatBalance(balanceObj) {
@@ -416,7 +478,7 @@
             setStatusMessage("Loading provider settings...", false);
         }
         try {
-            const res = await fetch(resolveApi("/api/provider-settings"), { cache: "no-store" });
+            const res = await fetchProviderSettingsWithFallback();
             const data = await res.json();
             if (!res.ok) {
                 throw new Error(data && data.error ? data.error : res.statusText);
@@ -435,7 +497,7 @@
             if (homeLabel) homeLabel.textContent = homeText ? `(${homeText})` : "";
             if (homeVal) homeVal.textContent = homeText || "(read-only)";
             setProviderInput("arkeodNode", providerSettingsCache.ARKEOD_NODE);
-            setProviderInput("arkeodRest", providerSettingsCache.ARKEO_REST_API_PORT || providerSettingsCache.PROVIDER_HUB_URI);
+            setProviderInput("arkeodRest", providerSettingsCache.ARKEO_REST_API_PORT);
             setProviderInput("sentinelNode", providerSettingsCache.SENTINEL_NODE);
             setProviderInput("sentinelPort", providerSettingsCache.SENTINEL_PORT);
             setProviderInput("adminPort", providerSettingsCache.ADMIN_PORT);
@@ -476,7 +538,6 @@
                 ARKEOD_HOME: providerSettingsCache.ARKEOD_HOME || "",
                 ARKEOD_NODE: normalizeRpc(document.getElementById("arkeodNode")?.value || ""),
                 ARKEO_REST_API_PORT: document.getElementById("arkeodRest")?.value || "",
-                PROVIDER_HUB_URI: document.getElementById("arkeodRest")?.value || "",
                 SENTINEL_NODE: document.getElementById("sentinelNode")?.value || "",
                 SENTINEL_PORT: document.getElementById("sentinelPort")?.value || "",
                 ADMIN_PORT: document.getElementById("adminPort")?.value || "",
@@ -549,10 +610,13 @@
             sessionStorage.removeItem("requireProviderSetup");
             showSetupRequiredModal();
         }
-        fetchAdminPasswordStatus(true);
-        loadAdminInfo();
-        loadProviderSettings();
-        setInterval(loadAdminInfo, 5000);
+        (async () => {
+            await detectAdminApiBase();
+            fetchAdminPasswordStatus(true);
+            loadAdminInfo();
+            loadProviderSettings();
+            setInterval(loadAdminInfo, 5000);
+        })();
     });
 </script>
 

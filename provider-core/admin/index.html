@@ -215,8 +215,22 @@
 </div>
 
 <script>
-    const DEFAULT_ADMIN_API_PORT = "9999";
-    const DEFAULT_ADMIN_UI_PORT = "8080";
+    const DEFAULT_ADMIN_API_PORT = (() => {
+        try {
+            const url = new URL(window.location.href);
+            return url.searchParams.get("api_port") || "9999";
+        } catch (e) {
+            return "9999";
+        }
+    })();
+    const DEFAULT_ADMIN_UI_PORT = (() => {
+        try {
+            const url = new URL(window.location.href);
+            return url.searchParams.get("ui_port") || "8080";
+        } catch (e) {
+            return "8080";
+        }
+    })();
     let adminHost = (window.location && window.location.hostname) || "localhost";
     let adminApiBase = buildBaseUrl(adminHost, DEFAULT_ADMIN_API_PORT);
 
@@ -224,6 +238,43 @@
         const proto = (window.location && window.location.protocol === "https:") ? "https:" : "http:";
         const cleaned = (host || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
         return `${proto}//${cleaned}${port ? `:${port}` : ""}`;
+    }
+
+    async function detectAdminApiBase() {
+        const tried = new Set();
+        const urlPort = (window.location && window.location.port) || null;
+        // Try explicit API host/port if passed in URL (?api_host=..&api_port=..)
+        let apiHostOverride = null;
+        let apiPortOverride = null;
+        try {
+            const u = new URL(window.location.href);
+            apiHostOverride = u.searchParams.get("api_host") || null;
+            apiPortOverride = u.searchParams.get("api_port") || null;
+        } catch (e) {}
+
+        const candidatePorts = [
+            apiPortOverride,
+            "9990",
+            DEFAULT_ADMIN_API_PORT,
+            urlPort,
+            "9999",
+        ].filter(Boolean);
+        for (const port of candidatePorts) {
+            const hostToUse = apiHostOverride || adminHost;
+            const base = buildBaseUrl(hostToUse, port);
+            if (tried.has(base)) continue;
+            tried.add(base);
+            try {
+                const res = await fetch(`${base}/api/ping`, { cache: "no-store" });
+                if (res.ok) {
+                    adminApiBase = base;
+                    return;
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+        // fallback: keep existing adminApiBase
     }
 
     async function refreshVitals() {
@@ -1332,16 +1383,11 @@ let earningsChartCache = {};
         const pickMeta = (key) => meta[key] || meta[key.toUpperCase()] || meta[key.toLowerCase()] || "";
 
         const arkeodNode = pickEnv("ARKEOD_NODE") || pickMeta("ARKEOD_NODE");
-        // Prefer PROVIDER_HUB_URI verbatim (do not force port changes)
         const ps = (providerSettings && providerSettings.settings) || providerSettings || {};
         const restApi =
-            envFile.PROVIDER_HUB_URI ||
-            envLower["provider_hub_uri"] ||
-            ps.PROVIDER_HUB_URI ||
             envFile.ARKEO_REST_API_PORT ||
             envLower["arkeo_rest_api_port"] ||
             ps.ARKEO_REST_API_PORT ||
-            pickMeta("PROVIDER_HUB_URI") ||
             pickMeta("ARKEO_REST_API_PORT");
         const sentinelNode = pickEnv("SENTINEL_NODE") || pickMeta("SENTINEL_NODE");
         const sentinelPort = pickEnv("SENTINEL_PORT") || pickMeta("SENTINEL_PORT") || "3636";
@@ -1455,6 +1501,7 @@ let earningsChartCache = {};
     }
 
     window.addEventListener('load', async () => {
+        await detectAdminApiBase();
         const ok = await ensureProviderSettingsExists();
         if (!ok) return;
         fetchAdminPasswordStatus(true);
