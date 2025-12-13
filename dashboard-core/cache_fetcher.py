@@ -71,6 +71,12 @@ def _write_status(payload: Dict[str, Any]) -> None:
 
 def mark_sync_start(started_at: str | None = None) -> None:
     ensure_cache_dir()
+    # Clear old metadata cache so each sync fetches fresh metadata
+    try:
+        if os.path.exists(METADATA_CACHE_PATH):
+            os.remove(METADATA_CACHE_PATH)
+    except OSError:
+        pass
     payload = {
         "in_progress": True,
         "started_at": started_at or timestamp(),

@@ -897,6 +897,13 @@ def fetch_once(commands: Dict[str, List[str]] | None = None, record_status: bool
         f"[cache] fetch_once start node={ARKEOD_NODE} rest_api={ARKEO_REST_API} allow_localhost={ALLOW_LOCALHOST_SENTINEL_URIS}",
         flush=True,
     )
+    # Always drop the metadata cache at the start so every cycle refreshes provider metadata
+    try:
+        if os.path.isfile(METADATA_CACHE_PATH):
+            os.remove(METADATA_CACHE_PATH)
+    except Exception:
+        pass
+
     commands = build_commands()
     start_ts = timestamp()
     if record_status:
