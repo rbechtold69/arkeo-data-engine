@@ -744,6 +744,10 @@ pre {
     flex-direction: column;
     gap: 0;
     position: relative;
+    user-select: none;
+}
+.hotwallet-card {
+    user-select: none;
 }
 .wallet-title {
     font-weight: 700;
@@ -755,6 +759,25 @@ pre {
     font-size: 13px;
     line-height: 1.4;
     word-break: break-all;
+}
+.wallet-meta .info-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 6px;
+    color: #dce7f5;
+    opacity: 0.8;
+    cursor: pointer;
+}
+.wallet-meta .info-icon svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    fill: none;
+}
+.wallet-meta .info-icon:hover {
+    opacity: 1;
+    cursor: pointer;
 }
 .wallet-submeta {
     color: #ffffff;
@@ -786,8 +809,8 @@ pre {
     color: #ffffff;
     line-height: 1.2;
     white-space: nowrap;
-    margin-top: 6px;
-    margin-bottom: 8px;
+    margin-top: 7px;
+    margin-bottom: 7px;
     margin-right: 4px;
 }
 .wallet-copy {

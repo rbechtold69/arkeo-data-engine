@@ -82,7 +82,10 @@
     <form id="subscriberSettingsForm" onsubmit="saveSubscriberSettings(event)">
     <table>
         <tr>
-            <td class="label">Subscriber Name</td>
+            <td class="label">
+                Subscriber Name
+                <div class="hint">Display name for this subscriber instance (for your reference).</div>
+            </td>
             <td class="value"><input type="text" id="subscriberName" placeholder="Arkeo Core Subscriber" autocomplete="on" /></td>
         </tr>
         <tr class="hidden">
@@ -94,7 +97,10 @@
             <td class="value"><div id="keyBackendValue" class="muted">(read-only)</div></td>
         </tr>
         <tr>
-            <td class="label">Chain ID</td>
+            <td class="label">
+                Chain ID
+                <div class="hint">Target Arkeo chain ID (e.g., arkeo-main-v1).</div>
+            </td>
             <td class="value"><input type="text" id="chainId" placeholder="arkeo-main-v1" /></td>
         </tr>
         <tr class="hidden">
@@ -102,15 +108,59 @@
             <td class="value"><div id="arkeodHomeValue" class="muted">(read-only)</div></td>
         </tr>
         <tr>
-            <td class="label">Arkeod Node (RPC)</td>
+            <td class="label">
+                Arkeo RPC
+                <div class="hint">RPC endpoint used for syncing and queries (tcp:// or http://).</div>
+            </td>
             <td class="value"><input type="text" id="arkeodNode" placeholder="tcp://127.0.0.1:26657" /></td>
         </tr>
         <tr>
-            <td class="label">Admin UI Port</td>
+            <td class="label">
+                Ethereum RPC
+                <div class="hint">Remote ETH RPC endpoint used for hot wallet balance/block checks.</div>
+            </td>
+            <td class="value"><input type="text" id="ethRpc" placeholder="http://127.0.0.1:8545" /></td>
+        </tr>
+        <tr>
+            <td class="label">
+                Osmosis RPC
+                <div class="hint">Remote Osmosis RPC endpoint used for hot wallet balance/block checks.</div>
+            </td>
+            <td class="value"><input type="text" id="osmoRpc" placeholder="http://127.0.0.1:26660" /></td>
+        </tr>
+        <tr>
+            <td class="label">
+                Arkeo Hot Wallet Mnemonic
+                <div class="hint">Current mnemonic is auto-saved. Paste a new one to delete and recreate the hotwallet.</div>
+            </td>
+            <td class="value"><textarea id="hotwalletMnemonic" rows="3"></textarea></td>
+        </tr>
+        <tr>
+            <td class="label">
+                Ethereum Hot Wallet Mnemonic
+                <div class="hint">Leave blank to auto-generate; stored in settings only. Paste to rotate the ETH hot wallet.</div>
+            </td>
+            <td class="value"><textarea id="ethMnemonic" rows="3" placeholder="Leave blank to auto-generate"></textarea></td>
+        </tr>
+        <tr>
+            <td class="label">
+                Osmosis Hot Wallet Mnemonic
+                <div class="hint">Leave blank to auto-generate; stored in settings only. Paste to rotate the OSMO hot wallet.</div>
+            </td>
+            <td class="value"><textarea id="osmoMnemonic" rows="3" placeholder="Leave blank to auto-generate"></textarea></td>
+        </tr>
+        <tr>
+            <td class="label">
+                Admin UI Port
+                <div class="hint">Port the web UI listens on (front-end).</div>
+            </td>
             <td class="value"><input type="text" id="adminPort" placeholder="8079" autocomplete="on" /></td>
         </tr>
         <tr>
-            <td class="label">Admin API Port</td>
+            <td class="label">
+                Admin API Port
+                <div class="hint">Port for the admin API server (backend).</div>
+            </td>
             <td class="value"><input type="text" id="adminApiPort" placeholder="9998" autocomplete="on" /></td>
         </tr>
         <tr>
@@ -131,13 +181,6 @@
                     <span>Allow localhost sentinel URIs</span>
                 </label>
             </td>
-        </tr>
-        <tr>
-            <td class="label">
-                Hotwallet Mnemonic
-                <div class="hint">Current mnemonic is auto-saved (settings + ~/.arkeo/*_mnemonic.txt). Paste a new one to delete and recreate the hotwallet.</div>
-            </td>
-            <td class="value"><textarea id="hotwalletMnemonic" rows="3"></textarea></td>
         </tr>
         <tr>
             <td class="label">
@@ -342,6 +385,12 @@
         CHAIN_ID: "arkeo-main-v1",
         ARKEOD_HOME: "/root/.arkeo",
         ARKEOD_NODE: "tcp://127.0.0.1:26657",
+        ETH_RPC: "",
+        OSMOSIS_RPC: "",
+        ETH_MNEMONIC: "",
+        ETH_ADDRESS: "",
+        OSMOSIS_MNEMONIC: "",
+        OSMOSIS_ADDRESS: "",
         ADMIN_PORT: "8079",
         ADMIN_API_PORT: "9998",
         CACHE_FETCH_INTERVAL: "150",
@@ -390,6 +439,10 @@
             if (homeLabel) homeLabel.textContent = homeText ? `(${homeText})` : "";
             if (homeVal) homeVal.textContent = homeText || "(read-only)";
             setInputWithDefault("arkeodNode", subscriberSettingsCache.ARKEOD_NODE, "ARKEOD_NODE");
+            setInputWithDefault("ethRpc", subscriberSettingsCache.ETH_RPC, "ETH_RPC");
+            setInputWithDefault("osmoRpc", subscriberSettingsCache.OSMOSIS_RPC, "OSMOSIS_RPC");
+            setSubscriberInput("ethMnemonic", subscriberSettingsCache.ETH_MNEMONIC);
+            setSubscriberInput("osmoMnemonic", subscriberSettingsCache.OSMOSIS_MNEMONIC);
             setInputWithDefault("adminPort", subscriberSettingsCache.ADMIN_PORT, "ADMIN_PORT");
             setInputWithDefault("adminApiPort", subscriberSettingsCache.ADMIN_API_PORT, "ADMIN_API_PORT");
             setInputWithDefault("cacheFetchInterval", subscriberSettingsCache.CACHE_FETCH_INTERVAL, "CACHE_FETCH_INTERVAL");
@@ -433,6 +486,10 @@
                 CHAIN_ID: document.getElementById("chainId")?.value || DEFAULTS.CHAIN_ID,
                 ARKEOD_HOME: subscriberSettingsCache.ARKEOD_HOME || DEFAULTS.ARKEOD_HOME,
                 ARKEOD_NODE: normalizeRpc(document.getElementById("arkeodNode")?.value || DEFAULTS.ARKEOD_NODE),
+                ETH_RPC: document.getElementById("ethRpc")?.value || DEFAULTS.ETH_RPC,
+                OSMOSIS_RPC: document.getElementById("osmoRpc")?.value || DEFAULTS.OSMOSIS_RPC,
+                ETH_MNEMONIC: document.getElementById("ethMnemonic")?.value || subscriberSettingsCache.ETH_MNEMONIC || "",
+                OSMOSIS_MNEMONIC: document.getElementById("osmoMnemonic")?.value || subscriberSettingsCache.OSMOSIS_MNEMONIC || "",
                 ADMIN_PORT: document.getElementById("adminPort")?.value || DEFAULTS.ADMIN_PORT,
                 ADMIN_API_PORT: document.getElementById("adminApiPort")?.value || DEFAULTS.ADMIN_API_PORT,
                 CACHE_FETCH_INTERVAL: document.getElementById("cacheFetchInterval")?.value || DEFAULTS.CACHE_FETCH_INTERVAL,

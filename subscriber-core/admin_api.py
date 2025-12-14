@@ -3,6 +3,7 @@ import base64
 import binascii
 import json
 import os
+import shutil
 from pathlib import Path
 import secrets
 import re
@@ -234,10 +235,6 @@ def _build_sentinel_uri() -> str:
     host = os.getenv("SENTINEL_BIND_HOST") or "127.0.0.1"
     return f"http://{host}:{port}/metadata.json"
 
-ARKEOD_HOME = os.path.expanduser(os.getenv("ARKEOD_HOME", "/root/.arkeo"))
-KEY_NAME = os.getenv("KEY_NAME", "subscriber")
-KEYRING = os.getenv("KEY_KEYRING_BACKEND", "test")
-KEY_MNEMONIC = os.getenv("KEY_MNEMONIC", "")
 def _strip_quotes(val: str | None) -> str:
     if not val:
         return ""
@@ -246,11 +243,35 @@ def _strip_quotes(val: str | None) -> str:
         val = val[1:-1]
     return val
 
+def _pick_executable(name: str, candidates: list[str]) -> str | None:
+    """Return the first existing executable for name or candidates."""
+    found = shutil.which(name)
+    if found and os.path.isfile(found):
+        return found
+    for cand in candidates:
+        if cand and os.path.isfile(cand):
+            return cand
+    return None
+
+
+CAST_BIN = _pick_executable("cast", ["/usr/local/bin/cast", "/root/.foundry/bin/cast"])
+OSMOSISD_BIN = _pick_executable("osmosisd", ["/usr/local/bin/osmosisd"])
+_CAST_LOGGED = False
+ARKEOD_HOME = os.path.expanduser(os.getenv("ARKEOD_HOME", "/root/.arkeo"))
+KEY_NAME = os.getenv("KEY_NAME", "subscriber")
+KEYRING = os.getenv("KEY_KEYRING_BACKEND", "test")
+KEY_MNEMONIC = os.getenv("KEY_MNEMONIC", "")
 ARKEOD_NODE = _strip_quotes(
     os.getenv("ARKEOD_NODE")
     or os.getenv("EXTERNAL_ARKEOD_NODE")
     or "tcp://127.0.0.1:26657"
 )
+ETH_RPC = _strip_quotes(os.getenv("ETH_RPC") or "")
+ETH_USDC_CONTRACT = _strip_quotes(os.getenv("ETH_USDC_CONTRACT") or "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")  # default to mainnet USDC
+ETH_USDC_DECIMALS = int(os.getenv("ETH_USDC_DECIMALS", "6"))
+OSMOSIS_RPC = _strip_quotes(os.getenv("OSMOSIS_RPC") or "")
+OSMOSIS_HOME = os.path.expanduser(os.getenv("OSMOSIS_HOME", "/app/config/osmosis"))
+OSMOSIS_KEY_NAME = os.getenv("OSMOSIS_KEY_NAME", "osmo-subscriber")
 CHAIN_ID = _strip_quotes(os.getenv("CHAIN_ID") or os.getenv("ARKEOD_CHAIN_ID") or "")
 NODE_ARGS = ["--node", ARKEOD_NODE] if ARKEOD_NODE else []
 CHAIN_ARGS = ["--chain-id", CHAIN_ID] if CHAIN_ID else []
@@ -501,6 +522,14 @@ def _default_subscriber_settings() -> dict:
         "ADMIN_PORT": os.getenv("ADMIN_PORT") or os.getenv("ENV_ADMIN_PORT") or "8079",
         "ADMIN_API_PORT": os.getenv("ADMIN_API_PORT") or str(API_PORT),
         "ALLOW_LOCALHOST_SENTINEL_URIS": os.getenv("ALLOW_LOCALHOST_SENTINEL_URIS") or "0",
+        "ETH_RPC": _strip_quotes(os.getenv("ETH_RPC") or ""),
+        "ETH_USDC_CONTRACT": _strip_quotes(os.getenv("ETH_USDC_CONTRACT") or "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"),
+        "ETH_USDC_DECIMALS": int(os.getenv("ETH_USDC_DECIMALS", "6")),
+        "OSMOSIS_RPC": _strip_quotes(os.getenv("OSMOSIS_RPC") or ""),
+        "ETH_MNEMONIC": "",
+        "ETH_ADDRESS": "",
+        "OSMOSIS_MNEMONIC": "",
+        "OSMOSIS_ADDRESS": "",
     }
     return defaults
 
@@ -558,7 +587,7 @@ def _merge_subscriber_settings(overrides: dict | None = None) -> dict:
 
 def _apply_subscriber_settings(settings: dict) -> None:
     """Apply subscriber settings to globals and os.environ for runtime use."""
-    global KEY_NAME, KEYRING, ARKEOD_HOME, ARKEOD_NODE, CHAIN_ID, NODE_ARGS, CHAIN_ARGS, KEY_MNEMONIC
+    global KEY_NAME, KEYRING, ARKEOD_HOME, ARKEOD_NODE, CHAIN_ID, NODE_ARGS, CHAIN_ARGS, KEY_MNEMONIC, ETH_RPC, ETH_USDC_CONTRACT, ETH_USDC_DECIMALS, OSMOSIS_RPC
     if not isinstance(settings, dict):
         return
     KEY_NAME = settings.get("KEY_NAME", KEY_NAME)
@@ -571,6 +600,13 @@ def _apply_subscriber_settings(settings: dict) -> None:
     NODE_ARGS = ["--node", ARKEOD_NODE] if ARKEOD_NODE else []
     CHAIN_ARGS = ["--chain-id", CHAIN_ID] if CHAIN_ID else []
     rest_api_val = settings.get("ARKEO_REST_API") or ""
+    ETH_RPC = _strip_quotes(settings.get("ETH_RPC") or ETH_RPC or "")
+    ETH_USDC_CONTRACT = _strip_quotes(settings.get("ETH_USDC_CONTRACT") or ETH_USDC_CONTRACT or "")
+    try:
+        ETH_USDC_DECIMALS = int(settings.get("ETH_USDC_DECIMALS") or ETH_USDC_DECIMALS or 6)
+    except Exception:
+        ETH_USDC_DECIMALS = 6
+    OSMOSIS_RPC = _strip_quotes(settings.get("OSMOSIS_RPC") or OSMOSIS_RPC or "")
 
     env_overrides = {
         "SUBSCRIBER_NAME": settings.get("SUBSCRIBER_NAME", ""),
@@ -584,6 +620,14 @@ def _apply_subscriber_settings(settings: dict) -> None:
         "ADMIN_PORT": settings.get("ADMIN_PORT", ""),
         "ADMIN_API_PORT": settings.get("ADMIN_API_PORT", ""),
         "ALLOW_LOCALHOST_SENTINEL_URIS": settings.get("ALLOW_LOCALHOST_SENTINEL_URIS", ""),
+        "ETH_RPC": settings.get("ETH_RPC", ""),
+        "ETH_USDC_CONTRACT": settings.get("ETH_USDC_CONTRACT", ""),
+        "ETH_USDC_DECIMALS": settings.get("ETH_USDC_DECIMALS", ""),
+        "OSMOSIS_RPC": settings.get("OSMOSIS_RPC", ""),
+        "ETH_MNEMONIC": settings.get("ETH_MNEMONIC", ""),
+        "ETH_ADDRESS": settings.get("ETH_ADDRESS", ""),
+        "OSMOSIS_MNEMONIC": settings.get("OSMOSIS_MNEMONIC", ""),
+        "OSMOSIS_ADDRESS": settings.get("OSMOSIS_ADDRESS", ""),
     }
     for k, v in env_overrides.items():
         if v is None:
@@ -599,23 +643,67 @@ def _mnemonic_file_path(settings: dict | None = None) -> str:
 
 
 def _extract_mnemonic(text: str) -> str:
-    """Best-effort extraction of a 12-24 word mnemonic from text."""
+    """Best-effort extraction of a 12-24 word mnemonic from text, preferring the last match."""
     if not text:
         return ""
-    text_lower = text.lower()
-    candidates: list[tuple[int, int, str]] = []
-    for idx, line in enumerate(text_lower.splitlines()):
+    best = ""
+    # Scan lines in order; keep the last 12-24 word sequence
+    for line in text.splitlines():
         words = [w for w in line.strip().split() if w.isalpha()]
         if 12 <= len(words) <= 24:
-            candidates.append((len(words), idx, " ".join(words)))
-    for match_idx, m in enumerate(re.finditer(r"([a-z]+(?: [a-z]+){11,23})", text_lower)):
-        phrase = m.group(1)
-        word_count = len(phrase.split())
-        candidates.append((word_count, 10000 + match_idx, phrase))
-    if not candidates:
-        return ""
-    candidates.sort(key=lambda t: (t[0], t[1]))
-    return candidates[-1][2]
+            best = " ".join(words)
+    # Regex across the whole text, keep last match
+    for m in re.finditer(r"([a-zA-Z]+(?: [a-zA-Z]+){11,23})", text):
+        phrase = m.group(1).strip()
+        wc = len([w for w in phrase.split() if w.isalpha()])
+        if 12 <= wc <= 24:
+            best = phrase
+    return best.strip()
+
+
+def _mask_mnemonic(mn: str) -> str:
+    """Mask mnemonic for logs (keep first 2 and last word)."""
+    words = mn.strip().split()
+    if len(words) <= 3:
+        return "***"
+    return " ".join(words[:2] + ["..."] + words[-1:])
+
+
+def _arkeo_key_exists(settings: dict) -> bool:
+    """Return True if the Arkeo key already exists in the keyring."""
+    key_name = settings.get("KEY_NAME") or KEY_NAME
+    keyring = settings.get("KEY_KEYRING_BACKEND") or KEYRING
+    home = _expand_tilde(settings.get("ARKEOD_HOME") or ARKEOD_HOME)
+    cmd = ["arkeod", "--home", home, "--keyring-backend", keyring, "keys", "show", key_name]
+    code, _out = run_list(cmd)
+    return code == 0
+
+
+def _ensure_arkeo_mnemonic(settings: dict) -> tuple[dict, bool]:
+    """
+    Ensure KEY_MNEMONIC is populated if possible.
+    Returns (settings, changed).
+    """
+    changed = False
+    key_name = settings.get("KEY_NAME") or KEY_NAME
+    keyring = settings.get("KEY_KEYRING_BACKEND") or KEYRING
+    home = _expand_tilde(settings.get("ARKEOD_HOME") or ARKEOD_HOME)
+    if settings.get("KEY_MNEMONIC"):
+        return settings, False
+
+    if not _arkeo_key_exists(settings):
+        code, out, mn = _create_hotwallet(key_name, keyring, home)
+        if code == 0 and mn:
+            settings["KEY_MNEMONIC"] = mn
+            print(f"[boot] Arkeo wallet created and mnemonic captured (masked={_mask_mnemonic(mn)})")
+            changed = True
+        else:
+            print(f"[boot] failed to create Arkeo wallet for mnemonic capture: exit={code} out={out}")
+        return settings, changed
+
+    # Key exists but no mnemonic available; cannot recover without user-provided mnemonic
+    print("[boot] Arkeo key exists but KEY_MNEMONIC is empty; cannot recover mnemonic from keyring")
+    return settings, False
 
 
 def _read_hotwallet_mnemonic(settings: dict | None = None) -> tuple[str, str]:
@@ -638,16 +726,8 @@ def _read_hotwallet_mnemonic(settings: dict | None = None) -> tuple[str, str]:
 
 
 def _write_hotwallet_mnemonic(settings: dict, mnemonic: str) -> None:
-    """Write mnemonic to the default file for later retrieval."""
-    path = _mnemonic_file_path(settings)
-    if not path or not mnemonic:
-        return
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(mnemonic.strip() + "\n")
-    except OSError:
-        pass
+    """No-op: mnemonics are persisted only in subscriber-settings.json."""
+    return
 
 
 def _delete_hotwallet(key_name: str, keyring_backend: str, home: str) -> tuple[int, str]:
@@ -685,6 +765,188 @@ def _import_hotwallet_from_mnemonic(
     return run_with_input(cmd, mnemonic.strip() + "\n")
 
 
+def _ensure_eth_wallet(settings: dict) -> tuple[dict, str | None]:
+    """Ensure ETH mnemonic/address exist in settings; returns (settings, error)."""
+    global _CAST_LOGGED
+    if not isinstance(settings, dict):
+        return settings, "invalid settings"
+    if not CAST_BIN or not os.path.isfile(CAST_BIN):
+        err = f"cast binary not found (looked for {CAST_BIN or 'cast'})"
+        print(err)
+        return settings, err
+    if not _CAST_LOGGED:
+        print(f"[eth] using cast binary at {CAST_BIN}")
+        _CAST_LOGGED = True
+    mnemonic = settings.get("ETH_MNEMONIC") or ""
+    address = settings.get("ETH_ADDRESS") or ""
+
+    def derive_addr(mn: str) -> tuple[str | None, str | None]:
+        try:
+            cmd = [
+                CAST_BIN,
+                "wallet",
+                "address",
+                "--mnemonic",
+                mn,
+            ]
+            code, out = run_list(cmd)
+            if code == 0 and out:
+                lines = [l.strip() for l in out.splitlines() if l.strip()]
+                addr = None
+                for line in lines:
+                    m = re.search(r"0x[a-fA-F0-9]{40}", line)
+                    if m:
+                        addr = m.group(0)
+                        break
+                if not addr and lines:
+                    addr = lines[-1]
+                if addr:
+                    print(f"[eth] derived address from mnemonic: {addr}")
+                    return addr, None
+            return None, f"addr derive exit={code}: {out}"
+        except Exception as e:
+            return None, str(e)
+
+    # If mnemonic exists but no address, derive it
+    if mnemonic and not address:
+        print(f"[eth] mnemonic present, deriving address (masked={_mask_mnemonic(mnemonic)})")
+        addr, derr = derive_addr(mnemonic)
+        if addr:
+            settings["ETH_ADDRESS"] = addr
+            return settings, None
+        if derr:
+            err = f"failed to derive eth address: {derr}"
+            print(err)
+            # If we cannot derive and have no address, attempt regeneration
+            mnemonic = ""
+            settings["ETH_MNEMONIC"] = ""
+
+    # If both present, done
+    if mnemonic and address:
+        print(f"[eth] mnemonic/address already present; skipping generation")
+        return settings, None
+
+    # Generate mnemonic if missing
+    try:
+        code, out = run_list([CAST_BIN, "wallet", "new-mnemonic", "--words", "24"])
+        if code != 0 or not out:
+            err = f"failed to generate eth mnemonic: {out}"
+            print(err)
+            return settings, err
+        mnemonic_new = _extract_mnemonic(out.strip())
+        if len(mnemonic_new.split()) < 12:
+            err = f"unexpected mnemonic format: {out}"
+            print(err)
+            return settings, err
+        print(f"[eth] generated mnemonic (masked={_mask_mnemonic(mnemonic_new)})")
+        settings["ETH_MNEMONIC"] = mnemonic_new
+        addr, derr = derive_addr(mnemonic_new)
+        if addr:
+            settings["ETH_ADDRESS"] = addr
+            return settings, None
+        err = f"failed to derive eth address after mnemonic gen: {derr}"
+        print(err)
+        return settings, err
+    except Exception as e:
+        err = f"failed to generate eth wallet: {e}"
+        print(err)
+        return settings, err
+
+
+def _ensure_osmo_wallet(settings: dict) -> tuple[dict, str | None]:
+    """Ensure Osmosis mnemonic/address exist in settings using osmosisd keyring-backend test."""
+    if not isinstance(settings, dict):
+        return settings, "invalid settings"
+    if not OSMOSISD_BIN or not os.path.isfile(OSMOSISD_BIN):
+        err = f"osmosisd binary not found (looked for {OSMOSISD_BIN or 'osmosisd'})"
+        print(err)
+        return settings, err
+    mnemonic = settings.get("OSMOSIS_MNEMONIC") or ""
+    address = settings.get("OSMOSIS_ADDRESS") or ""
+    key_name = settings.get("OSMOSIS_KEY_NAME") or OSMOSIS_KEY_NAME
+    home = settings.get("OSMOSIS_HOME") or OSMOSIS_HOME
+    os.makedirs(home, exist_ok=True)
+
+    def _derive_address_with_mnemonic(mn: str) -> tuple[str | None, str | None]:
+        try:
+            cmd = [
+                OSMOSISD_BIN,
+                "keys",
+                "add",
+                key_name,
+                "--keyring-backend",
+                "test",
+                "--home",
+                home,
+                "--recover",
+                "--output",
+                "json",
+            ]
+            code, out = run_with_input(cmd, mn.strip() + "\n")
+            if code != 0:
+                return None, out
+            data = json.loads(out)
+            return data.get("address"), None
+        except Exception as e:
+            return None, str(e)
+
+    # If mnemonic exists but no address, try to recover to derive address
+    if mnemonic and not address:
+        addr, err = _derive_address_with_mnemonic(mnemonic)
+        if addr:
+            settings["OSMOSIS_ADDRESS"] = addr
+            return settings, None
+        if err:
+            err_msg = f"failed to derive osmosis address: {err}"
+            print(err_msg)
+            return settings, err_msg
+    # If both present, done
+    if mnemonic and address:
+        return settings, None
+    # Try to add new key to get mnemonic and address
+    try:
+        cmd = [
+            OSMOSISD_BIN,
+            "keys",
+            "add",
+            key_name,
+            "--keyring-backend",
+            "test",
+            "--home",
+            home,
+            "--output",
+            "json",
+        ]
+        code, out = run_list(cmd)
+        if code != 0:
+            # If key exists, try show
+            if "exists" in (out or "").lower():
+                code_show, out_show = run_list(
+                    [OSMOSISD_BIN, "keys", "show", key_name, "--keyring-backend", "test", "--home", home, "--output", "json"]
+                )
+                if code_show == 0:
+                    data_show = json.loads(out_show)
+                    addr_show = data_show.get("address")
+                    if addr_show:
+                        settings["OSMOSIS_ADDRESS"] = addr_show
+                        if not mnemonic:
+                            settings["OSMOSIS_MNEMONIC"] = ""
+                        return settings, None
+            err = f"failed to create osmosis wallet: {out}"
+            print(err)
+            return settings, err
+        data = json.loads(out)
+        if data.get("mnemonic"):
+            settings["OSMOSIS_MNEMONIC"] = data.get("mnemonic")
+        if data.get("address"):
+            settings["OSMOSIS_ADDRESS"] = data.get("address")
+        return settings, None
+    except Exception as e:
+        err = f"failed to create osmosis wallet: {e}"
+        print(err)
+        return settings, err
+
+
 def _create_hotwallet(
     key_name: str, keyring_backend: str, home: str
 ) -> tuple[int, str, str]:
@@ -708,6 +970,50 @@ def _create_hotwallet(
 
 # Apply persisted subscriber settings at import time (if present)
 _apply_subscriber_settings(_merge_subscriber_settings())
+
+
+def _bootstrap_wallets():
+    """Ensure ETH/OSMO wallets are generated at startup if missing."""
+    try:
+        settings = _merge_subscriber_settings()
+        changed = False
+        # Ensure Arkeo mnemonic is captured when possible
+        settings, arkeo_changed = _ensure_arkeo_mnemonic(settings)
+        changed = changed or arkeo_changed
+        before_eth_mn = settings.get("ETH_MNEMONIC")
+        before_eth_addr = settings.get("ETH_ADDRESS")
+        before_osmo_mn = settings.get("OSMOSIS_MNEMONIC")
+        before_osmo_addr = settings.get("OSMOSIS_ADDRESS")
+        # ETH
+        settings, eth_err = _ensure_eth_wallet(settings)
+        if not eth_err and settings.get("ETH_MNEMONIC") and settings.get("ETH_ADDRESS"):
+            changed = True
+            print("[boot] ETH wallet ensured (mnemonic+address present)")
+        elif eth_err:
+            print(f"[boot] ETH wallet init error: {eth_err}")
+        # OSMO
+        settings, osmo_err = _ensure_osmo_wallet(settings)
+        if not osmo_err and settings.get("OSMOSIS_MNEMONIC") and settings.get("OSMOSIS_ADDRESS"):
+            changed = True
+            print("[boot] Osmosis wallet ensured (mnemonic+address present)")
+        elif osmo_err:
+            print(f"[boot] Osmosis wallet init error: {osmo_err}")
+        # strip transient errors before persisting
+        settings.pop("ETH_ERROR", None)
+        settings.pop("OSMOSIS_ERROR", None)
+        if (
+            changed
+            or settings.get("ETH_MNEMONIC") != before_eth_mn
+            or settings.get("ETH_ADDRESS") != before_eth_addr
+            or settings.get("OSMOSIS_MNEMONIC") != before_osmo_mn
+            or settings.get("OSMOSIS_ADDRESS") != before_osmo_addr
+        ):
+            _write_subscriber_settings_file(settings)
+    except Exception as e:
+        print(f"[boot] wallet bootstrap failed: {e}")
+
+
+_bootstrap_wallets()
 
 
 @app.after_request
@@ -877,6 +1183,236 @@ def _latest_block_height() -> tuple[str | None, str | None]:
     sync_info = data.get("SyncInfo") or data.get("sync_info") or {}
     height = sync_info.get("latest_block_height") or sync_info.get("latest_block")
     return (str(height) if height is not None else None), None
+
+
+def _eth_block_height_internal() -> tuple[str | None, str | None]:
+    """Return (height_str, error_str) from the configured ETH_RPC endpoint."""
+    if not ETH_RPC:
+        return None, "ETH_RPC not configured"
+    try:
+        payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "eth_blockNumber", "params": []}).encode()
+        req = urllib.request.Request(
+            ETH_RPC,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            if "result" in data:
+                hex_val = data["result"]
+                try:
+                    height_int = int(hex_val, 16)
+                    return str(height_int), None
+                except Exception:
+                    return hex_val, None
+            return None, "no result in response"
+    except Exception as e:
+        return None, str(e)
+
+
+@app.get("/api/eth-block-height")
+def eth_block_height():
+    """Return the latest Ethereum block height from ETH_RPC."""
+    height, err = _eth_block_height_internal()
+    if err:
+        return jsonify({"error": err}), 500
+    return jsonify({"height": height})
+
+
+def _eth_balance_internal() -> tuple[str | None, str | None]:
+    """Return (balance_eth_str, error) using ETH_RPC and ETH_ADDRESS (auto-deriving if needed)."""
+    if not ETH_RPC:
+        return None, "ETH_RPC not configured"
+    settings = _merge_subscriber_settings()
+    settings, err = _ensure_eth_wallet(settings)
+    if err:
+        return None, err
+    addr = settings.get("ETH_ADDRESS")
+    if not addr:
+        return None, "ETH_ADDRESS not available"
+    try:
+        payload = json.dumps(
+            {"jsonrpc": "2.0", "id": 1, "method": "eth_getBalance", "params": [addr, "latest"]}
+        ).encode()
+        req = urllib.request.Request(
+            ETH_RPC,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            hex_val = (data or {}).get("result")
+            if hex_val is None:
+                return None, "no result in response"
+            try:
+                wei = int(hex_val, 16)
+                eth_val = wei / 1e18
+                return f"{eth_val:.6f} ETH", None
+            except Exception:
+                return hex_val, None
+    except Exception as e:
+        return None, str(e)
+
+
+def _eth_token_balance_internal(
+    contract: str | None, decimals: int = 6, symbol: str = "USDC"
+) -> tuple[str | None, str | None]:
+    """Return (balance_token_str, error) using eth_call balanceOf."""
+    contract_addr = (contract or "").strip()
+    if not contract_addr:
+        return None, "token contract not configured"
+    if not ETH_RPC:
+        return None, "ETH_RPC not configured"
+    settings = _merge_subscriber_settings()
+    settings, err = _ensure_eth_wallet(settings)
+    if err:
+        return None, err
+    addr = settings.get("ETH_ADDRESS")
+    if not addr:
+        return None, "ETH_ADDRESS not available"
+    try:
+        addr_clean = addr.lower().replace("0x", "")
+        if len(addr_clean) != 40:
+            return None, f"invalid address: {addr}"
+        data_field = "0x70a08231" + ("0" * 24) + addr_clean
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "eth_call",
+                "params": [
+                    {"to": contract_addr, "data": data_field},
+                    "latest",
+                ],
+            }
+        ).encode()
+        req = urllib.request.Request(
+            ETH_RPC,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            hex_val = (data or {}).get("result")
+            if hex_val is None:
+                return None, "no result in response"
+            try:
+                amt = int(hex_val, 16)
+                div = float(10**decimals)
+                val = amt / div
+                return f"{val:.6f} {symbol}", None
+            except Exception:
+                return hex_val, None
+    except Exception as e:
+        return None, str(e)
+
+
+@app.get("/api/eth-balance")
+def eth_balance():
+    """Return ETH balance for the derived ETH wallet."""
+    bal, err = _eth_balance_internal()
+    if err:
+        return jsonify({"error": err}), 500
+    return jsonify({"balance": bal})
+
+
+@app.get("/api/eth-usdc-balance")
+def eth_usdc_balance():
+    """Return USDC balance for the derived ETH wallet."""
+    bal, err = _eth_token_balance_internal(ETH_USDC_CONTRACT, ETH_USDC_DECIMALS, "USDC")
+    if err:
+        return jsonify({"error": err}), 500
+    return jsonify({"balance": bal})
+
+
+def _osmosis_block_height_internal() -> tuple[str | None, str | None]:
+    """Return (height_str, error_str) from the configured OSMOSIS_RPC endpoint."""
+    if not OSMOSIS_RPC:
+        return None, "OSMOSIS_RPC not configured"
+    try:
+        payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "status", "params": []}).encode()
+        req = urllib.request.Request(
+            OSMOSIS_RPC,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            sync_info = data.get("result", {}).get("sync_info") or data.get("SyncInfo") or {}
+            height = sync_info.get("latest_block_height") or sync_info.get("latest_block")
+            if height is None:
+                return None, "no height in response"
+            return str(height), None
+    except Exception as e:
+        return None, str(e)
+
+
+@app.get("/api/osmosis-block-height")
+def osmosis_block_height():
+    """Return the latest Osmosis block height from OSMOSIS_RPC."""
+    height, err = _osmosis_block_height_internal()
+    if err:
+        return jsonify({"error": err}), 500
+    return jsonify({"height": height})
+
+
+def _osmosis_balance_internal() -> tuple[str | None, str | None]:
+    """Return (balance_str, error) for the Osmosis wallet."""
+    settings = _merge_subscriber_settings()
+    settings, err = _ensure_osmo_wallet(settings)
+    if err:
+        return None, err
+    addr = settings.get("OSMOSIS_ADDRESS")
+    if not addr:
+        return None, "OSMOSIS_ADDRESS not available"
+    if not OSMOSIS_RPC:
+        return None, "OSMOSIS_RPC not configured"
+    try:
+        cmd = [
+            "osmosisd",
+            "query",
+            "bank",
+            "balances",
+            addr,
+            "--node",
+            OSMOSIS_RPC,
+            "--output",
+            "json",
+        ]
+        code, out = run_list(cmd)
+        if code != 0:
+            return None, f"osmosis balance exit={code}: {out}"
+        data = json.loads(out)
+        coins = data.get("balances") or data.get("result") or []
+        if not coins:
+            return "0.000000 OSMO", None
+        def fmt(c):
+            denom = c.get("denom", "")
+            amt = c.get("amount", "0")
+            try:
+                val = int(amt)
+                if denom == "uosmo":
+                    return f"{val/1e6:.6f} OSMO"
+                return f"{amt} {denom}"
+            except Exception:
+                return f"{amt} {denom}"
+        parts = [fmt(c) for c in coins]
+        return ", ".join(parts), None
+    except Exception as e:
+        return None, str(e)
+
+
+@app.get("/api/osmosis-balance")
+def osmosis_balance():
+    """Return Osmosis balance for the derived Osmosis wallet."""
+    bal, err = _osmosis_balance_internal()
+    if err:
+        return jsonify({"error": err}), 500
+    return jsonify({"balance": bal})
 
 
 @app.get("/api/key")
@@ -1361,6 +1897,32 @@ def subscriber_info():
     return jsonify(resp)
 
 
+@app.get("/api/wallets")
+def wallets_info():
+    """Return wallet addresses for arkeo/eth/osmosis (no mnemonics)."""
+    settings = _merge_subscriber_settings()
+    _apply_subscriber_settings(settings)
+    # derive arkeo address
+    address = ""
+    try:
+        raw_pk, bech32_pk, pub_err = derive_pubkeys(
+            settings.get("KEY_NAME") or KEY_NAME, settings.get("KEY_KEYRING_BACKEND") or KEYRING
+        )
+        address = bech32_pk or ""
+    except Exception:
+        address = ""
+    # ensure eth/osmo addresses (won't regenerate mnemonics here)
+    eth_addr = settings.get("ETH_ADDRESS") or ""
+    osmo_addr = settings.get("OSMOSIS_ADDRESS") or ""
+    return jsonify(
+        {
+            "arkeo_address": address,
+            "eth_address": eth_addr,
+            "osmosis_address": osmo_addr,
+        }
+    )
+
+
 @app.get("/api/subscriber-settings")
 def subscriber_settings_get():
     """Return subscriber settings (replacement for subscriber.env) plus mnemonic if available."""
@@ -1385,9 +1947,19 @@ def subscriber_settings_get():
         mnemonic = gen_mnemonic
         mnemonic_source = "generated"
         generated = True
+    # Ensure a baseline settings file exists before any further enrichment
+    _write_subscriber_settings_file(settings)
+    # Ensure ETH/OSMOSIS mnemonics/addresses exist; generate if missing
+    settings, eth_err = _ensure_eth_wallet(settings)
+    settings, osmo_err = _ensure_osmo_wallet(settings)
+    settings.pop("ETH_ERROR", None)
+    settings.pop("OSMOSIS_ERROR", None)
+    _write_subscriber_settings_file(settings)
+    _apply_subscriber_settings(settings)
     raw_pk, bech32_pk, pub_err = derive_pubkeys(
         settings.get("KEY_NAME") or KEY_NAME, settings.get("KEY_KEYRING_BACKEND") or KEYRING
     )
+    _write_subscriber_settings_file(settings)
     return jsonify(
         {
             "settings": settings,
@@ -1396,6 +1968,10 @@ def subscriber_settings_get():
             "mnemonic_found": bool(mnemonic),
             "mnemonic_generated": generated,
             "pubkey": {"raw": raw_pk, "bech32": bech32_pk, "error": pub_err},
+            "eth_rpc": ETH_RPC,
+            "osmosis_rpc": OSMOSIS_RPC,
+            "eth_error": eth_err,
+            "osmosis_error": osmo_err,
         }
     )
 
@@ -1448,6 +2024,11 @@ def subscriber_settings_save():
     _apply_subscriber_settings(merged)
     if merged.get("KEY_MNEMONIC"):
         _write_hotwallet_mnemonic(merged, merged["KEY_MNEMONIC"])
+    # Ensure ETH/OSMO wallets (generate if blank) and persist
+    merged, eth_err = _ensure_eth_wallet(merged)
+    merged, osmo_err = _ensure_osmo_wallet(merged)
+    merged.pop("ETH_ERROR", None)
+    merged.pop("OSMOSIS_ERROR", None)
     _write_subscriber_settings_file(merged)
 
     raw_pk, bech32_pk, pub_err = derive_pubkeys(
@@ -1462,6 +2043,8 @@ def subscriber_settings_save():
             "delete_result": delete_result,
             "import_result": import_result,
             "pubkey": {"raw": raw_pk, "bech32": bech32_pk, "error": pub_err},
+            "eth_error": eth_err,
+            "osmosis_error": osmo_err,
         }
     )
 

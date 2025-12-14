@@ -93,28 +93,121 @@ else
   echo " NO KEY_MNEMONIC PROVIDED"
   echo " Creating a NEW HOT WALLET for: $KEY_NAME"
   echo "***************************************************************"
-  echo " IMPORTANT: Copy and store the mnemonic shown below."
-  echo " It will NOT be displayed again by this container."
-  echo "***************************************************************"
   echo ""
 
-  # Create the key and capture all output (including the mnemonic)
-  MNEMONIC_OUTPUT=$(arkeod --home "$ARKEOD_HOME" \
-                           --keyring-backend "$KEY_KEYRING_BACKEND" \
-                           keys add "$KEY_NAME")
+  # Create the key (capture JSON so we can persist the mnemonic)
+  KEY_RAW=$(arkeod --home "$ARKEOD_HOME" \
+          --keyring-backend "$KEY_KEYRING_BACKEND" \
+          keys add "$KEY_NAME" --output json 2>&1 || true)
 
-  # Echo the original output so the user sees the standard arkeod message
-  echo "$MNEMONIC_OUTPUT"
+  echo "$KEY_RAW" > /app/config/arkeod_key_raw.txt
 
-  # Try to extract the mnemonic section and save it to a file for convenience
-  echo "$MNEMONIC_OUTPUT" | grep -A 50 "Important" > "$ARKEOD_HOME/${KEY_NAME}_mnemonic.txt" || true
+  # Try to pretty-print if JSON; otherwise fall back to raw
+  echo "$KEY_RAW" | jq -r '. | "name: \(.name)\naddress: \(.address)\npubkey: \(.pubkey)\nmnemonic: \(.mnemonic)"' 2>/dev/null || echo "$KEY_RAW"
 
-  echo ""
-  echo "---------------------------------------------------------------"
-  echo " The mnemonic (and related output) has been saved to:"
-  echo "   $ARKEOD_HOME/${KEY_NAME}_mnemonic.txt"
-  echo " Please back this up securely and treat it like a private key."
-  echo "---------------------------------------------------------------"
+  # Persist mnemonic/address to subscriber-settings.json so the UI can display it
+  if [ -n "$KEY_RAW" ]; then
+    printf '%s' "$KEY_RAW" | python3 - <<'PY'
+import json, os, re, sys
+text = sys.stdin.read()
+print(f"[entrypoint] raw len from stdin: {len(text)}")
+# If empty, try the saved raw file
+if not text.strip():
+    try:
+        with open("/app/config/arkeod_key_raw.txt", "r", encoding="utf-8") as f:
+            text = f.read()
+        print(f"[entrypoint] loaded raw from file, len={len(text)}")
+    except Exception as e:
+        print(f"[entrypoint] failed to load raw from file: {e}")
+mn = ""
+addr = ""
+
+# Strip ANSI color codes if any
+clean_text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+# Try JSON first, then fallback parsing
+try:
+    payload = json.loads(clean_text)
+    mn = payload.get("mnemonic") or ""
+    addr = payload.get("address") or ""
+    print(f"[entrypoint] parsed JSON payload (mn_len={len(mn.split()) if mn else 0})")
+except Exception as e:
+    print(f"[entrypoint] json parse failed, using fallback: {e}")
+
+# Line-based scan first
+if not mn or not addr:
+    for line in clean_text.splitlines():
+        lower = line.lower()
+        if not mn and "mnemonic:" in lower:
+            mn = line.split(":", 1)[1].strip()
+            print(f"[entrypoint] mnemonic extracted via line scan (len={len(mn.split())})")
+        if not addr and "address:" in lower:
+            addr = line.split(":", 1)[1].strip()
+            print(f"[entrypoint] address extracted via line scan: {addr}")
+        if mn and addr:
+            break
+
+# Regex for explicit mnemonic/address lines
+if not mn:
+    m = re.search(r"mnemonic:\s*([A-Za-z]+(?:\s+[A-Za-z]+){11,23})", clean_text, re.IGNORECASE)
+    if m:
+        mn = m.group(1).strip()
+        print(f"[entrypoint] mnemonic extracted via line regex (len={len(mn.split())})")
+if not addr:
+    m = re.search(r"address:\s*(arkeo1[a-z0-9]+)", clean_text, re.IGNORECASE)
+    if m:
+        addr = m.group(1).strip()
+        print(f"[entrypoint] address extracted via line regex: {addr}")
+
+# Generic word/addr regex fallback
+if not mn:
+    words = re.findall(r"[a-zA-Z]+(?: [a-zA-Z]+){11,23}", clean_text)
+    if words:
+        mn = words[-1].strip()
+        print(f"[entrypoint] mnemonic extracted via generic regex (len={len(mn.split())})")
+if not addr:
+    m_addr = re.search(r"(arkeo1[a-z0-9]+)", clean_text)
+    if m_addr:
+        addr = m_addr.group(1)
+        print(f"[entrypoint] address extracted via generic regex: {addr}")
+
+path = "/app/config/subscriber-settings.json"
+data = {}
+if os.path.isfile(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"[entrypoint] warning: could not read existing settings: {e}")
+        data = {}
+if mn:
+    data["KEY_MNEMONIC"] = mn
+if addr:
+    data["KEY_ADDRESS"] = addr
+data.setdefault("KEY_NAME", os.environ.get("KEY_NAME", "subscriber"))
+data.setdefault("KEY_KEYRING_BACKEND", os.environ.get("KEY_KEYRING_BACKEND", "test"))
+data.setdefault("ARKEOD_HOME", os.environ.get("ARKEOD_HOME", "/root/.arkeo"))
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+print(f"[entrypoint] saved Arkeo mnemonic to {path} (mnemonic_len={len(mn.split()) if mn else 0})")
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        saved = json.load(f)
+    print(f"[entrypoint] settings now has KEY_MNEMONIC? {'KEY_MNEMONIC' in saved and bool(saved.get('KEY_MNEMONIC'))}")
+except Exception:
+    pass
+# Clean up raw file once persisted
+try:
+    if os.path.isfile("/app/config/arkeod_key_raw.txt"):
+        os.remove("/app/config/arkeod_key_raw.txt")
+        print("[entrypoint] removed /app/config/arkeod_key_raw.txt after persisting mnemonic")
+except Exception as e:
+    print(f"[entrypoint] could not remove /app/config/arkeod_key_raw.txt: {e}")
+PY
+  else
+    echo "[entrypoint] warning: failed to capture Arkeo mnemonic (empty output)"
+  fi
 
 fi
 

@@ -44,7 +44,7 @@
 </div>
 
 <div class="card hotwallet-card" style="background: linear-gradient(135deg, #0181a6 0%, #3be0ff 100%); border: 1px solid var(--border-strong); color:#0b1220;">
-    <div class="collapsible hotwallet-header">
+    <div class="collapsible hotwallet-header" onclick="toggleHotWalletsFromButton()" role="button" aria-expanded="false">
         <div class="collapsible-left">
             <h2 class="mt-0" style="margin:0; color:#fff; font-size:18px; display:inline-flex; align-items:center; gap:8px;">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -68,15 +68,40 @@
         <div class="wallet-grid">
             <div class="wallet-card">
                 <img src="images/ethereum/info/logo.png" alt="Ethereum" class="wallet-icon">
+                <div class="wallet-block-badge">Block: <span id="walletEthBlockBadge">—</span></div>
                 <div class="wallet-title">Ethereum</div>
-                <div class="wallet-meta">Balance: <span id="walletEthBalance">—</span></div>
-                <div class="wallet-meta">Address: <span id="walletEthAddress">—</span></div>
+                <div class="wallet-meta">ETH: <span id="walletEthBalance">—</span>
+                    <span class="info-icon" title="Sending USDC requires a small amount of ETH for gas." onclick="showEthGasInfo()" aria-label="Gas info">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                            <path d="M12 7.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" fill="currentColor"/>
+                            <path d="M11.25 10.5h1.5v6h-1.5z" fill="currentColor"/>
+                        </svg>
+                    </span>
+                </div>
+                <div class="wallet-meta">USDC: <span id="walletEthUsdcBalance">—</span></div>
+                <div class="wallet-meta wallet-copy">
+                    <span>Address: <span id="walletEthAddress">—</span></span>
+                    <span onclick="copyEthAddress()" title="Copy address" aria-label="Copy Ethereum address">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8 5.00005C7.01165 5.00082 6.49359 5.01338 6.09202 5.21799C5.71569 5.40973 5.40973 5.71569 5.21799 6.09202C5 6.51984 5 7.07989 5 8.2V17.8C5 18.9201 5 19.4802 5.21799 19.908C5.40973 20.2843 5.71569 20.5903 6.09202 20.782C6.51984 21 7.07989 21 8.2 21H15.8C16.9201 21 17.4802 21 17.908 20.782C18.2843 20.5903 18.5903 20.2843 18.782 19.908C19 19.4802 19 18.9201 19 17.8V8.2C19 7.07989 19 6.51984 18.782 6.09202C18.5903 5.71569 18.2843 5.40973 17.908 5.21799C17.5064 5.01338 16.9884 5.00082 16 5.00005M8 5.00005V7H16V5.00005M8 5.00005V4.70711C8 4.25435 8.17986 3.82014 8.5 3.5C8.82014 3.17986 9.25435 3 9.70711 3H14.2929C14.7456 3 15.1799 3.17986 15.5 3.5C15.8201 3.82014 16 4.25435 16 4.70711V5.00005M12 11V17M12 11L14 13M12 11L10 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
+                </div>
             </div>
             <div class="wallet-card">
                 <img src="images/osmosis/info/logo.png" alt="Osmosis" class="wallet-icon">
+                <div class="wallet-block-badge">Block: <span id="walletOsmoBlockBadge">—</span></div>
                 <div class="wallet-title">Osmosis</div>
                 <div class="wallet-meta">Balance: <span id="walletOsmoBalance">—</span></div>
-                <div class="wallet-meta">Address: <span id="walletOsmoAddress">—</span></div>
+                <div class="wallet-meta wallet-copy">
+                    <span>Address: <span id="walletOsmoAddress">—</span></span>
+                    <span onclick="copyOsmoAddress()" title="Copy address" aria-label="Copy Osmosis address">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8 5.00005C7.01165 5.00082 6.49359 5.01338 6.09202 5.21799C5.71569 5.40973 5.40973 5.71569 5.21799 6.09202C5 6.51984 5 7.07989 5 8.2V17.8C5 18.9201 5 19.4802 5.21799 19.908C5.40973 20.2843 5.71569 20.5903 6.09202 20.782C6.51984 21 7.07989 21 8.2 21H15.8C16.9201 21 17.4802 21 17.908 20.782C18.2843 20.5903 18.5903 20.2843 18.782 19.908C19 19.4802 19 18.9201 19 17.8V8.2C19 7.07989 19 6.51984 18.782 6.09202C18.5903 5.71569 18.2843 5.40973 17.908 5.21799C17.5064 5.01338 16.9884 5.00082 16 5.00005M8 5.00005V7H16V5.00005M8 5.00005V4.70711C8 4.25435 8.17986 3.82014 8.5 3.5C8.82014 3.17986 9.25435 3 9.70711 3H14.2929C14.7456 3 15.1799 3.17986 15.5 3.5C15.8201 3.82014 16 4.25435 16 4.70711V5.00005M12 11V17M12 11L14 13M12 11L10 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span>
+                </div>
             </div>
             <div class="wallet-card">
                 <img src="images/arkeo-logo-200px_1.png" alt="Arkeo" class="wallet-icon" id="walletArkeoIcon">
@@ -245,6 +270,21 @@
         showCopyModal("Copy Arkeo Address", val);
     }
 
+    function showEthGasInfo() {
+        const msg = "To send or move USDC from this wallet, you need a small amount of ETH to pay gas.";
+        showResultModal("Gas Reminder", msg);
+    }
+
+    async function copyEthAddress() {
+        const val = document.getElementById("walletEthAddress")?.textContent || "";
+        showCopyModal("Copy Ethereum Address", val);
+    }
+
+    async function copyOsmoAddress() {
+        const val = document.getElementById("walletOsmoAddress")?.textContent || "";
+        showCopyModal("Copy Osmosis Address", val);
+    }
+
     async function copyArkeoPubkey() {
         const val = currentPubkey || document.getElementById("walletArkeoPubkey")?.textContent || "";
         showCopyModal("Copy Arkeo Pubkey", val);
@@ -276,6 +316,11 @@
         }
         if (btn) {
             btn.classList.toggle("active", hotWalletsOpen);
+            btn.setAttribute("aria-pressed", hotWalletsOpen ? "true" : "false");
+        }
+        const header = document.querySelector(".hotwallet-header");
+        if (header) {
+            header.setAttribute("aria-expanded", hotWalletsOpen ? "true" : "false");
         }
         const summary = document.getElementById("hotWalletSummary");
         if (summary) {
@@ -476,14 +521,26 @@
                     return { error: String(err) };
                 }
             };
-            const [infoRes, balRes, heightRes] = await Promise.allSettled([
+            const [infoRes, balRes, heightRes, ethHeightRes, osmoHeightRes, walletsRes, ethBalRes, osmoBalRes, ethUsdcRes] = await Promise.allSettled([
                 fetchNoStore(apiUrl("/api/subscriber-info")),
                 fetchNoStore(apiUrl("/api/balance")),
                 fetchNoStore(apiUrl("/api/block-height")),
+                fetchNoStore(apiUrl("/api/eth-block-height")),
+                fetchNoStore(apiUrl("/api/osmosis-block-height")),
+                fetchNoStore(apiUrl("/api/wallets")),
+                fetchNoStore(apiUrl("/api/eth-balance")),
+                fetchNoStore(apiUrl("/api/osmosis-balance")),
+                fetchNoStore(apiUrl("/api/eth-usdc-balance")),
             ]);
             const info = await parseSafe(infoRes);
             const bal = await parseSafe(balRes);
             const height = await parseSafe(heightRes);
+            const ethHeight = await parseSafe(ethHeightRes);
+            const osmoHeight = await parseSafe(osmoHeightRes);
+            const wallets = await parseSafe(walletsRes);
+            const ethBal = await parseSafe(ethBalRes);
+            const ethUsdcBal = await parseSafe(ethUsdcRes);
+            const osmoBal = await parseSafe(osmoBalRes);
 
             const moniker = (info && info.subscriber_name) ||
                 (info && info.provider_metadata && (info.provider_metadata.MONIKER || info.provider_metadata.PROVIDER_NAME)) || "";
@@ -504,6 +561,11 @@
             const arkeoAddrText = currentAddress || "(unavailable)";
             const arkeoSummaryEl = document.getElementById("walletArkeoBalanceSummary");
             if (arkeoSummaryEl) arkeoSummaryEl.textContent = arkeoBalanceText || "—";
+            const ethBlockVal = (!ethHeight || ethHeight.error) ? "(unavailable)" : (ethHeight.height || ethHeight.hex || "(unavailable)");
+            const osmoBlockVal = (!osmoHeight || osmoHeight.error) ? "(unavailable)" : (osmoHeight.height || "(unavailable)");
+            const ethBalanceText = (!ethBal || ethBal.error) ? "—" : (ethBal.balance || "—");
+            const ethUsdcBalanceText = (!ethUsdcBal || ethUsdcBal.error) ? "—" : (ethUsdcBal.balance || "—");
+            const osmoBalanceText = (!osmoBal || osmoBal.error) ? "—" : (osmoBal.balance || "—");
 
             // Update hot wallets (best-effort)
             const setWallet = (key, balText, addrText) => {
@@ -515,8 +577,14 @@
                 if (addrEl) addrEl.textContent = addrText || "—";
             };
             setWallet("arkeo", arkeoBalanceText, arkeoAddrText);
-            setWallet("eth", "—", "(external)");
-            setWallet("osmo", "—", "(external)");
+            setWallet("eth", ethBalanceText, wallets?.eth_address || "(external)");
+            setWallet("osmo", osmoBalanceText, wallets?.osmosis_address || "(external)");
+            const ethUsdcEl = document.getElementById("walletEthUsdcBalance");
+            if (ethUsdcEl) ethUsdcEl.textContent = ethUsdcBalanceText || "—";
+            const ethBlock = document.getElementById("walletEthBlockBadge");
+            if (ethBlock) ethBlock.textContent = ethBlockVal || "—";
+            const osmoBlock = document.getElementById("walletOsmoBlockBadge");
+            if (osmoBlock) osmoBlock.textContent = osmoBlockVal || "—";
             const arkeoBlockBadge = document.getElementById("walletArkeoBlockBadge");
             if (arkeoBlockBadge) arkeoBlockBadge.textContent = blockVal || "—";
         } catch (err) {
@@ -712,8 +780,8 @@
         // start with hot wallets collapsed
         setHotWalletState(false);
         refreshHeader();
-        // Refresh every 10 seconds to mirror provider UI behavior
-        setInterval(refreshHeader, 10000);
+        // Refresh every 15 seconds to mirror provider UI behavior
+        setInterval(refreshHeader, 15000);
         loadListeners();
         // Keep listener table/logs fresh for dashboard view; skip while editing to avoid clobbering form state
         setInterval(() => { if (!listenersEditingId) loadListeners(); }, 5000);
@@ -1881,6 +1949,9 @@
             showResultModal("Listener Status", "Port unavailable for this listener.");
             return;
         }
+        openListenerId = String(id);
+        // ensure drawer is open for context
+        renderListeners(openListenerId);
         const proto = window.location.protocol || "http:";
         const host = window.location.hostname || "localhost";
         const url = `${proto}//${host}:${port}/arkeostatus`;
