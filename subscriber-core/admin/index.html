@@ -909,9 +909,7 @@
         }
         const msg = val;
         const fallbackMsg = `Failed to copy endpoint (clipboard is blocked in insecure contexts).\n\nYou can copy it manually:\n${val}`;
-        navigator.clipboard.writeText(msg).then(() => {
-            showResultModal(title, `Endpoint copied:\n${val}`);
-        }).catch(() => {
+        const doFallback = () => {
             try {
                 const ta = document.createElement("textarea");
                 ta.value = msg;
@@ -927,7 +925,18 @@
                 /* ignore */
             }
             showResultModal(title, fallbackMsg);
-        });
+        };
+        try {
+            if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(msg).then(() => {
+                    showResultModal(title, `Endpoint copied:\n${val}`);
+                }).catch(() => doFallback());
+            } else {
+                doFallback();
+            }
+        } catch (e) {
+            doFallback();
+        }
     }
 
     // ─────────────────────────────
@@ -1279,8 +1288,9 @@
                 <td>${escapeHtml(svcLabel || "—")}</td>
                 <td class="mono">${portSafe || "–"}</td>
                 <td class="listener-actions-cell col-actions">
-                    <button class="btn-ghost" onclick="event.stopPropagation(); testListener('${l.id}')">Test</button>
                     <button class="btn-ghost" onclick="event.stopPropagation(); pollListener('${l.id}')">Poll</button>
+                    <button class="btn-ghost" onclick="event.stopPropagation(); testListener('${l.id}')">Test</button>
+                    <button class="btn-ghost" onclick="event.stopPropagation(); statusListener('${l.id}')">Status</button>
                     <button class="primary" onclick="event.stopPropagation(); editListener('${l.id}')">Edit</button>
                     <button class="primary danger-btn" onclick="event.stopPropagation(); deleteListener('${l.id}')">Delete</button>
                 </td>
@@ -1859,6 +1869,40 @@
     async function testListener(id) {
         openListenerId = String(id);
         await runListenerTests(id, 1, "Testing", true);
+    }
+
+    async function statusListener(id) {
+        const listener = listenersCache.find((l) => String(l.id) === String(id));
+        const port = listener && listener.port ? listener.port : null;
+        const svcLabel = listener
+            ? (listener.service_description || formatServiceLabel(listener.service_id) || listener.service_name || listener.service_id || "")
+            : "";
+        if (!port) {
+            showResultModal("Listener Status", "Port unavailable for this listener.");
+            return;
+        }
+        const proto = window.location.protocol || "http:";
+        const host = window.location.hostname || "localhost";
+        const url = `${proto}//${host}:${port}/arkeostatus`;
+        const header = `<div>Status for listener</div><div class="muted small">Port: ${escapeHtml(String(port))}${svcLabel ? ` • Service: ${escapeHtml(String(svcLabel))}` : ""}</div><div class="muted small">URL: ${escapeHtml(url)}</div>`;
+        showResultModal("Listener Status", "", true);
+        updateModalBodyHtml(`${header}<pre id="statusPre" class="mono" style="max-height:50vh;overflow:auto;">(loading...)</pre>`);
+        try {
+            const res = await fetch(url, { cache: "no-store" });
+            const data = await res.json().catch(() => ({}));
+            const pre = document.getElementById("statusPre");
+            const pretty = JSON.stringify(data, null, 2);
+            if (pre) {
+                pre.textContent = pretty;
+            } else {
+                updateModalBodyHtml(`${header}<pre class="mono" style="max-height:50vh;overflow:auto;">${escapeHtml(pretty)}</pre>`);
+            }
+        } catch (e) {
+            const pre = document.getElementById("statusPre");
+            const msg = `Failed to fetch status:\n${e}`;
+            if (pre) pre.textContent = msg;
+            else updateModalBodyHtml(`${header}<pre class="mono" style="max-height:50vh;overflow:auto;">${escapeHtml(msg)}</pre>`);
+        }
     }
 
     async function pollListener(id) {

@@ -3315,7 +3315,15 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body_bytes)))
         self.send_header("Connection", "close")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        try:
+            origin = self.headers.get("Origin")
+        except Exception:
+            origin = None
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Credentials", "true")
+        else:
+            self.send_header("Access-Control-Allow-Origin", "*")
         if extra_headers:
             for k, v in extra_headers.items():
                 self.send_header(k, v)
@@ -3328,23 +3336,90 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
         self.close_connection = True
 
     def do_GET(self):
-        # Special status endpoint for health of the listener itself
-        if self.path.strip("/").split("?")[0] == "status":
+        # Special status endpoint for health of the listener itself (use /arkeostatus to avoid intercepting upstream /status)
+        if self.path.strip("/").split("?")[0] == "arkeostatus":
+            cfg = self.server.cfg
+            node = cfg.get("node_rpc") or ARKEOD_NODE
+            service_id = cfg.get("service_id")
+            service_name = cfg.get("service_name")
+            client_key = cfg.get("client_key") or KEY_NAME
+            client_pub_local = getattr(self.server, "client_pubkey", "") or ""
+            if not client_pub_local:
+                raw, bech, err = derive_pubkeys(client_key, KEYRING)
+                if not err:
+                    client_pub_local = bech
+                    self.server.client_pubkey = bech
             payload = {
-                "client_pub_local": getattr(self.server, "client_pubkey", ""),
+                "client_pub_local": client_pub_local,
                 "active_contract": getattr(self.server, "active_contract", None),
                 "last_code": getattr(self.server, "last_code", None),
                 "last_nonce": getattr(self.server, "last_nonce", None),
-                "provider_pubkey": self.server.cfg.get("provider_pubkey"),
-                "service_id": self.server.cfg.get("service_id"),
-                "service_name": self.server.cfg.get("service_name"),
-                "sentinel": self.server.cfg.get("provider_sentinel_api"),
+                "provider_pubkey": cfg.get("provider_pubkey"),
+                "service_id": service_id,
+                "service_name": service_name,
+                "sentinel": cfg.get("provider_sentinel_api"),
                 "height": None,
             }
             try:
-                payload["height"] = _get_current_height(self.server.cfg.get("node_rpc"))
+                payload["height"] = _get_current_height(node)
             except Exception:
                 payload["height"] = None
+
+            # If we don't already have an active_contract cached, try to select one
+            if not payload.get("active_contract"):
+                try:
+                    cur_h = _get_current_height(node)
+                    # ensure contract cache map
+                    if not hasattr(self.server, "contract_cache"):
+                        self.server.contract_cache = {}
+                    contract_cache = self.server.contract_cache
+
+                    candidates = _candidate_providers(cfg)
+                    provider_filter = None
+                    sentinel = None
+                    if candidates:
+                        provider_filter = candidates[0].get("provider_pubkey") or cfg.get("provider_pubkey")
+                        sentinel = candidates[0].get("sentinel_url") or cfg.get("provider_sentinel_api")
+                    if not provider_filter:
+                        provider_filter = cfg.get("provider_pubkey")
+                    active = None
+                    cache_entry = contract_cache.get(provider_filter) if provider_filter else None
+                    if cache_entry:
+                        ttl_ok = PROXY_CONTRACT_CACHE_TTL <= 0 or (time.time() - cache_entry.get("cached_at", 0) < PROXY_CONTRACT_CACHE_TTL)
+                        if ttl_ok:
+                            active = cache_entry.get("contract")
+                    if not active:
+                        contracts = _fetch_contracts(node, timeout=PROXY_CONTRACT_TIMEOUT, active_only=True, client_filter=client_pub_local)
+                        active = _select_active_contract(contracts or [], client_pub_local, _safe_int(service_id, 0), cur_h, provider_filter=provider_filter)
+                        if active and provider_filter:
+                            try:
+                                contract_cache[provider_filter] = {"contract": active, "cached_at": time.time()}
+                            except Exception:
+                                pass
+                    if active:
+                        payload["active_contract"] = active
+                        payload["active_contract_detail"] = "Active contract found for the selected provider service."
+                        if provider_filter:
+                            payload["provider_pubkey"] = provider_filter
+                        try:
+                            self.server.active_contract = active
+                            if hasattr(self.server, "active_contracts") and provider_filter:
+                                self.server.active_contracts[provider_filter] = active
+                        except Exception:
+                            pass
+                        # try to pick last nonce if cached
+                        try:
+                            if hasattr(self.server, "last_nonce_cache"):
+                                last_nc = self.server.last_nonce_cache
+                                if isinstance(last_nc, dict):
+                                    payload["last_nonce"] = last_nc.get(str(active.get("id")))
+                        except Exception:
+                            pass
+                    else:
+                        payload["active_contract_detail"] = "No active contract found for the selected provider service."
+                except Exception as e:
+                    payload["active_contract_detail"] = f"Failed to load contract: {e}"
+
             return self._send_json(200, payload)
         # Forward GET requests through the same payg flow (needed for REST-style services/tests)
         try:
