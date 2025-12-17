@@ -2023,8 +2023,9 @@ ARKEOD_NODE = _strip_quotes(
     or os.getenv("EXTERNAL_ARKEOD_NODE")
     or "tcp://127.0.0.1:26657"
 )
-ETH_RPC = _strip_quotes(os.getenv("ETH_RPC") or "")
-ETH_USDC_CONTRACT = _strip_quotes(os.getenv("ETH_USDC_CONTRACT") or "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")  # default to mainnet USDC
+# ETH flows disabled; keep defaults for compatibility
+ETH_RPC = ""
+ETH_USDC_CONTRACT = ""
 ETH_USDC_DECIMALS = int(os.getenv("ETH_USDC_DECIMALS", "6"))
 OSMOSIS_RPC = _strip_quotes(os.getenv("OSMOSIS_RPC") or "")
 OSMOSIS_HOME = os.path.expanduser(os.getenv("OSMOSIS_HOME", "/app/config/osmosis"))
@@ -2320,9 +2321,6 @@ def _default_subscriber_settings() -> dict:
         "ADMIN_PORT": os.getenv("ADMIN_PORT") or os.getenv("ENV_ADMIN_PORT") or "8079",
         "ADMIN_API_PORT": os.getenv("ADMIN_API_PORT") or str(API_PORT),
         "ALLOW_LOCALHOST_SENTINEL_URIS": os.getenv("ALLOW_LOCALHOST_SENTINEL_URIS") or "0",
-        "ETH_RPC": _strip_quotes(os.getenv("ETH_RPC") or ""),
-        "ETH_USDC_CONTRACT": _strip_quotes(os.getenv("ETH_USDC_CONTRACT") or "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"),
-        "ETH_USDC_DECIMALS": int(os.getenv("ETH_USDC_DECIMALS", "6")),
         "OSMOSIS_RPC": _strip_quotes(os.getenv("OSMOSIS_RPC") or ""),
         "OSMOSIS_USDC_DENOMS": OSMOSIS_USDC_DENOMS,
         "ETH_ADDRESS": "",
@@ -3772,7 +3770,6 @@ def subscriber_settings_get():
             "mnemonic_found": bool(mnemonic),
             "mnemonic_generated": generated,
             "pubkey": {"raw": raw_pk, "bech32": bech32_pk, "error": pub_err},
-            "eth_rpc": ETH_RPC,
             "osmosis_rpc": OSMOSIS_RPC,
             "eth_error": eth_err,
             "osmosis_error": osmo_err,

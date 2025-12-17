@@ -16,10 +16,6 @@ RUN make install
 # Build: extra tools (signing utilities, helpers, etc.)
 RUN make tools
 
-# Install Foundry (cast/anvil/forge) for signing; we only copy cast into runtime
-RUN curl -L https://foundry.paradigm.xyz | bash \
-    && /root/.foundry/bin/foundryup -i nightly
-
 # Fetch osmosisd release binary (v25.0.0) for key mgmt/signing
 RUN curl -L https://github.com/osmosis-labs/osmosis/releases/download/v25.0.0/osmosisd-25.0.0-linux-amd64 -o /go/bin/osmosisd \
     && chmod +x /go/bin/osmosisd
@@ -55,9 +51,8 @@ WORKDIR /app
 
 # Copy all binaries produced by make install + make tools
 COPY --from=builder /go/bin/* /usr/local/bin/
-# Copy cast (Foundry) and osmosisd (built from source)
+# Copy osmosisd (built from source)
 COPY --from=builder /go/bin/osmosisd /usr/local/bin/
-COPY --from=builder /root/.foundry/bin/cast /usr/local/bin/
 
 # Copy configs (genesis.json, config.toml, sentinel-config.yaml)
 COPY config/ /app/config/
