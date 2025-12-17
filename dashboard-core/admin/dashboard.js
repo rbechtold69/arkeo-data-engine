@@ -915,7 +915,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
                   </div>
                 <div className="mt-6 flex gap-3">
                   <button onClick={onClose} className="flex-1 px-4 py-3 rounded-xl font-medium secondary-btn hover:brightness-110">Back</button>
-                  <a href="https://github.com/arkeonetwork/arkeo-docker-core" target="_blank" className="flex-1 primary-gradient text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 primary-shadow">
+                  <a href="https://github.com/arkeonetwork/arkeo-data-engine" target="_blank" className="flex-1 primary-gradient text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 primary-shadow">
                     View on GitHub <Icons.External />
                   </a>
                 </div>
@@ -981,7 +981,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
                 </div>
                 <div className="mt-6 flex gap-3">
                   <button onClick={onClose} className="flex-1 px-4 py-3 rounded-xl font-medium secondary-btn hover:brightness-110">Back</button>
-                  <a href="https://github.com/arkeonetwork/arkeo-docker-core" target="_blank" className="flex-1 primary-gradient text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 primary-shadow">
+                  <a href="https://github.com/arkeonetwork/arkeo-data-engine" target="_blank" className="flex-1 primary-gradient text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 primary-shadow">
                     View on GitHub <Icons.External />
                   </a>
                 </div>

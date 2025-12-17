@@ -27,8 +27,17 @@ RUN curl -L https://github.com/osmosis-labs/osmosis/releases/download/v25.0.0/os
 # Show all compiled/downloaded binaries
 RUN ls -al $(go env GOPATH)/bin/
 
+# ---------- Stage 2: build admin UI bundle ----------
+FROM node:20-bullseye AS ui-builder
+WORKDIR /app/admin
 
-# ---------- Stage 2: Runtime container ----------
+COPY admin/package*.json ./
+RUN npm install
+COPY admin/src ./src
+RUN mkdir -p vendor && npm run build
+
+
+# ---------- Stage 3: Runtime container ----------
 FROM debian:12-slim
 
 RUN apt-get update && apt-get install -y \
@@ -55,6 +64,7 @@ COPY config/ /app/config/
 
 # Copy simple admin UI
 COPY admin/ /app/admin/
+COPY --from=ui-builder /app/admin/vendor/cosmos.bundle.js /app/admin/vendor/cosmos.bundle.js
 COPY admin_api.py /app/admin_api.py
 COPY cache_fetcher.py /app/cache_fetcher.py
 

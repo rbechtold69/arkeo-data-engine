@@ -6,6 +6,7 @@
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="images/favicon.ico">
     <link rel="shortcut icon" href="images/favicon.ico">
+    <script src="vendor/cosmos.bundle.js"></script>
 </head>
 <body>
 
@@ -72,6 +73,32 @@
 <div class="card">
     <div class="row-between align-center">
         <div class="inline">
+            <h2 class="mt-0 mb-0">Osmosis Signing</h2>
+            <div class="hint">Use Keplr for Osmosis signing. Balances continue to load via backend RPC.</div>
+        </div>
+        <div class="actions">
+            <button class="primary" type="button" onclick="connectKeplrAdmin(event)">Connect Keplr</button>
+        </div>
+    </div>
+    <div class="grid-two">
+        <div class="panel stack">
+            <div>
+                <strong>Keplr Address</strong>
+                <div id="adminKeplrAddress" class="muted mt-6">—</div>
+            </div>
+        </div>
+        <div class="panel stack">
+            <div>
+                <strong>Status</strong>
+                <div id="adminKeplrStatus" class="muted mt-6">Not connected</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="row-between align-center">
+        <div class="inline">
             <h2 class="mt-0 mb-0">Subscriber Settings</h2>
             <div class="hint">Values formerly stored in subscriber.env. Update and save here.</div>
         </div>
@@ -130,24 +157,10 @@
         </tr>
         <tr>
             <td class="label">
-                Arkeo Hot Wallet Mnemonic
-                <div class="hint">Current mnemonic is auto-saved. Paste a new one to delete and recreate the hotwallet.</div>
+                CORS Allowed Origins
+                <div class="hint">Comma-separated origins (e.g., http://localhost:8079) sent to sentinel contract config for browser access.</div>
             </td>
-            <td class="value"><textarea id="hotwalletMnemonic" rows="3"></textarea></td>
-        </tr>
-        <tr>
-            <td class="label">
-                Ethereum Hot Wallet Mnemonic
-                <div class="hint">Leave blank to auto-generate; stored in settings only. Paste to rotate the ETH hot wallet.</div>
-            </td>
-            <td class="value"><textarea id="ethMnemonic" rows="3" placeholder="Leave blank to auto-generate"></textarea></td>
-        </tr>
-        <tr>
-            <td class="label">
-                Osmosis Hot Wallet Mnemonic
-                <div class="hint">Leave blank to auto-generate; stored in settings only. Paste to rotate the OSMO hot wallet.</div>
-            </td>
-            <td class="value"><textarea id="osmoMnemonic" rows="3" placeholder="Leave blank to auto-generate"></textarea></td>
+            <td class="value"><input type="text" id="corsAllowedOrigins" placeholder="http://localhost:8079" autocomplete="on" /></td>
         </tr>
         <tr>
             <td class="label">
@@ -245,6 +258,16 @@
     let subscriberSettingsCache = {};
     let adminPasswordEnabled = false;
     let adminSessionAuthed = false;
+    const OSMOSIS_CHAIN_ID = "osmosis-1";
+    let adminKeplrAddress = "";
+    let adminKeplrListenerAttached = false;
+
+    function getCosmosBundle() {
+        if (!window.Cosmos) {
+            throw new Error("Cosmos bundle not loaded.");
+        }
+        return window.Cosmos;
+    }
 
     function requirePasswordGate() {
         sessionStorage.removeItem("adminAuthed");
@@ -307,6 +330,49 @@
         const str = String(pk);
         if (str.length <= 17) return str;
         return `${str.slice(0, 9)}...${str.slice(-8)}`;
+    }
+
+    function setAdminKeplrStatus(label, isConnected = false) {
+        const statusEl = document.getElementById("adminKeplrStatus");
+        if (statusEl) statusEl.textContent = label;
+        const addrEl = document.getElementById("adminKeplrAddress");
+        if (addrEl) addrEl.textContent = adminKeplrAddress || "—";
+        if (statusEl) {
+            statusEl.classList.toggle("status-success", !!isConnected);
+            statusEl.classList.toggle("status-error", !isConnected);
+        }
+    }
+
+    async function connectKeplrAdmin(evt) {
+        if (evt && evt.preventDefault) evt.preventDefault();
+        if (!window.keplr || !window.getOfflineSigner) {
+            setAdminKeplrStatus("Keplr extension required", false);
+            showResultModal("Connect Keplr", "Install and unlock Keplr, then try again.");
+            return;
+        }
+        try {
+            setAdminKeplrStatus("Connecting...", false);
+            adminKeplrAddress = await getCosmosBundle().connectKeplr({ chainId: OSMOSIS_CHAIN_ID });
+            setAdminKeplrStatus("Keplr Connected", true);
+            registerAdminKeplrListener();
+        } catch (err) {
+            console.error("Keplr connect failed", err);
+            setAdminKeplrStatus(`Connect failed: ${err}`, false);
+        }
+    }
+
+    function registerAdminKeplrListener() {
+        if (adminKeplrListenerAttached || !window.Cosmos) return;
+        adminKeplrListenerAttached = true;
+        getCosmosBundle().onKeplrKeystoreChange(async () => {
+            try {
+                adminKeplrAddress = await getCosmosBundle().connectKeplr({ chainId: OSMOSIS_CHAIN_ID });
+                setAdminKeplrStatus(adminKeplrAddress ? "Keplr Connected" : "Connect Keplr", !!adminKeplrAddress);
+            } catch (err) {
+                console.error("Keplr keystore change handling failed", err);
+                setAdminKeplrStatus("Connect Keplr", false);
+            }
+        }, { chainId: OSMOSIS_CHAIN_ID });
     }
 
     function setBadge() {
@@ -387,10 +453,8 @@
         ARKEOD_NODE: "tcp://127.0.0.1:26657",
         ETH_RPC: "",
         OSMOSIS_RPC: "",
-        ETH_MNEMONIC: "",
+        CORS_ALLOWED_ORIGINS: "*",
         ETH_ADDRESS: "",
-        OSMOSIS_MNEMONIC: "",
-        OSMOSIS_ADDRESS: "",
         ADMIN_PORT: "8079",
         ADMIN_API_PORT: "9998",
         CACHE_FETCH_INTERVAL: "150",
@@ -441,8 +505,7 @@
             setInputWithDefault("arkeodNode", subscriberSettingsCache.ARKEOD_NODE, "ARKEOD_NODE");
             setInputWithDefault("ethRpc", subscriberSettingsCache.ETH_RPC, "ETH_RPC");
             setInputWithDefault("osmoRpc", subscriberSettingsCache.OSMOSIS_RPC, "OSMOSIS_RPC");
-            setSubscriberInput("ethMnemonic", subscriberSettingsCache.ETH_MNEMONIC);
-            setSubscriberInput("osmoMnemonic", subscriberSettingsCache.OSMOSIS_MNEMONIC);
+            setInputWithDefault("corsAllowedOrigins", subscriberSettingsCache.CORS_ALLOWED_ORIGINS, "CORS_ALLOWED_ORIGINS");
             setInputWithDefault("adminPort", subscriberSettingsCache.ADMIN_PORT, "ADMIN_PORT");
             setInputWithDefault("adminApiPort", subscriberSettingsCache.ADMIN_API_PORT, "ADMIN_API_PORT");
             setInputWithDefault("cacheFetchInterval", subscriberSettingsCache.CACHE_FETCH_INTERVAL, "CACHE_FETCH_INTERVAL");
@@ -452,15 +515,13 @@
                 const val = String(allowLocalhost || "").toLowerCase();
                 allowLocalhostEl.checked = val === "1" || val === "true" || val === "yes" || val === "on";
             }
-            setSubscriberInput("hotwalletMnemonic", subscriberSettingsCache.KEY_MNEMONIC);
             const pubEl = document.getElementById("subscriberPubkeyDisplay");
             const pubkey = data.pubkey && data.pubkey.bech32 ? data.pubkey.bech32 : "";
             if (pubEl) pubEl.textContent = pubkey ? pubkey : "(unavailable)";
             const overviewEl = document.getElementById("overviewPubkeyDisplay");
             if (overviewEl) overviewEl.textContent = pubkey ? formatPubkeyShort(pubkey) : "(unavailable)";
             if (resultEl) {
-                const src = data.mnemonic_source ? `Mnemonic source: ${data.mnemonic_source}.` : "";
-                resultEl.textContent = `Loaded subscriber settings${data.subscriber_settings_path ? ` from ${data.subscriber_settings_path}` : ""}. ${src}`;
+                resultEl.textContent = `Loaded subscriber settings${data.subscriber_settings_path ? ` from ${data.subscriber_settings_path}` : ""}.`;
             }
         } catch (e) {
             if (resultEl) resultEl.textContent = `Failed to load subscriber settings: ${e}`;
@@ -488,13 +549,11 @@
                 ARKEOD_NODE: normalizeRpc(document.getElementById("arkeodNode")?.value || DEFAULTS.ARKEOD_NODE),
                 ETH_RPC: document.getElementById("ethRpc")?.value || DEFAULTS.ETH_RPC,
                 OSMOSIS_RPC: document.getElementById("osmoRpc")?.value || DEFAULTS.OSMOSIS_RPC,
-                ETH_MNEMONIC: document.getElementById("ethMnemonic")?.value || subscriberSettingsCache.ETH_MNEMONIC || "",
-                OSMOSIS_MNEMONIC: document.getElementById("osmoMnemonic")?.value || subscriberSettingsCache.OSMOSIS_MNEMONIC || "",
+                CORS_ALLOWED_ORIGINS: document.getElementById("corsAllowedOrigins")?.value || DEFAULTS.CORS_ALLOWED_ORIGINS,
                 ADMIN_PORT: document.getElementById("adminPort")?.value || DEFAULTS.ADMIN_PORT,
                 ADMIN_API_PORT: document.getElementById("adminApiPort")?.value || DEFAULTS.ADMIN_API_PORT,
                 CACHE_FETCH_INTERVAL: document.getElementById("cacheFetchInterval")?.value || DEFAULTS.CACHE_FETCH_INTERVAL,
-                ALLOW_LOCALHOST_SENTINEL_URIS: document.getElementById("allowLocalhostSentinel")?.checked ? "1" : "0",
-                KEY_MNEMONIC: document.getElementById("hotwalletMnemonic")?.value || "",
+                ALLOW_LOCALHOST_SENTINEL_URIS: document.getElementById("allowLocalhostSentinel")?.checked ? "1" : "0"
             },
         };
         const adminPasswordVal = document.getElementById("adminPasswordInput")?.value || "";
@@ -539,8 +598,7 @@
                 // ignore password save errors to avoid blocking settings save
             }
             if (resultEl) {
-                const rotated = data.mnemonic_rotated ? "Hotwallet re-imported with new mnemonic. " : "";
-                finalMessage = `${rotated}Saved subscriber settings${data.subscriber_settings_path ? ` to ${data.subscriber_settings_path}` : ""}.`;
+                finalMessage = `Saved subscriber settings${data.subscriber_settings_path ? ` to ${data.subscriber_settings_path}` : ""}.`;
             }
             await loadAdminInfo();
             await loadSubscriberSettings(false);
@@ -624,6 +682,7 @@
         loadSubscriberSettings();
         setInterval(loadAdminInfo, 5000);
         maybeShowSettingsRequiredModal();
+        try { registerAdminKeplrListener(); } catch (err) { console.warn("Keplr listener not attached", err); }
     });
 
     function maybeShowSettingsRequiredModal() {

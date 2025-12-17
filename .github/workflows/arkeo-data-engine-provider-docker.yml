@@ -1,4 +1,4 @@
-name: Build and Publish provider-core Docker image
+name: Build and Publish Arkeo Data Engine (Provider) Docker image
 
 on:
   push:
@@ -31,12 +31,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push provider-core image
+      - name: Build and push arkeo-data-engine-provider image
         uses: docker/build-push-action@v6
         with:
           context: ./provider-core
           file: ./provider-core/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/provider-core:latest
-            ghcr.io/${{ github.repository_owner }}/provider-core:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/arkeo-data-engine-provider:latest
+            ghcr.io/${{ github.repository_owner }}/arkeo-data-engine-provider:${{ github.sha }}

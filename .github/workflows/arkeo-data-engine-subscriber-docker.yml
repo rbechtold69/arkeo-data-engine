@@ -1,4 +1,4 @@
-name: Build and Publish subscriber-core Docker image
+name: Build and Publish Arkeo Data Engine (Subscriber) Docker image
 
 on:
   push:
@@ -31,12 +31,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push subscriber-core image
+      - name: Build and push arkeo-data-engine-subscriber image
         uses: docker/build-push-action@v6
         with:
           context: ./subscriber-core
           file: ./subscriber-core/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/subscriber-core:latest
-            ghcr.io/${{ github.repository_owner }}/subscriber-core:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/arkeo-data-engine-subscriber:latest
+            ghcr.io/${{ github.repository_owner }}/arkeo-data-engine-subscriber:${{ github.sha }}

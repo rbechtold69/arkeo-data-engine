@@ -451,243 +451,8 @@ def hotwallet_log_note():
 
 @app.post("/api/hotwallet/send-usdc")
 def hotwallet_send_usdc():
-    """
-    Send USDC from ETH hot wallet to Osmosis via Axelar (token-only bridge).
-    Flow: approve(USDC -> gateway) then gateway.sendToken("osmosis", osmo_addr, "USDC", amount).
-    """
-    return jsonify({"error": "USDC bridge via Gravity not yet implemented"}), 501
-
-    payload = request.get_json(silent=True) or {}
-    amount = payload.get("amount")
-    gas_amount_val = payload.get("gas_amount_eth")
-    try:
-        amt_float = float(amount)
-    except Exception:
-        return jsonify({"error": "invalid amount"}), 400
-    if amt_float <= 0:
-        return jsonify({"error": "amount must be > 0"}), 400
-    if MIN_OSMO_BRIDGE_USDC and amt_float < MIN_OSMO_BRIDGE_USDC:
-        return jsonify({"error": f"amount must be >= {MIN_OSMO_BRIDGE_USDC} USDC"}), 400
-    amt_base = int(round(amt_float * (10 ** ETH_USDC_DECIMALS)))
-    gas_amount_eth = _safe_float(
-        gas_amount_val if gas_amount_val not in (None, "") else (os.getenv("AXELAR_GAS_AMOUNT_ETH") or AXELAR_GAS_AMOUNT_ETH),
-        0.0,
-    )
-    if gas_amount_eth < 0:
-        gas_amount_eth = 0.0
-    gas_amount_wei = int(round(gas_amount_eth * 1e18)) if gas_amount_eth else 0
-
-    if not ETH_RPC:
-        return jsonify({"error": "ETH_RPC not configured"}), 400
-    if not ETH_USDC_CONTRACT:
-        return jsonify({"error": "USDC contract not configured"}), 400
-
-    # Ensure wallets/addresses
-    settings = _merge_subscriber_settings()
-    settings, eth_err = _ensure_eth_wallet(settings)
-    settings, osmo_err = _ensure_osmo_wallet(settings)
-    if eth_err:
-        return jsonify({"error": f"eth wallet: {eth_err}"}), 400
-    if osmo_err:
-        return jsonify({"error": f"osmo wallet: {osmo_err}"}), 400
-    eth_addr = settings.get("ETH_ADDRESS")
-    osmo_addr = settings.get("OSMOSIS_ADDRESS")
-    if not eth_addr:
-        return jsonify({"error": "ETH_ADDRESS missing"}), 400
-    if not osmo_addr:
-        return jsonify({"error": "OSMOSIS_ADDRESS missing"}), 400
-
-    ax = _resolve_axelar_eth_config()
-    gw_addr = ax.get("gateway")
-    if not gw_addr:
-        return jsonify({"error": "Axelar gateway not resolved"}), 500
-    gs_addr = ax.get("gas_service")
-
-    mnemonic = settings.get("ETH_MNEMONIC") or ""
-    if not mnemonic:
-        return jsonify({"error": "ETH_MNEMONIC missing"}), 400
-
-    gas_tx = None
-    gas_cmd: list[str] | None = None
-    gas_out = ""
-    if gas_amount_wei > 0:
-        if not gs_addr:
-            return jsonify({"error": "Axelar gas service not resolved"}), 500
-        gas_cmd = [
-            CAST_BIN,
-            "send",
-            gs_addr,
-            "payNativeGasForContractCallWithToken(address,string,string,bytes,string,uint256,address)",
-            eth_addr,
-            "osmosis",
-            osmo_addr,
-            "0x",
-            "USDC",
-            str(amt_base),
-            eth_addr,
-            "--rpc-url",
-            ETH_RPC,
-            "--mnemonic",
-            mnemonic,
-            "--mnemonic-index",
-            "0",
-            "--value",
-            str(gas_amount_wei),
-        ]
-        gas_code, gas_out, gas_tx = _run_cast_with_log(gas_cmd, "gas_pay")
-        if gas_code != 0 or not gas_tx:
-            log_entry = {
-                "ts": datetime.utcnow().isoformat() + "Z",
-                "action": "send_usdc",
-                "stage": "gas_pay",
-                "amount_usdc": amt_float,
-                "amount_base_units": amt_base,
-                "gas_amount_eth": gas_amount_eth,
-                "gas_amount_wei": gas_amount_wei,
-                "eth_address": eth_addr,
-                "osmosis_address": osmo_addr,
-                "axelar_gateway": gw_addr,
-                "axelar_gas_service": gs_addr,
-                "status": "failed",
-                "error": gas_out,
-                "exit_code": gas_code,
-                "cmd": _mask_cmd_sensitive(gas_cmd),
-            }
-            _append_hotwallet_log(log_entry)
-            return jsonify({"error": "gas payment failed", "detail": gas_out}), 500
-
-    approve_cmd = [
-        CAST_BIN,
-        "send",
-        ETH_USDC_CONTRACT,
-        "approve(address,uint256)",
-        gw_addr,
-        str(amt_base),
-        "--rpc-url",
-        ETH_RPC,
-        "--mnemonic",
-        mnemonic,
-        "--mnemonic-index",
-        "0",
-    ]
-    send_cmd = [
-        CAST_BIN,
-        "send",
-        gw_addr,
-        "sendToken(string,string,string,uint256)",
-        "osmosis",
-        osmo_addr,
-        "USDC",
-        str(amt_base),
-        "--rpc-url",
-        ETH_RPC,
-        "--mnemonic",
-        mnemonic,
-        "--mnemonic-index",
-        "0",
-    ]
-
-    approve_code, approve_out, approve_tx = _run_cast_with_log(approve_cmd, "approve")
-    if approve_code != 0 or not approve_tx:
-        log_entry = {
-            "ts": datetime.utcnow().isoformat() + "Z",
-            "action": "send_usdc",
-            "stage": "approve",
-            "amount_usdc": amt_float,
-            "amount_base_units": amt_base,
-            "eth_address": eth_addr,
-            "osmosis_address": osmo_addr,
-            "axelar_gateway": gw_addr,
-            "axelar_gas_service": gs_addr,
-            "gas_amount_eth": gas_amount_eth,
-            "gas_amount_wei": gas_amount_wei,
-            "gas_tx": gas_tx,
-            "gas_cmd": _mask_cmd_sensitive(gas_cmd) if gas_cmd else None,
-            "gas_out": gas_out,
-            "status": "failed",
-            "error": approve_out,
-            "exit_code": approve_code,
-            "cmd": _mask_cmd_sensitive(approve_cmd),
-        }
-        _append_hotwallet_log(log_entry)
-        return jsonify({"error": "approve failed", "detail": approve_out}), 500
-
-    send_code, send_out, send_tx = _run_cast_with_log(send_cmd, "sendToken")
-    if send_code != 0 or not send_tx:
-        log_entry = {
-            "ts": datetime.utcnow().isoformat() + "Z",
-            "action": "send_usdc",
-            "stage": "sendToken",
-            "amount_usdc": amt_float,
-            "amount_base_units": amt_base,
-            "eth_address": eth_addr,
-            "osmosis_address": osmo_addr,
-            "axelar_gateway": gw_addr,
-            "axelar_gas_service": gs_addr,
-            "gas_amount_eth": gas_amount_eth,
-            "gas_amount_wei": gas_amount_wei,
-            "gas_tx": gas_tx,
-            "gas_cmd": _mask_cmd_sensitive(gas_cmd) if gas_cmd else None,
-            "gas_out": gas_out,
-            "approve_tx": approve_tx,
-            "status": "failed",
-            "error": send_out,
-            "exit_code": send_code,
-            "cmd": _mask_cmd_sensitive(send_cmd),
-        }
-        _append_hotwallet_log(log_entry)
-        return jsonify(
-            {
-                "error": "sendToken failed",
-                "detail": send_out,
-                "approve_tx": approve_tx,
-                "exit_code": send_code,
-                "send_cmd": _mask_cmd_sensitive(send_cmd),
-                "send_out": send_out,
-            }
-        ), 500
-
-    log_entry = {
-        "ts": datetime.utcnow().isoformat() + "Z",
-        "action": "send_usdc",
-        "amount_usdc": amt_float,
-        "amount_base_units": amt_base,
-        "eth_address": eth_addr,
-        "osmosis_address": osmo_addr,
-        "eth_usdc_contract": ETH_USDC_CONTRACT,
-        "eth_usdc_decimals": ETH_USDC_DECIMALS,
-        "axelar_gateway": gw_addr,
-        "axelar_source": ax.get("source"),
-        "axelar_gas_service": gs_addr,
-        "gas_amount_eth": gas_amount_eth,
-        "gas_amount_wei": gas_amount_wei,
-        "gas_tx": gas_tx,
-        "gas_cmd": _mask_cmd_sensitive(gas_cmd) if gas_cmd else None,
-        "gas_out": gas_out,
-        "approve_tx": approve_tx,
-        "send_tx": send_tx,
-        "approve_cmd": _mask_cmd_sensitive(approve_cmd),
-        "send_cmd": _mask_cmd_sensitive(send_cmd),
-        "approve_out": approve_out,
-        "send_out": send_out,
-        "status": "submitted",
-    }
-    _append_hotwallet_log(log_entry)
-    return jsonify(
-        {
-            "status": "submitted",
-            "approve_tx": approve_tx,
-            "send_tx": send_tx,
-            "gas_tx": gas_tx,
-            "approve_out": approve_out,
-            "send_out": send_out,
-            "approve_cmd": _mask_cmd_sensitive(approve_cmd),
-            "send_cmd": _mask_cmd_sensitive(send_cmd),
-            "gas_cmd": _mask_cmd_sensitive(gas_cmd) if gas_cmd else None,
-            "gas_out": gas_out,
-            "log_entry": log_entry,
-        }
-    )
+    """ETH hot wallet bridge is disabled; external signing is required."""
+    return jsonify({"error": ETH_WALLET_DISABLED_MSG}), 400
 
 
 def _fetch_axelarscan_gmp(tx_hash: str) -> dict:
@@ -1171,26 +936,16 @@ def _osmosis_quote_usdc_to_arkeo(amount_float: float) -> tuple[dict | None, str 
     if not OSMOSIS_RPC:
         return None, "OSMOSIS_RPC not configured"
 
-    settings = _merge_subscriber_settings()
-    settings, err = _ensure_osmo_wallet(settings)
-    if err:
-        return None, err
-    osmo_addr = settings.get("OSMOSIS_ADDRESS")
-    balances = []
-    try:
-        balances = _osmosis_balances_raw(osmo_addr)
-    except Exception:
-        balances = []
-
-    # Resolve denoms
-    usdc_denom = settings.get("USDC_OSMO_DENOM") or os.getenv("USDC_OSMO_DENOM") or ""
-    if not usdc_denom:
-        usdc_denom, _ = _pick_usdc_osmo_denom(balances)
-    arkeo_denom = _discover_arkeo_osmo_denom(balances)
+    # Resolve denoms using pool state (no wallet required)
+    pool_state, pool_err = _pool_2977_state()
+    if pool_err or not pool_state:
+        return None, pool_err or "pool unavailable"
+    usdc_denom = pool_state.get("usdc_denom") or os.getenv("USDC_OSMO_DENOM") or ""
+    arkeo_denom = pool_state.get("arkeo_denom") or ""
     if not arkeo_denom:
-        return None, "ARKEO denom on Osmosis not found"
-    if not usdc_denom:
-        return None, "USDC denom on Osmosis not found"
+        arkeo_denom = os.getenv("ARKEO_OSMO_DENOM") or ""
+    if not arkeo_denom or not usdc_denom:
+        return None, "ARKEO/USDC denoms on Osmosis not found"
 
     amt_in_base = int(round(amount_float * 1_000_000))
     if amt_in_base <= 0:
@@ -1316,25 +1071,13 @@ def _osmosis_quote_arkeo_to_usdc(amount_float: float) -> tuple[dict | None, str 
     if not OSMOSIS_RPC:
         return None, "OSMOSIS_RPC not configured"
 
-    settings = _merge_subscriber_settings()
-    settings, err = _ensure_osmo_wallet(settings)
-    if err:
-        return None, err
-    osmo_addr = settings.get("OSMOSIS_ADDRESS")
-    balances = []
-    try:
-        balances = _osmosis_balances_raw(osmo_addr)
-    except Exception:
-        balances = []
-
-    usdc_denom = settings.get("USDC_OSMO_DENOM") or os.getenv("USDC_OSMO_DENOM") or ""
-    if not usdc_denom:
-        usdc_denom, _ = _pick_usdc_osmo_denom(balances)
-    arkeo_denom = _discover_arkeo_osmo_denom(balances)
-    if not arkeo_denom:
-        return None, "ARKEO denom on Osmosis not found"
-    if not usdc_denom:
-        return None, "USDC denom on Osmosis not found"
+    pool_state, pool_err = _pool_2977_state()
+    if pool_err or not pool_state:
+        return None, pool_err or "pool unavailable"
+    usdc_denom = pool_state.get("usdc_denom") or os.getenv("USDC_OSMO_DENOM") or ""
+    arkeo_denom = pool_state.get("arkeo_denom") or os.getenv("ARKEO_OSMO_DENOM") or ""
+    if not arkeo_denom or not usdc_denom:
+        return None, "ARKEO/USDC denoms on Osmosis not found"
 
     amt_in_base = int(round(amount_float * 100_000_000))  # ARKEO 8 decimals
     if amt_in_base <= 0:
@@ -2457,6 +2200,8 @@ def hotwallet_arkeo_to_osmosis():
 
 CAST_BIN = _pick_executable("cast", ["/usr/local/bin/cast", "/root/.foundry/bin/cast"])
 OSMOSISD_BIN = _pick_executable("osmosisd", ["/usr/local/bin/osmosisd"])
+ETH_WALLET_DISABLED_MSG = "Ethereum hot wallet disabled; use external wallet/signing"
+OSMO_WALLET_DISABLED_MSG = "Osmosis hot wallet disabled; use external wallet/signing"
 _CAST_LOGGED = False
 ARKEOD_HOME = os.path.expanduser(os.getenv("ARKEOD_HOME", "/root/.arkeo"))
 KEY_NAME = os.getenv("KEY_NAME", "subscriber")
@@ -2473,6 +2218,7 @@ ETH_USDC_DECIMALS = int(os.getenv("ETH_USDC_DECIMALS", "6"))
 OSMOSIS_RPC = _strip_quotes(os.getenv("OSMOSIS_RPC") or "")
 OSMOSIS_HOME = os.path.expanduser(os.getenv("OSMOSIS_HOME", "/app/config/osmosis"))
 OSMOSIS_KEY_NAME = os.getenv("OSMOSIS_KEY_NAME", "osmo-subscriber")
+CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "*")
 # cache for Osmosis denom traces/metadata
 OSMOSIS_DENOM_CACHE = os.path.join(CACHE_DIR or "/app/cache", "osmo_denom_cache.json")
 DEFAULT_OSMOSIS_USDC_DENOMS = [
@@ -2534,8 +2280,9 @@ PROXY_DECORATE_RESPONSE = str(os.getenv("PROXY_DECORATE_RESPONSE", "true")).lowe
 PROXY_ARKAUTH_AS_HEADER = str(os.getenv("PROXY_ARKAUTH_AS_HEADER", "false")).lower() in ("1", "true", "yes", "on")
 PROXY_CONTRACT_TIMEOUT = int(os.getenv("PROXY_CONTRACT_TIMEOUT", "10"))
 PROXY_CONTRACT_LIMIT = int(os.getenv("PROXY_CONTRACT_LIMIT", "5000"))
+PROXY_TEST_TIMEOUT = float(os.getenv("PROXY_TEST_TIMEOUT", "12.0"))
 PROXY_OPEN_COOLDOWN = int(os.getenv("PROXY_OPEN_COOLDOWN", "0"))  # seconds to cool down a provider after open failure
-PROXY_CONTRACT_CACHE_TTL = int(os.getenv("PROXY_CONTRACT_CACHE_TTL", "45"))  # seconds; 0 disables TTL check
+PROXY_CONTRACT_CACHE_TTL = 0  # TTL disabled; cached contract reused until invalid
 SIGNHERE_HOME = os.path.join(Path.home(), ".arkeo")
 AXELAR_GAS_AMOUNT_ETH = _safe_float(os.getenv("AXELAR_GAS_AMOUNT_ETH") or 0.0, 0.0)
 MIN_OSMO_BRIDGE_USDC = _safe_float(os.getenv("MIN_OSMO_BRIDGE_USDC") or 0.0, 0.0)
@@ -2736,6 +2483,17 @@ def _ensure_tcp_scheme(url: str | None) -> str:
     return s
 
 
+def _ensure_http_rpc(url: str | None) -> str:
+    """Return an HTTP(S) RPC URL suitable for browser use; converts tcp:// to http://."""
+    if not url:
+        return ""
+    s = _strip_quotes(str(url).strip())
+    lower = s.lower()
+    if lower.startswith("tcp://"):
+        return "http://" + s[len("tcp://") :]
+    return s
+
+
 def _default_subscriber_settings() -> dict:
     """Return defaults from env + sane fallbacks."""
     defaults = {
@@ -2756,10 +2514,7 @@ def _default_subscriber_settings() -> dict:
         "ETH_USDC_DECIMALS": int(os.getenv("ETH_USDC_DECIMALS", "6")),
         "OSMOSIS_RPC": _strip_quotes(os.getenv("OSMOSIS_RPC") or ""),
         "OSMOSIS_USDC_DENOMS": OSMOSIS_USDC_DENOMS,
-        "ETH_MNEMONIC": "",
         "ETH_ADDRESS": "",
-        "OSMOSIS_MNEMONIC": "",
-        "OSMOSIS_ADDRESS": "",
         "USDC_OSMO_DENOM": os.getenv("USDC_OSMO_DENOM", "ibc/498A0751C798A0D9A389AA3691123DADA57DAA4FE165D5C75894505B876BA6E4"),
         "ARKEO_OSMO_DENOM": os.getenv("ARKEO_OSMO_DENOM", "ibc/AD969E97A63B64B30A6E4D9F598341A403B849F5ACFEAA9F18DBD9255305EC65"),
         "MIN_OSMO_GAS": MIN_OSMO_GAS,
@@ -2786,10 +2541,14 @@ def _write_subscriber_settings_file(settings: dict) -> None:
     path = SUBSCRIBER_SETTINGS_PATH
     if not path:
         return
+    # Strip disabled mnemonic fields before persisting
+    sanitized = dict(settings) if isinstance(settings, dict) else {}
+    sanitized.pop("ETH_MNEMONIC", None)
+    sanitized.pop("OSMOSIS_MNEMONIC", None)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=2)
+            json.dump(sanitized, f, indent=2)
     except OSError:
         pass
 
@@ -2822,12 +2581,19 @@ def _merge_subscriber_settings(overrides: dict | None = None) -> dict:
         merged["OSMOSIS_USDC_DENOMS"] = [d.strip() for d in denoms.split(",") if d.strip()]
     if not merged.get("OSMOSIS_USDC_DENOMS"):
         merged["OSMOSIS_USDC_DENOMS"] = DEFAULT_OSMOSIS_USDC_DENOMS.copy()
+    # Drop ETH mnemonic (external signing expected)
+    merged.pop("ETH_MNEMONIC", None)
+    # Drop Osmosis hot wallet fields (external signing expected)
+    merged.pop("OSMOSIS_MNEMONIC", None)
+    merged.pop("OSMOSIS_ADDRESS", None)
+    merged.pop("OSMOSIS_KEY_NAME", None)
+    merged.pop("OSMOSIS_HOME", None)
     return merged
 
 
 def _apply_subscriber_settings(settings: dict) -> None:
     """Apply subscriber settings to globals and os.environ for runtime use."""
-    global KEY_NAME, KEYRING, ARKEOD_HOME, ARKEOD_NODE, CHAIN_ID, NODE_ARGS, CHAIN_ARGS, KEY_MNEMONIC, ETH_RPC, ETH_USDC_CONTRACT, ETH_USDC_DECIMALS, OSMOSIS_RPC, OSMOSIS_USDC_DENOMS, MIN_OSMO_GAS, DEFAULT_SLIPPAGE_BPS, OSMO_TO_ARKEO_CHANNEL, ARKEO_TO_OSMO_CHANNEL
+    global KEY_NAME, KEYRING, ARKEOD_HOME, ARKEOD_NODE, CHAIN_ID, NODE_ARGS, CHAIN_ARGS, KEY_MNEMONIC, ETH_RPC, ETH_USDC_CONTRACT, ETH_USDC_DECIMALS, OSMOSIS_RPC, OSMOSIS_USDC_DENOMS, MIN_OSMO_GAS, DEFAULT_SLIPPAGE_BPS, OSMO_TO_ARKEO_CHANNEL, ARKEO_TO_OSMO_CHANNEL, CORS_ALLOWED_ORIGINS
     if not isinstance(settings, dict):
         return
     KEY_NAME = settings.get("KEY_NAME", KEY_NAME)
@@ -2861,6 +2627,11 @@ def _apply_subscriber_settings(settings: dict) -> None:
     # Always keep hardcoded channel values
     OSMO_TO_ARKEO_CHANNEL = "channel-103074"
     ARKEO_TO_OSMO_CHANNEL = "channel-1"
+    try:
+        cors_val = settings.get("CORS_ALLOWED_ORIGINS", CORS_ALLOWED_ORIGINS)
+        CORS_ALLOWED_ORIGINS = cors_val if cors_val is not None else CORS_ALLOWED_ORIGINS
+    except Exception:
+        pass
 
     env_overrides = {
         "SUBSCRIBER_NAME": settings.get("SUBSCRIBER_NAME", ""),
@@ -2878,15 +2649,13 @@ def _apply_subscriber_settings(settings: dict) -> None:
         "ETH_USDC_DECIMALS": settings.get("ETH_USDC_DECIMALS", ""),
         "OSMOSIS_RPC": settings.get("OSMOSIS_RPC", ""),
         "OSMOSIS_USDC_DENOMS": ",".join(OSMOSIS_USDC_DENOMS) if OSMOSIS_USDC_DENOMS else "",
-        "ETH_MNEMONIC": settings.get("ETH_MNEMONIC", ""),
         "ETH_ADDRESS": settings.get("ETH_ADDRESS", ""),
-        "OSMOSIS_MNEMONIC": settings.get("OSMOSIS_MNEMONIC", ""),
-        "OSMOSIS_ADDRESS": settings.get("OSMOSIS_ADDRESS", ""),
         "USDC_OSMO_DENOM": settings.get("USDC_OSMO_DENOM", ""),
         "ARKEO_OSMO_DENOM": settings.get("ARKEO_OSMO_DENOM", ""),
         "MIN_OSMO_GAS": MIN_OSMO_GAS,
         "DEFAULT_SLIPPAGE_BPS": DEFAULT_SLIPPAGE_BPS,
         "ARRIVAL_TOLERANCE_BPS": ARRIVAL_TOLERANCE_BPS,
+        "CORS_ALLOWED_ORIGINS": CORS_ALLOWED_ORIGINS,
     }
     for k, v in env_overrides.items():
         if v is None:
@@ -3025,185 +2794,17 @@ def _import_hotwallet_from_mnemonic(
 
 
 def _ensure_eth_wallet(settings: dict) -> tuple[dict, str | None]:
-    """Ensure ETH mnemonic/address exist in settings; returns (settings, error)."""
-    global _CAST_LOGGED
+    """Ethereum hot wallet management disabled; external signing expected."""
     if not isinstance(settings, dict):
         return settings, "invalid settings"
-    if not CAST_BIN or not os.path.isfile(CAST_BIN):
-        err = f"cast binary not found (looked for {CAST_BIN or 'cast'})"
-        print(err)
-        return settings, err
-    if not _CAST_LOGGED:
-        print(f"[eth] using cast binary at {CAST_BIN}")
-        _CAST_LOGGED = True
-    mnemonic = settings.get("ETH_MNEMONIC") or ""
-    address = settings.get("ETH_ADDRESS") or ""
-
-    def derive_addr(mn: str) -> tuple[str | None, str | None]:
-        try:
-            cmd = [
-                CAST_BIN,
-                "wallet",
-                "address",
-                "--mnemonic",
-                mn,
-            ]
-            code, out = run_list(cmd)
-            if code == 0 and out:
-                lines = [l.strip() for l in out.splitlines() if l.strip()]
-                addr = None
-                for line in lines:
-                    m = re.search(r"0x[a-fA-F0-9]{40}", line)
-                    if m:
-                        addr = m.group(0)
-                        break
-                if not addr and lines:
-                    addr = lines[-1]
-                if addr:
-                    print(f"[eth] derived address from mnemonic: {addr}")
-                    return addr, None
-            return None, f"addr derive exit={code}: {out}"
-        except Exception as e:
-            return None, str(e)
-
-    # If mnemonic exists but no address, derive it
-    if mnemonic and not address:
-        print(f"[eth] mnemonic present, deriving address (masked={_mask_mnemonic(mnemonic)})")
-        addr, derr = derive_addr(mnemonic)
-        if addr:
-            settings["ETH_ADDRESS"] = addr
-            return settings, None
-        if derr:
-            err = f"failed to derive eth address: {derr}"
-            print(err)
-            # If we cannot derive and have no address, attempt regeneration
-            mnemonic = ""
-            settings["ETH_MNEMONIC"] = ""
-
-    # If both present, done
-    if mnemonic and address:
-        print(f"[eth] mnemonic/address already present; skipping generation")
-        return settings, None
-
-    # Generate mnemonic if missing
-    try:
-        code, out = run_list([CAST_BIN, "wallet", "new-mnemonic", "--words", "24"])
-        if code != 0 or not out:
-            err = f"failed to generate eth mnemonic: {out}"
-            print(err)
-            return settings, err
-        mnemonic_new = _extract_mnemonic(out.strip())
-        if len(mnemonic_new.split()) < 12:
-            err = f"unexpected mnemonic format: {out}"
-            print(err)
-            return settings, err
-        print(f"[eth] generated mnemonic (masked={_mask_mnemonic(mnemonic_new)})")
-        settings["ETH_MNEMONIC"] = mnemonic_new
-        addr, derr = derive_addr(mnemonic_new)
-        if addr:
-            settings["ETH_ADDRESS"] = addr
-            return settings, None
-        err = f"failed to derive eth address after mnemonic gen: {derr}"
-        print(err)
-        return settings, err
-    except Exception as e:
-        err = f"failed to generate eth wallet: {e}"
-        print(err)
-        return settings, err
+    return settings, ETH_WALLET_DISABLED_MSG
 
 
 def _ensure_osmo_wallet(settings: dict) -> tuple[dict, str | None]:
-    """Ensure Osmosis mnemonic/address exist in settings using osmosisd keyring-backend test."""
+    """Osmosis hot wallet management disabled; external signing expected."""
     if not isinstance(settings, dict):
         return settings, "invalid settings"
-    if not OSMOSISD_BIN or not os.path.isfile(OSMOSISD_BIN):
-        err = f"osmosisd binary not found (looked for {OSMOSISD_BIN or 'osmosisd'})"
-        print(err)
-        return settings, err
-    mnemonic = settings.get("OSMOSIS_MNEMONIC") or ""
-    address = settings.get("OSMOSIS_ADDRESS") or ""
-    key_name = settings.get("OSMOSIS_KEY_NAME") or OSMOSIS_KEY_NAME
-    home = settings.get("OSMOSIS_HOME") or OSMOSIS_HOME
-    os.makedirs(home, exist_ok=True)
-
-    def _derive_address_with_mnemonic(mn: str) -> tuple[str | None, str | None]:
-        try:
-            cmd = [
-                OSMOSISD_BIN,
-                "keys",
-                "add",
-                key_name,
-                "--keyring-backend",
-                "test",
-                "--home",
-                home,
-                "--recover",
-                "--output",
-                "json",
-            ]
-            code, out = run_with_input(cmd, mn.strip() + "\n")
-            if code != 0:
-                return None, out
-            data = json.loads(out)
-            return data.get("address"), None
-        except Exception as e:
-            return None, str(e)
-
-    # If mnemonic exists but no address, try to recover to derive address
-    if mnemonic and not address:
-        addr, err = _derive_address_with_mnemonic(mnemonic)
-        if addr:
-            settings["OSMOSIS_ADDRESS"] = addr
-            return settings, None
-        if err:
-            err_msg = f"failed to derive osmosis address: {err}"
-            print(err_msg)
-            return settings, err_msg
-    # If both present, done
-    if mnemonic and address:
-        return settings, None
-    # Try to add new key to get mnemonic and address
-    try:
-        cmd = [
-            OSMOSISD_BIN,
-            "keys",
-            "add",
-            key_name,
-            "--keyring-backend",
-            "test",
-            "--home",
-            home,
-            "--output",
-            "json",
-        ]
-        code, out = run_list(cmd)
-        if code != 0:
-            # If key exists, try show
-            if "exists" in (out or "").lower():
-                code_show, out_show = run_list(
-                    [OSMOSISD_BIN, "keys", "show", key_name, "--keyring-backend", "test", "--home", home, "--output", "json"]
-                )
-                if code_show == 0:
-                    data_show = json.loads(out_show)
-                    addr_show = data_show.get("address")
-                    if addr_show:
-                        settings["OSMOSIS_ADDRESS"] = addr_show
-                        if not mnemonic:
-                            settings["OSMOSIS_MNEMONIC"] = ""
-                        return settings, None
-            err = f"failed to create osmosis wallet: {out}"
-            print(err)
-            return settings, err
-        data = json.loads(out)
-        if data.get("mnemonic"):
-            settings["OSMOSIS_MNEMONIC"] = data.get("mnemonic")
-        if data.get("address"):
-            settings["OSMOSIS_ADDRESS"] = data.get("address")
-        return settings, None
-    except Exception as e:
-        err = f"failed to create osmosis wallet: {e}"
-        print(err)
-        return settings, err
+    return settings, OSMO_WALLET_DISABLED_MSG
 
 
 def _create_hotwallet(
@@ -3239,33 +2840,16 @@ def _bootstrap_wallets():
         # Ensure Arkeo mnemonic is captured when possible
         settings, arkeo_changed = _ensure_arkeo_mnemonic(settings)
         changed = changed or arkeo_changed
-        before_eth_mn = settings.get("ETH_MNEMONIC")
         before_eth_addr = settings.get("ETH_ADDRESS")
-        before_osmo_mn = settings.get("OSMOSIS_MNEMONIC")
-        before_osmo_addr = settings.get("OSMOSIS_ADDRESS")
         # ETH
         settings, eth_err = _ensure_eth_wallet(settings)
-        if not eth_err and settings.get("ETH_MNEMONIC") and settings.get("ETH_ADDRESS"):
-            changed = True
-            print("[boot] ETH wallet ensured (mnemonic+address present)")
-        elif eth_err:
-            print(f"[boot] ETH wallet init error: {eth_err}")
-        # OSMO
-        settings, osmo_err = _ensure_osmo_wallet(settings)
-        if not osmo_err and settings.get("OSMOSIS_MNEMONIC") and settings.get("OSMOSIS_ADDRESS"):
-            changed = True
-            print("[boot] Osmosis wallet ensured (mnemonic+address present)")
-        elif osmo_err:
-            print(f"[boot] Osmosis wallet init error: {osmo_err}")
+        if eth_err:
+            print(f"[boot] ETH wallet init note: {eth_err}")
         # strip transient errors before persisting
         settings.pop("ETH_ERROR", None)
-        settings.pop("OSMOSIS_ERROR", None)
         if (
             changed
-            or settings.get("ETH_MNEMONIC") != before_eth_mn
             or settings.get("ETH_ADDRESS") != before_eth_addr
-            or settings.get("OSMOSIS_MNEMONIC") != before_osmo_mn
-            or settings.get("OSMOSIS_ADDRESS") != before_osmo_addr
         ):
             _write_subscriber_settings_file(settings)
     except Exception as e:
@@ -3619,8 +3203,14 @@ def osmosis_block_height():
     return jsonify({"height": height})
 
 
-def _osmosis_balance_internal() -> tuple[str | None, str | None]:
-    """Return (balance_str, error) for the Osmosis wallet."""
+def _osmosis_address_from_request() -> tuple[str | None, str | None]:
+    """
+    Return (address, error) for Osmosis balance queries.
+    Priority: explicit request arg -> persisted hot wallet (if enabled).
+    """
+    req_addr = _strip_quotes(request.args.get("address") or request.args.get("addr") or "")
+    if req_addr:
+        return req_addr, None
     settings = _merge_subscriber_settings()
     settings, err = _ensure_osmo_wallet(settings)
     if err:
@@ -3628,6 +3218,13 @@ def _osmosis_balance_internal() -> tuple[str | None, str | None]:
     addr = settings.get("OSMOSIS_ADDRESS")
     if not addr:
         return None, "OSMOSIS_ADDRESS not available"
+    return addr, None
+
+
+def _osmosis_balance_internal(addr: str | None) -> tuple[str | dict | None, str | None]:
+    """Return (balance, error) for the provided Osmosis address."""
+    if not addr:
+        return None, "address required"
     resolved, err = _resolve_osmo_denoms(addr)
     if err:
         return None, err
@@ -3694,8 +3291,14 @@ def _osmosis_balance_internal() -> tuple[str | None, str | None]:
 
 @app.get("/api/osmosis-balance")
 def osmosis_balance():
-    """Return Osmosis balance for the derived Osmosis wallet."""
-    bal, err = _osmosis_balance_internal()
+    """
+    Return Osmosis balance for a provided address (preferred) or the derived hot wallet.
+    Use /api/osmosis/balances?address=... for an explicit address to avoid hot wallet dependency.
+    """
+    addr, addr_err = _osmosis_address_from_request()
+    bal, err = _osmosis_balance_internal(addr)
+    if addr_err and not bal:
+        return jsonify({"error": addr_err}), 200
     if err:
         return jsonify({"error": err}), 200
     if isinstance(bal, dict):
@@ -3703,16 +3306,27 @@ def osmosis_balance():
     return jsonify({"balance": bal})
 
 
+@app.get("/api/osmosis/balances")
+def osmosis_balances():
+    """Return Osmosis balances for an explicit address; Keplr-backed flow uses this."""
+    addr = _strip_quotes(request.args.get("address") or request.args.get("addr") or "")
+    if not addr:
+        return jsonify({"error": "address query param required"}), 400
+    bal, err = _osmosis_balance_internal(addr)
+    if err:
+        return jsonify({"error": err, "address": addr}), 200
+    if isinstance(bal, dict):
+        bal["address"] = addr
+        return jsonify(bal)
+    return jsonify({"balance": bal, "address": addr})
+
+
 @app.get("/api/osmosis-assets")
 def osmosis_assets():
-    """Return resolved Osmosis assets (denom traces + metadata) for the hot wallet."""
-    settings = _merge_subscriber_settings()
-    settings, err = _ensure_osmo_wallet(settings)
-    if err:
-        return jsonify({"error": err}), 200
-    addr = settings.get("OSMOSIS_ADDRESS")
-    if not addr:
-        return jsonify({"error": "OSMOSIS_ADDRESS not available"}), 200
+    """Return resolved Osmosis assets (denom traces + metadata) for the provided address."""
+    addr, addr_err = _osmosis_address_from_request()
+    if addr_err and not addr:
+        return jsonify({"error": addr_err}), 200
     assets, err = _resolve_osmo_assets(addr)
     if err:
         return jsonify({"error": err}), 200
@@ -3726,6 +3340,13 @@ def osmosis_price():
     if err:
         return jsonify({"error": err}), 500
     return jsonify(price or {})
+
+
+@app.get("/api/osmosis-rpc")
+def osmosis_rpc_get():
+    """Return HTTP(S) Osmosis RPC endpoint (tcp converted to http)."""
+    rpc = _ensure_http_rpc(OSMOSIS_RPC)
+    return jsonify({"rpc": rpc})
 
 
 @app.post("/api/osmosis-quote-usdc-to-arkeo")
@@ -4297,7 +3918,7 @@ def subscriber_settings_get():
         generated = True
     # Ensure a baseline settings file exists before any further enrichment
     _write_subscriber_settings_file(settings)
-    # Ensure ETH/OSMOSIS mnemonics/addresses exist; generate if missing
+    # ETH/OSMOSIS hot wallets disabled (external signing expected)
     settings, eth_err = _ensure_eth_wallet(settings)
     settings, osmo_err = _ensure_osmo_wallet(settings)
     settings.pop("ETH_ERROR", None)
@@ -4374,7 +3995,6 @@ def subscriber_settings_save():
         _write_hotwallet_mnemonic(merged, merged["KEY_MNEMONIC"])
     # Ensure ETH/OSMO wallets (generate if blank) and persist
     merged, eth_err = _ensure_eth_wallet(merged)
-    merged, osmo_err = _ensure_osmo_wallet(merged)
     merged.pop("ETH_ERROR", None)
     merged.pop("OSMOSIS_ERROR", None)
     _write_subscriber_settings_file(merged)
@@ -4392,7 +4012,7 @@ def subscriber_settings_save():
             "import_result": import_result,
             "pubkey": {"raw": raw_pk, "bech32": bech32_pk, "error": pub_err},
             "eth_error": eth_err,
-            "osmosis_error": osmo_err,
+            "osmosis_error": OSMO_WALLET_DISABLED_MSG,
         }
     )
 
@@ -5358,6 +4978,16 @@ def _start_listener_server(listener: dict) -> tuple[bool, str | None]:
         "arkauth_format": listener.get("arkauth_format", PROXY_ARKAUTH_FORMAT),
         "timeout_secs": listener.get("timeout_secs", PROXY_TIMEOUT_SECS),
         "top_services": listener.get("top_services") or [],
+        "cors_allowed_origins": listener.get("cors_allowed_origins") or CORS_ALLOWED_ORIGINS,
+        "last_contracts": {
+            str(entry.get("provider_pubkey")): {
+                "contract_id": entry.get("last_contract_id"),
+                "cors_origins": entry.get("last_cors_origins"),
+                "cors_configured": entry.get("cors_configured", False),
+            }
+            for entry in (listener.get("top_services") or [])
+            if isinstance(entry, dict) and entry.get("provider_pubkey")
+        },
     }
 
     try:
@@ -5371,6 +5001,7 @@ def _start_listener_server(listener: dict) -> tuple[bool, str | None]:
     srv.active_contracts = {}
     srv.last_code = None
     srv.last_nonce = None
+    srv.cors_configured = cfg.get("last_contracts") or {}
 
     with _LISTENER_LOCK:
         if port in _LISTENER_SERVERS:
@@ -5746,6 +5377,54 @@ def _update_top_service_metrics(listener_id: str | None, provider_pubkey: str | 
         pass
 
 
+def _update_top_service_contract(
+    listener_id: str | None,
+    provider_pubkey: str | None,
+    contract_id: str | int | None,
+    origins: str | list | None = None,
+    cors_configured: bool | None = None,
+):
+    """Persist last contract id/origins per provider entry in listeners.json (best effort)."""
+    if not listener_id or provider_pubkey is None or contract_id is None:
+        return
+    try:
+        data = _ensure_listeners_file()
+        listeners = data.get("listeners") if isinstance(data, dict) else []
+    except Exception:
+        return
+    if not isinstance(listeners, list):
+        return
+    changed = False
+    for l in listeners:
+        if not isinstance(l, dict):
+            continue
+        if str(l.get("id")) != str(listener_id):
+            continue
+        ts = l.get("top_services")
+        if not isinstance(ts, list):
+            continue
+        for entry in ts:
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("provider_pubkey")) != str(provider_pubkey):
+                continue
+            entry["last_contract_id"] = str(contract_id)
+            if origins is not None:
+                entry["last_cors_origins"] = origins
+            if cors_configured is not None:
+                entry["cors_configured"] = bool(cors_configured)
+            l["updated_at"] = _timestamp()
+            changed = True
+            break
+        break
+    if changed:
+        try:
+            data["listeners"] = listeners
+            _write_listeners(data)
+        except Exception:
+            pass
+
+
 def _lookup_settlement_duration(provider_pubkey: str | None, service_id: str | int | None) -> str | None:
     """Try to find settlement_duration for a provider/service from active_services cache."""
     if not provider_pubkey or service_id is None:
@@ -6097,6 +5776,19 @@ def _b64_or_hex_to_rs_hex(sig_text: str) -> str:
         return _der_to_rs_hex(b)
     return b.hex()
 
+def _parse_cors_origins(val) -> list[str]:
+    if val is None:
+        return []
+    if isinstance(val, list):
+        items = [str(v).strip() for v in val if str(v).strip()]
+    else:
+        items = [s.strip() for s in str(val).split(",") if s.strip()]
+    if not items:
+        return []
+    if any(o == "*" for o in items):
+        return ["*"]
+    return items
+
 
 def _ensure_signhere_home():
     """signhere has no --home flag; ensure ~/.arkeo points at ARKEOD_HOME."""
@@ -6150,6 +5842,103 @@ def _sign_message(
     if not sig_hex or len(sig_hex) != 128:
         return None, f"sig_parse_failed len={len(sig_hex)} raw={out_clean}"
     return sig_hex, ""
+
+
+def _configure_contract_cors(
+    contract_id: int | str,
+    sentinel_url: str | None,
+    client_key: str,
+    cors_origins: str | list | None,
+    sign_template: str = PROXY_SIGN_TEMPLATE,
+) -> tuple[bool, str]:
+    """Best-effort CORS config push to sentinel manage API."""
+    origins = _parse_cors_origins(cors_origins)
+    if not origins:
+        return False, "no cors origins provided"
+    if not sentinel_url:
+        return False, "no sentinel url"
+    try:
+        cid = str(int(contract_id))
+    except Exception:
+        return False, "invalid contract id"
+    base = _normalize_sentinel_url(sentinel_url) or ""
+    base = base.rstrip("/")
+    if not base:
+        return False, "invalid sentinel url"
+    nonce = int(time.time())
+    sig, err = _sign_message(client_key, cid, nonce, sign_template)
+    if err or not sig:
+        return False, err or "sign failed"
+    qs = urllib.parse.urlencode({"arkcontract": f"{cid}:{nonce}:{sig}"})
+    url = f"{base}/manage/contract/{cid}?{qs}"
+    payload = {
+        "cors": {
+            "allow_origins": origins,
+            "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["*"],
+        }
+    }
+    try:
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            status = resp.status or 200
+            if 200 <= status < 300:
+                return True, ""
+            return False, f"status {status}"
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read().decode(errors="ignore")
+        except Exception:
+            body = ""
+        return False, f"http_error {e.code}: {body[:200]}"
+    except Exception as e:
+        return False, str(e)
+
+
+def _fetch_contract_config(
+    contract_id: int | str,
+    sentinel_url: str | None,
+    client_key: str,
+    sign_template: str = PROXY_SIGN_TEMPLATE,
+    timeout: int = 10,
+) -> tuple[bool, dict | None, str | None]:
+    """Fetch manage/contract/{id} from sentinel with signed arkauth."""
+    try:
+        cid = str(int(contract_id))
+    except Exception:
+        return False, None, "invalid contract id"
+    base = _normalize_sentinel_url(sentinel_url) or ""
+    base = base.rstrip("/")
+    if not base:
+        return False, None, "invalid sentinel url"
+    nonce = int(time.time())
+    sig, err = _sign_message(client_key, cid, nonce, sign_template)
+    if err or not sig:
+        return False, None, err or "sign failed"
+    qs = urllib.parse.urlencode({"arkcontract": f"{cid}:{nonce}:{sig}"})
+    url = f"{base}/manage/contract/{cid}?{qs}"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read()
+            status = resp.status or 200
+            if not (200 <= status < 300):
+                return False, None, f"status {status}"
+            try:
+                data = json.loads(body.decode() if isinstance(body, (bytes, bytearray)) else str(body))
+            except Exception:
+                data = {"raw": body.decode(errors="ignore") if isinstance(body, (bytes, bytearray)) else str(body)}
+            return True, data, None
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read().decode(errors="ignore")
+        except Exception:
+            body = ""
+        return False, None, f"http_error {e.code}: {body[:200]}"
+    except Exception as e:
+        return False, None, str(e)
 
 
 def _forward_to_sentinel(
@@ -6413,50 +6202,161 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                     active = None
                     cache_entry = contract_cache.get(provider_filter) if provider_filter else None
                     if cache_entry:
-                        ttl_ok = PROXY_CONTRACT_CACHE_TTL <= 0 or (time.time() - cache_entry.get("cached_at", 0) < PROXY_CONTRACT_CACHE_TTL)
-                        if ttl_ok:
-                            active = cache_entry.get("contract")
+                        active = cache_entry.get("contract")
                     if not active:
                         contracts = _fetch_contracts(node, timeout=PROXY_CONTRACT_TIMEOUT, active_only=True, client_filter=client_pub_local)
                         active = _select_active_contract(contracts or [], client_pub_local, _safe_int(service_id, 0), cur_h, provider_filter=provider_filter)
-                        if active and provider_filter:
-                            try:
-                                contract_cache[provider_filter] = {"contract": active, "cached_at": time.time()}
-                            except Exception:
-                                pass
-                    if active:
-                        payload["active_contract"] = active
+                    if active and provider_filter:
                         try:
-                            pm = _active_provider_moniker(active.get("provider"))
-                            if pm:
-                                payload["active_contract_provider_moniker"] = pm
-                                active = dict(active)
-                                active["provider_moniker"] = pm
-                                payload["active_contract"] = active
+                            contract_cache[provider_filter] = {"contract": active, "cached_at": time.time()}
                         except Exception:
                             pass
-                        payload["active_contract_detail"] = "Active contract found for the selected provider service."
-                        if provider_filter:
-                            payload["provider_pubkey"] = provider_filter
-                        try:
-                            self.server.active_contract = active
-                            if hasattr(self.server, "active_contracts") and provider_filter:
-                                self.server.active_contracts[provider_filter] = active
-                        except Exception:
-                            pass
-                        # try to pick last nonce if cached
-                        try:
-                            if hasattr(self.server, "last_nonce_cache"):
-                                last_nc = self.server.last_nonce_cache
-                                if isinstance(last_nc, dict):
-                                    payload["last_nonce"] = last_nc.get(str(active.get("id")))
-                        except Exception:
-                            pass
-                    else:
-                        payload["active_contract_detail"] = "No active contract found for the selected provider service."
                 except Exception as e:
                     payload["active_contract_detail"] = f"Failed to load contract: {e}"
-
+                    active = None
+                if active:
+                    payload["active_contract"] = active
+                    try:
+                        pm = _active_provider_moniker(active.get("provider"))
+                        if pm:
+                            payload["active_contract_provider_moniker"] = pm
+                            active = dict(active)
+                            active["provider_moniker"] = pm
+                            payload["active_contract"] = active
+                    except Exception:
+                        pass
+                    try:
+                        _update_top_service_contract(cfg.get("listener_id"), provider_filter or active.get("provider"), active.get("id"), None)
+                    except Exception:
+                        pass
+                    payload["active_contract_detail"] = "Active contract found for the selected provider service."
+                    if provider_filter:
+                        payload["provider_pubkey"] = provider_filter
+                    try:
+                        self.server.active_contract = active
+                        if hasattr(self.server, "active_contracts") and provider_filter:
+                            self.server.active_contracts[provider_filter] = active
+                    except Exception:
+                        pass
+                    # push CORS config during normal proxy path so it doesn't depend on manual polls/status
+                    try:
+                        cid = active.get("id")
+                        origins = cfg.get("cors_allowed_origins") or CORS_ALLOWED_ORIGINS
+                        payload["cors_allowed_origins"] = origins
+                        if cid and origins and sentinel:
+                            if not hasattr(self.server, "cors_configured") or not isinstance(self.server.cors_configured, dict):
+                                self.server.cors_configured = {}
+                            last_entry = self.server.cors_configured.get(provider_filter or cid) or {}
+                            last_orig = last_entry.get("cors_origins")
+                            last_cid = last_entry.get("contract_id")
+                            last_flag = last_entry.get("cors_configured", False)
+                            if last_cid != str(cid) or last_orig != origins or not last_flag:
+                                ok, detail = _configure_contract_cors(
+                                    cid,
+                                    sentinel,
+                                    client_key,
+                                    origins,
+                                    cfg.get("sign_template", PROXY_SIGN_TEMPLATE),
+                                )
+                                payload["cors_push_ok"] = ok
+                                if ok:
+                                    self.server.cors_configured[provider_filter or cid] = {
+                                        "contract_id": str(cid),
+                                        "cors_origins": origins,
+                                        "cors_configured": True,
+                                    }
+                                    _update_top_service_contract(
+                                        cfg.get("listener_id"),
+                                        provider_filter or active.get("provider") or cfg.get("provider_pubkey"),
+                                        cid,
+                                        origins,
+                                        True,
+                                    )
+                                    self._log("info", f"cors configured for contract {cid} origins={origins}")
+                                else:
+                                    self._log("warning", f"cors config failed for contract {cid}: {detail}")
+                                    payload["cors_push_error"] = detail
+                            else:
+                                self._log("info", f"cors skip (unchanged) contract={cid} origins={origins}")
+                    except Exception:
+                        pass
+                    # try to pick last nonce if cached
+                    try:
+                        if hasattr(self.server, "last_nonce_cache"):
+                            last_nc = self.server.last_nonce_cache
+                            if isinstance(last_nc, dict):
+                                payload["last_nonce"] = last_nc.get(str(active.get("id")))
+                    except Exception:
+                        pass
+                        # push CORS config during normal status path so UI/Keplr don't depend on manual poll
+                        try:
+                            cid = active.get("id")
+                            origins = cfg.get("cors_allowed_origins") or CORS_ALLOWED_ORIGINS
+                            if cid and origins and sentinel:
+                                if not hasattr(self.server, "cors_configured"):
+                                    self.server.cors_configured = {}
+                                last_orig = self.server.cors_configured.get(cid)
+                                if last_orig != origins:
+                                    ok, detail = _configure_contract_cors(
+                                        cid,
+                                        sentinel,
+                                        client_key,
+                                        origins,
+                                        cfg.get("sign_template", PROXY_SIGN_TEMPLATE),
+                                    )
+                                if ok:
+                                    self.server.cors_configured[cid] = origins
+                                    _update_listener_cors_configured(cfg.get("listener_id"), cid, origins)
+                                    self._log("info", f"cors configured for contract {cid} origins={origins}")
+                                else:
+                                    self._log("warning", f"cors config failed for contract {cid}: {detail}")
+                        except Exception:
+                            pass
+                        # best-effort: push CORS config to sentinel manage API for this contract
+                        try:
+                            cid = active.get("id")
+                            origins = cfg.get("cors_allowed_origins") or CORS_ALLOWED_ORIGINS
+                            if cid and origins:
+                                if not hasattr(self.server, "cors_configured"):
+                                    self.server.cors_configured = set()
+                                if cid not in self.server.cors_configured:
+                                    ok, detail = _configure_contract_cors(
+                                        cid,
+                                        sentinel,
+                                        client_key,
+                                        origins,
+                                        cfg.get("sign_template", PROXY_SIGN_TEMPLATE),
+                                    )
+                                    if ok:
+                                        self.server.cors_configured.add(cid)
+                                        self._log("info", f"cors configured for contract {cid} origins={origins}")
+                                    else:
+                                        self._log("warning", f"cors config failed for contract {cid}: {detail}")
+                                payload["cors_allowed_origins"] = origins
+                                # also fetch current config to surface CORS state in status
+                                ok_cfg, cfg_data, cfg_err = _fetch_contract_config(
+                                    cid,
+                                    sentinel,
+                                    client_key,
+                                    cfg.get("sign_template", PROXY_SIGN_TEMPLATE),
+                                )
+                                if ok_cfg and cfg_data is not None:
+                                    payload["contract_config"] = cfg_data
+                                    try:
+                                        cors_cfg = cfg_data.get("cors") if isinstance(cfg_data, dict) else None
+                                        if cors_cfg is not None:
+                                            payload["contract_cors"] = cors_cfg
+                                    except Exception:
+                                        pass
+                                elif cfg_err:
+                                    payload["contract_config_error"] = cfg_err
+                        except Exception as e:
+                            try:
+                                self._log("warning", f"cors config exception: {e}")
+                            except Exception:
+                                pass
+                    else:
+                        payload["active_contract_detail"] = "No active contract found for the selected provider service."
             # If we already had an active_contract cached, still try to enrich with moniker
             if payload.get("active_contract") and not payload.get("active_contract_provider_moniker"):
                 try:
@@ -6628,16 +6528,14 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                 return True
 
             cache_entry = contract_cache.get(provider_filter)
-            if cache_entry:
-                ttl_ok = PROXY_CONTRACT_CACHE_TTL <= 0 or (time.time() - cache_entry.get("cached_at", 0) < PROXY_CONTRACT_CACHE_TTL)
-                if ttl_ok and _cached_contract_still_active(cache_entry.get("contract")):
-                    active = cache_entry.get("contract")
-                    self._log("info", f"using cached contract id={active.get('id')} provider={provider_filter}")
-                else:
-                    try:
-                        contract_cache.pop(provider_filter, None)
-                    except Exception:
-                        pass
+            if cache_entry and _cached_contract_still_active(cache_entry.get("contract")):
+                active = cache_entry.get("contract")
+                self._log("info", f"contract_cache_hit provider={provider_filter} contract_id={active.get('id')}")
+            else:
+                try:
+                    contract_cache.pop(provider_filter, None)
+                except Exception:
+                    pass
 
             if not active and hasattr(self.server, "active_contracts"):
                 active = self.server.active_contracts.get(provider_filter)
@@ -6657,7 +6555,7 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                 active = _select_active_contract(contracts or [], client_pub, svc_id, cur_h, provider_filter=provider_filter)
                 if active:
                     try:
-                        self._log("info", f"using active contract id={active.get('id')} height={active.get('height')} provider={active.get('provider')}")
+                        self._log("info", f"contract_chain_select provider={provider_filter} contract_id={active.get('id')} height={active.get('height')}")
                     except Exception:
                         pass
 
@@ -6894,8 +6792,8 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                 self._log(
                     "info",
                     (
-                        "timings total_ms=%d fetch_ms=%d select_ms=%d nonce_ms=%d sign_ms=%d "
-                        "forward_ms=%d overhead_ms=%d auto_create=%s"
+                        "timings total_ms=%d contract_fetch_ms=%d contract_select_ms=%d nonce_prep_ms=%d sign_ms=%d "
+                        "sentinel_forward_ms=%d other_ms=%d auto_create=%s provider=%s sentinel=%s contract_id=%s"
                     )
                     % (
                         int(total_time_sec * 1000),
@@ -6906,6 +6804,9 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
                         forward_ms,
                         overhead_ms,
                         auto_created_this_request,
+                        provider_filter or "",
+                        sentinel or "",
+                        cid or "",
                     ),
                 )
             else:
@@ -7234,7 +7135,7 @@ def _test_listener_port(
     port: int,
     payload: bytes | None,
     headers: dict,
-    timeout: float = 12.0,
+    timeout: float = None,
     method: str = "POST",
     path: str = "/",
 ) -> tuple[bool, str | None, str | None, dict]:
@@ -7247,7 +7148,7 @@ def _test_listener_port(
     data_bytes = None if method == "GET" else payload
     req = urllib.request.Request(url, data=data_bytes, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout or PROXY_TEST_TIMEOUT) as resp:
             body = resp.read().decode("utf-8", errors="replace")
             return True, body, None, dict(resp.headers)
     except urllib.error.HTTPError as e:
@@ -8091,6 +7992,52 @@ def test_listener(listener_id: str):
                         payload["nonce_cache_key"] = _nonce_cache_key(str(cid), str(client_pub))
                 except Exception:
                     pass
+                # best-effort: push CORS config on each poll to keep sentinel config in sync
+                try:
+                    cfg_local = getattr(srv, "cfg", {}) or {}
+                    cors_origins = cfg_local.get("cors_allowed_origins") or CORS_ALLOWED_ORIGINS
+                    payload["cors_allowed_origins"] = cors_origins
+                    sentinel_for_cors = cand_sentinel or cfg_local.get("provider_sentinel_api") or sentinel_norm
+                    client_key = cfg_local.get("client_key") or KEY_NAME
+                    cid = active_contract.get("id")
+                    if cid and sentinel_for_cors and cors_origins:
+                        if not hasattr(srv, "cors_configured"):
+                            srv.cors_configured = {}
+                        last_entry = srv.cors_configured.get(provider_pk or cid) or {}
+                        last_orig = last_entry.get("cors_origins")
+                        last_cid = last_entry.get("contract_id")
+                        last_flag = last_entry.get("cors_configured", False)
+                        if last_cid != str(cid) or last_orig != cors_origins or not last_flag:
+                            ok, detail = _configure_contract_cors(
+                                cid,
+                                sentinel_for_cors,
+                                client_key,
+                                cors_origins,
+                                cfg_local.get("sign_template", PROXY_SIGN_TEMPLATE),
+                            )
+                            payload["cors_configured"] = ok
+                            if ok:
+                                srv.cors_configured[provider_pk or cid] = {
+                                    "contract_id": str(cid),
+                                    "cors_origins": cors_origins,
+                                    "cors_configured": True,
+                                }
+                                _update_top_service_contract(
+                                    cfg_local.get("listener_id"),
+                                    provider_pk or cfg_local.get("provider_pubkey") or active_contract.get("provider"),
+                                    cid,
+                                    cors_origins,
+                                    True,
+                                )
+                            elif detail:
+                                payload["cors_error"] = detail
+                        else:
+                            self._log("info", f"cors skip (unchanged) contract={cid} origins={cors_origins}")
+                except Exception as e:
+                    try:
+                        payload["cors_error"] = str(e)
+                    except Exception:
+                        pass
         if isinstance(resp_headers, dict):
             payload["arkeo_nonce"] = resp_headers.get("X-Arkeo-Nonce") or resp_headers.get("x-arkeo-nonce")
             payload["arkeo_contract_id"] = resp_headers.get("X-Arkeo-Contract-Id") or resp_headers.get("x-arkeo-contract-id")
