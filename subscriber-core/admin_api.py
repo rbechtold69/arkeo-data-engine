@@ -2009,7 +2009,6 @@ def hotwallet_arkeo_to_osmosis():
     )
 
 
-CAST_BIN = _pick_executable("cast", ["/usr/local/bin/cast", "/root/.foundry/bin/cast"])
 OSMOSISD_BIN = _pick_executable("osmosisd", ["/usr/local/bin/osmosisd"])
 ETH_WALLET_DISABLED_MSG = "Ethereum hot wallet disabled; use external wallet/signing"
 OSMO_WALLET_DISABLED_MSG = "Osmosis hot wallet disabled; use external wallet/signing"
@@ -2023,7 +2022,7 @@ ARKEOD_NODE = _strip_quotes(
     or os.getenv("EXTERNAL_ARKEOD_NODE")
     or "tcp://127.0.0.1:26657"
 )
-# ETH flows disabled; keep defaults for compatibility
+# ETH flows disabled; keep defaults empty
 ETH_RPC = ""
 ETH_USDC_CONTRACT = ""
 ETH_USDC_DECIMALS = int(os.getenv("ETH_USDC_DECIMALS", "6"))
@@ -2837,148 +2836,6 @@ def _latest_block_height() -> tuple[str | None, str | None]:
     height = sync_info.get("latest_block_height") or sync_info.get("latest_block")
     return (str(height) if height is not None else None), None
 
-
-def _eth_block_height_internal() -> tuple[str | None, str | None]:
-    """Return (height_str, error_str) from the configured ETH_RPC endpoint."""
-    if not ETH_RPC:
-        return None, "ETH_RPC not configured"
-    try:
-        payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "eth_blockNumber", "params": []}).encode()
-        req = urllib.request.Request(
-            ETH_RPC,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            if "result" in data:
-                hex_val = data["result"]
-                try:
-                    height_int = int(hex_val, 16)
-                    return str(height_int), None
-                except Exception:
-                    return hex_val, None
-            return None, "no result in response"
-    except Exception as e:
-        return None, str(e)
-
-
-@app.get("/api/eth-block-height")
-def eth_block_height():
-    """Return the latest Ethereum block height from ETH_RPC."""
-    height, err = _eth_block_height_internal()
-    if err:
-        return jsonify({"error": err}), 200
-    return jsonify({"height": height})
-
-
-def _eth_balance_internal() -> tuple[str | None, str | None]:
-    """Return (balance_eth_str, error) using ETH_RPC and ETH_ADDRESS (auto-deriving if needed)."""
-    if not ETH_RPC:
-        return None, "ETH_RPC not configured"
-    settings = _merge_subscriber_settings()
-    settings, err = _ensure_eth_wallet(settings)
-    if err:
-        return None, err
-    addr = settings.get("ETH_ADDRESS")
-    if not addr:
-        return None, "ETH_ADDRESS not available"
-    try:
-        payload = json.dumps(
-            {"jsonrpc": "2.0", "id": 1, "method": "eth_getBalance", "params": [addr, "latest"]}
-        ).encode()
-        req = urllib.request.Request(
-            ETH_RPC,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            hex_val = (data or {}).get("result")
-            if hex_val is None:
-                return None, "no result in response"
-            try:
-                wei = int(hex_val, 16)
-                eth_val = wei / 1e18
-                return f"{eth_val:.6f} ETH", None
-            except Exception:
-                return hex_val, None
-    except Exception as e:
-        return None, str(e)
-
-
-def _eth_token_balance_internal(
-    contract: str | None, decimals: int = 6, symbol: str = "USDC"
-) -> tuple[str | None, str | None]:
-    """Return (balance_token_str, error) using eth_call balanceOf."""
-    contract_addr = (contract or "").strip()
-    if not contract_addr:
-        return None, "token contract not configured"
-    if not ETH_RPC:
-        return None, "ETH_RPC not configured"
-    settings = _merge_subscriber_settings()
-    settings, err = _ensure_eth_wallet(settings)
-    if err:
-        return None, err
-    addr = settings.get("ETH_ADDRESS")
-    if not addr:
-        return None, "ETH_ADDRESS not available"
-    try:
-        addr_clean = addr.lower().replace("0x", "")
-        if len(addr_clean) != 40:
-            return None, f"invalid address: {addr}"
-        data_field = "0x70a08231" + ("0" * 24) + addr_clean
-        payload = json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "eth_call",
-                "params": [
-                    {"to": contract_addr, "data": data_field},
-                    "latest",
-                ],
-            }
-        ).encode()
-        req = urllib.request.Request(
-            ETH_RPC,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            hex_val = (data or {}).get("result")
-            if hex_val is None:
-                return None, "no result in response"
-            try:
-                amt = int(hex_val, 16)
-                div = float(10**decimals)
-                val = amt / div
-                return f"{val:.6f} {symbol}", None
-            except Exception:
-                return hex_val, None
-    except Exception as e:
-        return None, str(e)
-
-
-@app.get("/api/eth-balance")
-def eth_balance():
-    """Return ETH balance for the derived ETH wallet."""
-    bal, err = _eth_balance_internal()
-    if err:
-        return jsonify({"error": err}), 200
-    return jsonify({"balance": bal})
-
-
-@app.get("/api/eth-usdc-balance")
-def eth_usdc_balance():
-    """Return USDC balance for the derived ETH wallet."""
-    bal, err = _eth_token_balance_internal(ETH_USDC_CONTRACT, ETH_USDC_DECIMALS, "USDC")
-    if err:
-        return jsonify({"error": err}), 200
-    return jsonify({"balance": bal})
 
 
 def _osmosis_block_height_internal() -> tuple[str | None, str | None]:
