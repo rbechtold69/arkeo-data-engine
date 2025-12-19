@@ -2531,6 +2531,8 @@
             const portSafe = escapeHtml(l.port ?? "");
             const statusSafe = escapeHtml(l.status || "");
             const svcLabel = l.service_description || formatServiceLabel(l.service_id);
+            const laneCount = Number(l.lanes || 1);
+            const laneLabel = String(laneCount);
             const svcSelect = `<div class="muted">
                 <div>${escapeHtml(svcLabel || "—")}</div>
                 <div class="muted small">Service type cannot be changed after creation.</div>
@@ -2663,6 +2665,7 @@
                     <td>
                         ${svcSelect}
                     </td>
+                    <td class="mono">${laneLabel}</td>
                     <td class="mono">${portSafe || "–"}</td>
                     <td class="listener-actions-cell col-actions">
                         <div class="actions align-right" style="display:flex;gap:8px;flex-wrap:nowrap;justify-content:flex-end;">
@@ -2672,7 +2675,7 @@
                     </td>
                 </tr>
                 <tr class="listener-sub">
-                    <td colspan="4">
+                    <td colspan="5">
                     <div class="muted small" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; align-items:start;">
                         <div style="display:flex; flex-direction:column; gap:4px;">
                             <div class="muted small">Endpoint:</div>
@@ -2707,12 +2710,12 @@
                     </td>
                 </tr>
                 <tr class="listener-sub">
-                    <td colspan="4">
+                    <td colspan="5">
                         <div class="muted small">Top services:</div>
                         <div class="muted">${topServicesDisplay}</div>
                     </td>
                 </tr>
-                <tr class="listener-spacer"><td colspan="4"></td></tr>
+                <tr class="listener-spacer"><td colspan="5"></td></tr>
                 </tbody>`;
             }
             const statusDot = `<span class="status-dot ${String(l.status).toLowerCase() === "active" ? "dot-ok" : "dot-err"}"></span>`;
@@ -2722,6 +2725,7 @@
             <tr class="listener-main" onclick="toggleListenerOpen('${l.id}')">
                 <td class="col-status" style="vertical-align: middle;"><span class="muted small" style="font-size:20px; display:inline-block; width:20px; color: #ffffff; line-height:1;">${caret}</span> ${statusDot}</td>
                 <td>${escapeHtml(svcLabel || "—")}</td>
+                <td class="mono">${laneLabel}</td>
                 <td class="mono">${portSafe || "–"}</td>
                 <td class="listener-actions-cell col-actions">
                     <button class="btn-ghost" onclick="event.stopPropagation(); pollListener('${l.id}')">Poll</button>
@@ -2733,7 +2737,7 @@
             </tr>
             ${isOpen ? `
             <tr class="listener-sub">
-                <td colspan="4">
+                <td colspan="5">
                     <div class="muted small" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; align-items:start;">
                         <div style="display:flex; flex-direction:column; gap:4px;">
                             <div class="muted small">Endpoint:</div>
@@ -2747,7 +2751,7 @@
                 </td>
             </tr>
             <tr class="listener-sub">
-                <td colspan="4">
+                <td colspan="5">
                     <div class="muted small" style="padding-bottom:4px;">Polling Options:</div>
                     <div class="muted small"><span style="color:#fff;"><strong>
                         Method: ${escapeHtml((l.health_method || "POST").toString().toUpperCase())}
@@ -2757,19 +2761,19 @@
                 </td>
             </tr>
             <tr class="listener-sub">
-                <td colspan="4">
+                <td colspan="5">
                     <div class="muted small">Top services:</div>
                     <div class="muted">${topServicesDisplay}</div>
                 </td>
             </tr>
-            <tr class="listener-spacer"><td colspan="4"></td></tr>` : ""}
-            ${!isOpen ? `<tr class="listener-spacer"><td colspan="4"></td></tr>` : ""}
+            <tr class="listener-spacer"><td colspan="5"></td></tr>` : ""}
+            ${!isOpen ? `<tr class="listener-spacer"><td colspan="5"></td></tr>` : ""}
             </tbody>`;
         }).join("");
         container.innerHTML = `<div class="table-wrap">
             <table class="table listeners-table">
                 <thead>
-                    <tr><th class="col-status">Status</th><th>Service Type</th><th>Port</th><th class="col-actions">Actions</th></tr>
+                    <tr><th class="col-status">Status</th><th>Service Type</th><th>Lanes</th><th>Port</th><th class="col-actions">Actions</th></tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>

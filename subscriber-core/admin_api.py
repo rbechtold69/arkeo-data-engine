@@ -3,6 +3,7 @@ import base64
 import binascii
 import json
 import os
+import queue
 import shutil
 from pathlib import Path
 import secrets
@@ -165,6 +166,103 @@ def _service_slug_for_id(service_id: str) -> str:
     return ""
 _NONCE_CACHE: dict[str, int] = {}
 _NONCE_LOCK = threading.Lock()
+
+# Single-lane executor primitives (serialize nonce/sign/forward per listener)
+class WorkItem:
+    def __init__(self, method, path, query, headers, body, client_ip, deadline: float | None = None):
+        self.method = method
+        self.path = path
+        self.query = query
+        self.headers = headers
+        self.body = body
+        self.client_ip = client_ip
+        self.response = queue.Queue(maxsize=1)
+        self.cancelled = False
+        self.created_at = time.time()
+        self.deadline = deadline
+
+
+class NonceStore:
+    def __init__(self, path: str):
+        self.path = path
+        self.lock = threading.Lock()
+        self.nonce = self._load()
+
+    def _load(self) -> int:
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return int(data.get("nonce", 0))
+        except Exception:
+            return 0
+
+    def _save(self, val: int) -> None:
+        tmp = f"{self.path}.tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"nonce": val}, f)
+            os.replace(tmp, self.path)
+        except Exception:
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except Exception:
+                pass
+
+    def next(self) -> int:
+        with self.lock:
+            self.nonce += 1
+            self._save(self.nonce)
+            return self.nonce
+
+    def set(self, val: int) -> None:
+        with self.lock:
+            try:
+                self.nonce = int(val)
+            except Exception:
+                return
+            self._save(self.nonce)
+
+
+class SingleLaneExecutor:
+    def __init__(self, cfg: dict, maxsize: int = 16):
+        self.q = queue.Queue(maxsize=maxsize)
+        self.cfg = cfg
+        self.thread = threading.Thread(target=self._worker, daemon=True)
+        self.thread.start()
+
+    def submit(self, work: WorkItem) -> bool:
+        try:
+            self.q.put_nowait(work)
+            return True
+        except queue.Full:
+            return False
+
+    def _worker(self):
+        while True:
+            work: WorkItem = self.q.get()
+            if work.cancelled:
+                continue
+            try:
+                if work.deadline and time.time() > work.deadline:
+                    resp = {
+                        "status": 503,
+                        "body": json.dumps({"error": "queue_timeout"}),
+                        "headers": {"Content-Type": "application/json"},
+                    }
+                else:
+                    resp = _handle_forward_lane(work, self.cfg)
+                try:
+                    work.response.put_nowait(resp)
+                except Exception:
+                    pass
+            except Exception as e:
+                try:
+                    work.response.put_nowait(
+                        {"status": 502, "body": json.dumps({"error": "worker_exception", "detail": str(e)})}
+                    )
+                except Exception:
+                    pass
 
 
 def _read_persisted_nonce(listener_id: str | None, contract_id: str | int | None) -> int | None:
@@ -4498,6 +4596,21 @@ def _safe_int(val, default: int = 0) -> int:
         return default
 
 
+def _safe_bool(val, default: bool = False) -> bool:
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return bool(val)
+    s = str(val).strip().lower()
+    if s in ("1", "true", "yes", "y", "on"):
+        return True
+    if s in ("0", "false", "no", "n", "off", ""):
+        return False
+    return default
+
+
 def _build_arkeo_meta(active_contract: dict | None, nonce: int | None) -> dict:
     """Build a debug meta block similar to the standalone proxy script."""
     meta: dict = {
@@ -4689,6 +4802,18 @@ def _start_listener_server(listener: dict) -> tuple[bool, str | None]:
     srv.last_code = None
     srv.last_nonce = None
     srv.cors_configured = cfg.get("last_contracts") or {}
+    # In-memory caches used by the lane worker
+    srv.contract_cache = {}
+    srv.nonce_stores = {}
+    srv.cooldowns = {}
+    # Single-lane executor: serialize nonce/sign/forward per listener
+    srv.lane_exec = SingleLaneExecutor(cfg, maxsize=16)
+    timeout_secs = _safe_int(cfg.get("timeout_secs", PROXY_TIMEOUT_SECS), PROXY_TIMEOUT_SECS)
+    create_timeout = _safe_int(cfg.get("create_timeout_sec", PROXY_CREATE_TIMEOUT), PROXY_CREATE_TIMEOUT)
+    # Worst-case: a request may need to open a contract then forward upstream.
+    srv.lane_timeout = max(timeout_secs, timeout_secs + create_timeout)
+    # Limit simultaneous handler threads waiting on the lane to avoid unbounded growth
+    srv.lane_sem = threading.BoundedSemaphore(32)
 
     with _LISTENER_LOCK:
         if port in _LISTENER_SERVERS:
@@ -4844,7 +4969,8 @@ def set_listener_port_start():
     used = _collect_used_ports(listeners)
     return jsonify({
         "port_floor": start_port,
-        "port_range": [start_port, LISTENER_PORT_END],
+        # Always return the full allowed range so the UI can move the floor back down.
+        "port_range": [LISTENER_PORT_START, LISTENER_PORT_END],
         "next_port": _next_available_port(used),
     })
 
@@ -4870,7 +4996,83 @@ def _bootstrap_listeners_from_cache():
 # PAYG Proxy helpers
 # ─────────────────────────────────────
 def _service_lookup(service_id: str | int) -> dict:
-    """Return service name/description from active_service_types."""
+    """Return service name/description from cached service registries."""
+    sid = str(service_id or "").strip()
+    if not sid:
+        return {}
+
+    # 1) active_service_types (derived from active_services)
+    try:
+        lookup = _load_active_service_types_lookup()
+        st = lookup.get(sid) if isinstance(lookup, dict) else None
+        if isinstance(st, dict):
+            name = (st.get("name") or "").strip()
+            desc = (st.get("description") or "").strip()
+            if name or desc:
+                return {"service_id": sid, "service_name": name, "service_description": desc}
+    except Exception:
+        pass
+
+    # 2) full service-types cache (supports inactive/REST services)
+    try:
+        svc_types_path = os.path.join(CACHE_DIR, "service-types.json")
+        with open(svc_types_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        svc_data = data.get("data") if isinstance(data, dict) else {}
+        items = []
+        if isinstance(svc_data, list):
+            items = svc_data
+        elif isinstance(svc_data, dict):
+            items = svc_data.get("services") or svc_data.get("service") or svc_data.get("result") or []
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                sid_val = item.get("service_id") or item.get("id") or item.get("service")
+                if str(sid_val) != sid:
+                    continue
+                name = (item.get("name") or item.get("service") or "").strip()
+                desc = (item.get("description") or "").strip()
+                if name or desc:
+                    return {"service_id": sid, "service_name": name, "service_description": desc}
+    except Exception:
+        pass
+
+    # 3) best-effort name-only lookup
+    try:
+        name = _service_slug_for_id(sid)
+        if name:
+            return {"service_id": sid, "service_name": name, "service_description": ""}
+    except Exception:
+        pass
+    return {}
+
+
+def _auto_start_listeners() -> None:
+    """Auto-start listeners marked active in listeners.json on process boot."""
+    try:
+        data = _ensure_listeners_file()
+        listeners = data.get("listeners") if isinstance(data, dict) else []
+        if not isinstance(listeners, list):
+            return
+        for entry in listeners:
+            if not isinstance(entry, dict):
+                continue
+            status = str(entry.get("status") or "").lower()
+            if status != "active":
+                continue
+            ok, err = _ensure_listener_runtime(entry, previous_port=None, previous_status=None, previous_entry=None)
+            if not ok and err:
+                print(f"[listener] autostart failed port={entry.get('port')} err={err}", flush=True)
+    except Exception as e:
+        try:
+            print(f"[listener] autostart exception: {e}", flush=True)
+        except Exception:
+            pass
+
+
+def _active_service_type_lookup(service_id) -> dict:
+    """Return service name/description from active_service_types cache file."""
     try:
         with open(ACTIVE_SERVICE_TYPES_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -5185,9 +5387,6 @@ def _candidate_providers(cfg: dict) -> list[dict]:
         for ts in top:
             if not isinstance(ts, dict):
                 continue
-            ts_status = str(ts.get("status") or "").lower()
-            if ts_status == "down":
-                continue
             pk = ts.get("provider_pubkey")
             if not pk:
                 continue
@@ -5413,6 +5612,473 @@ def _peek_nonce_cache(contract_id: str, client_pub: str) -> int | None:
     key = _nonce_cache_key(contract_id, client_pub)
     with _NONCE_LOCK:
         return _NONCE_CACHE.get(key)
+
+
+def _nonce_store_path(listener_id: str | None, contract_id: str | None) -> str:
+    lid = str(listener_id or "listener")
+    cid = str(contract_id or "contract")
+    return os.path.join(CACHE_DIR, f"nonce_store_{lid}_{cid}.json")
+
+
+def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
+    """Single-lane worker: select/auto-create contract, allocate nonce, sign, forward, return response."""
+    t_start = time.time()
+    method = (work.method or "POST").upper()
+    service_path = work.path or ""
+    query_string = work.query or ""
+    body = work.body or b""
+    client_ip = work.client_ip or ""
+
+    listener_id = cfg.get("listener_id")
+    node = cfg.get("node_rpc") or ARKEOD_NODE
+    service = cfg.get("service_name") or cfg.get("service_slug") or cfg.get("service_id") or ""
+    svc_id = _safe_int(cfg.get("service_id"), 0)
+    client_key = cfg.get("client_key") or KEY_NAME
+    sign_template = cfg.get("sign_template", PROXY_SIGN_TEMPLATE)
+
+    server_ref = cfg.get("_server_ref", None)
+    logger = getattr(server_ref, "logger", None) if server_ref is not None else None
+
+    def _log(level: str, msg: str) -> None:
+        if not logger:
+            return
+        fn = getattr(logger, level, None)
+        if callable(fn):
+            try:
+                fn(msg)
+            except Exception:
+                pass
+
+    # Parity: enforce whitelist again inside the lane.
+    wl = _parse_whitelist(cfg.get("whitelist_ips") or PROXY_WHITELIST_IPS)
+    allow_all = any(ip == "0.0.0.0" for ip in wl)
+    if not allow_all and client_ip and client_ip not in wl:
+        return {
+            "status": 403,
+            "body": json.dumps({"error": "ip not whitelisted", "ip": client_ip}),
+            "headers": {"Content-Type": "application/json"},
+        }
+
+    # Ensure client pubkey is available for contract selection/creation.
+    client_pub = getattr(server_ref, "client_pubkey", "") if server_ref is not None else ""
+    if not client_pub:
+        raw, bech, err = derive_pubkeys(client_key, KEYRING)
+        if not err and bech:
+            client_pub = bech
+            if server_ref is not None:
+                server_ref.client_pubkey = bech
+    if not client_pub:
+        return {
+            "status": 500,
+            "body": json.dumps({"error": "client_pubkey_unavailable"}),
+            "headers": {"Content-Type": "application/json"},
+        }
+
+    # Init caches on the server object for reuse across requests.
+    if server_ref is not None:
+        if not hasattr(server_ref, "contract_cache"):
+            server_ref.contract_cache = {}
+        if not hasattr(server_ref, "nonce_stores"):
+            server_ref.nonce_stores = {}
+        if not hasattr(server_ref, "cooldowns"):
+            server_ref.cooldowns = {}
+        if not hasattr(server_ref, "cors_configured"):
+            server_ref.cors_configured = cfg.get("last_contracts") or {}
+
+    # Candidate providers (ordered failover).
+    candidates = _candidate_providers(cfg)
+    if not candidates:
+        return {"status": 503, "body": json.dumps({"error": "no_providers"}), "headers": {"Content-Type": "application/json"}}
+    try:
+        ordered = ", ".join(
+            f"{c.get('provider_pubkey')}@{c.get('sentinel_url')}" for c in candidates if isinstance(c, dict)
+        )
+        _log("info", f"provider candidates (ordered): {ordered}")
+    except Exception:
+        pass
+
+    cur_height = _get_current_height(node)
+
+    def _contract_is_usable(c: dict | None, provider_filter: str) -> bool:
+        if not isinstance(c, dict):
+            return False
+        if str(c.get("client")) != str(client_pub):
+            return False
+        if str(c.get("provider")) != str(provider_filter):
+            return False
+        if _safe_int(c.get("service")) != svc_id:
+            return False
+        if _safe_int(c.get("settlement_height")) != 0:
+            return False
+        if _safe_int(c.get("deposit")) <= 0:
+            return False
+        if (_safe_int(c.get("height")) + _safe_int(c.get("duration"))) <= cur_height:
+            return False
+        return True
+
+    last_err = None
+    for idx, cand in enumerate(candidates, start=1):
+        provider_filter = cand.get("provider_pubkey")
+        sentinel = _normalize_sentinel_url(cand.get("sentinel_url") or cfg.get("provider_sentinel_api") or SENTINEL_URI_DEFAULT)
+        if not provider_filter or not sentinel:
+            continue
+
+        _log("info", f"candidate {idx}/{len(candidates)} provider={provider_filter} sentinel={sentinel}")
+
+        # Skip providers on cooldown.
+        try:
+            cd = getattr(server_ref, "cooldowns", {}).get(provider_filter) if server_ref is not None else None
+            if cd and time.time() < cd:
+                continue
+        except Exception:
+            pass
+
+        # ---- Contract selection (cache → chain → auto-create)
+        contract_fetch_ms = 0
+        contract_select_start = time.time()
+        active = None
+
+        # Cache hit (fast path).
+        try:
+            cache_entry = getattr(server_ref, "contract_cache", {}).get(provider_filter) if server_ref is not None else None
+            if isinstance(cache_entry, dict) and _contract_is_usable(cache_entry.get("contract"), provider_filter):
+                active = cache_entry.get("contract")
+                _log("info", f"contract_cache_hit provider={provider_filter} contract_id={active.get('id')}")
+        except Exception:
+            pass
+
+        # Chain select (slow path).
+        if not active:
+            t_fetch = time.time()
+            contracts = _fetch_contracts(node, timeout=PROXY_CONTRACT_TIMEOUT, active_only=True, client_filter=client_pub)
+            contract_fetch_ms = int((time.time() - t_fetch) * 1000)
+            _log("info", f"contracts fetched count={len(contracts) if isinstance(contracts, list) else 0}")
+            active = _select_active_contract(contracts or [], client_pub, svc_id, cur_height, provider_filter=provider_filter)
+            if active:
+                _log(
+                    "info",
+                    f"contract_chain_select provider={provider_filter} contract_id={active.get('id')} height={active.get('height')}",
+                )
+                try:
+                    if server_ref is not None:
+                        server_ref.contract_cache[provider_filter] = {"contract": active, "cached_at": time.time()}
+                except Exception:
+                    pass
+
+        auto_created = False
+        # Auto-create if needed.
+        if not active and _safe_bool(cfg.get("auto_create", PROXY_AUTO_CREATE), bool(PROXY_AUTO_CREATE)):
+            auto_created = True
+            _log("info", f"no active contract -> attempting auto-create (provider={provider_filter})")
+            cfg_create = dict(cfg)
+            cfg_create["create_provider_pubkey"] = provider_filter
+            cfg_create["create_delegate"] = client_pub
+            cfg_create["provider_pubkey"] = provider_filter
+            cfg_create["provider_sentinel_api"] = sentinel
+            start_height = cur_height or _get_current_height(node)
+            try:
+                _log(
+                    "info",
+                    "open-contract attempt "
+                    f"deposit={_safe_int(cfg_create.get('create_deposit', PROXY_CREATE_DEPOSIT), PROXY_CREATE_DEPOSIT)} "
+                    f"rate={cfg_create.get('create_rate', PROXY_CREATE_RATE)} "
+                    f"dur={_safe_int(cfg_create.get('create_duration', PROXY_CREATE_DURATION), PROXY_CREATE_DURATION)} "
+                    f"qpm={_safe_int(cfg_create.get('create_qpm', PROXY_CREATE_QPM), PROXY_CREATE_QPM)} "
+                    f"settlement={_safe_int(cfg_create.get('create_settlement', PROXY_CREATE_SETTLEMENT), PROXY_CREATE_SETTLEMENT)} "
+                    f"provider={provider_filter}"
+                )
+            except Exception:
+                pass
+            txhash, out, _dep = _create_contract_now(cfg_create, client_pub)
+            if out:
+                _log("info", f"open-contract response: {out.strip()}")
+            if txhash:
+                _log("info", f"open-contract txhash={txhash}")
+            wait_sec = _safe_int(cfg_create.get("create_timeout_sec", PROXY_CREATE_TIMEOUT), PROXY_CREATE_TIMEOUT)
+            active = _wait_for_new_contract(cfg_create, client_pub, svc_id, start_height, wait_sec)
+            if active:
+                _log(
+                    "info",
+                    f"auto-created contract id={active.get('id')} height={active.get('height')} provider={provider_filter}",
+                )
+                try:
+                    if server_ref is not None:
+                        server_ref.contract_cache[provider_filter] = {"contract": active, "cached_at": time.time()}
+                except Exception:
+                    pass
+                # New contract: reset CORS configured flag for this provider.
+                try:
+                    desired = cfg.get("cors_allowed_origins")
+                    if server_ref is not None and isinstance(server_ref.cors_configured, dict):
+                        server_ref.cors_configured[provider_filter] = {
+                            "contract_id": str(active.get("id")),
+                            "cors_origins": desired,
+                            "cors_configured": False,
+                        }
+                    _update_top_service_contract(listener_id, provider_filter, active.get("id"), desired, cors_configured=False)
+                except Exception:
+                    pass
+
+        if not active:
+            last_err = "no_active_contract"
+            try:
+                _set_top_service_status(listener_id, provider_filter, "Down")
+            except Exception:
+                pass
+            try:
+                if server_ref is not None and PROXY_OPEN_COOLDOWN:
+                    server_ref.cooldowns[provider_filter] = time.time() + PROXY_OPEN_COOLDOWN
+            except Exception:
+                pass
+            continue
+
+        contract_select_ms = int((time.time() - contract_select_start) * 1000) - int(contract_fetch_ms)
+        if contract_select_ms < 0:
+            contract_select_ms = 0
+
+        cid = str(active.get("id"))
+        contract_client = str(active.get("client") or client_pub)
+
+        # Persist last contract id for this provider for status/debug.
+        try:
+            _update_top_service_contract(listener_id, provider_filter, cid, cfg.get("cors_allowed_origins"))
+        except Exception:
+            pass
+
+        # ---- Configure CORS on the contract (best-effort, only when needed)
+        desired_origins = cfg.get("cors_allowed_origins")
+        if desired_origins is not None:
+            try:
+                state = getattr(server_ref, "cors_configured", {}) if server_ref is not None else cfg.get("last_contracts") or {}
+                entry = state.get(provider_filter) if isinstance(state, dict) else None
+                already = (
+                    isinstance(entry, dict)
+                    and str(entry.get("contract_id")) == cid
+                    and bool(entry.get("cors_configured"))
+                    and entry.get("cors_origins") == desired_origins
+                )
+                if not already:
+                    ok_cors, cors_err = _configure_contract_cors(
+                        cid, sentinel, client_key, desired_origins, sign_template=sign_template
+                    )
+                    if ok_cors:
+                        _log("info", f"cors_configured provider={provider_filter} contract_id={cid} origins={desired_origins}")
+                        if server_ref is not None and isinstance(server_ref.cors_configured, dict):
+                            server_ref.cors_configured[provider_filter] = {
+                                "contract_id": cid,
+                                "cors_origins": desired_origins,
+                                "cors_configured": True,
+                            }
+                        _update_top_service_contract(listener_id, provider_filter, cid, desired_origins, cors_configured=True)
+                    else:
+                        _log("warning", f"cors_config_failed provider={provider_filter} contract_id={cid} err={cors_err}")
+            except Exception:
+                pass
+
+        # ---- Per-contract nonce store
+        nonce_store = None
+        try:
+            stores = getattr(server_ref, "nonce_stores", None) if server_ref is not None else None
+            if not isinstance(stores, dict):
+                stores = {}
+                if server_ref is not None:
+                    server_ref.nonce_stores = stores
+            nonce_store = stores.get(cid) if isinstance(stores, dict) else None
+            if nonce_store is None:
+                nonce_store = NonceStore(_nonce_store_path(listener_id, cid))
+                persisted = _read_persisted_nonce(listener_id, cid) or 0
+                highest = 0
+                try:
+                    highest = _claims_highest_nonce(sentinel, cid, contract_client)
+                except Exception:
+                    highest = 0
+                seed = max(persisted, highest, nonce_store.nonce)
+                if seed and seed != nonce_store.nonce:
+                    nonce_store.set(seed)
+                if isinstance(stores, dict):
+                    stores[cid] = nonce_store
+        except Exception:
+            # Fallback to a throwaway store (still persisted on disk).
+            nonce_store = NonceStore(_nonce_store_path(listener_id, cid))
+
+        # ---- Nonce, sign, forward
+        nonce_prep_start = time.time()
+        nonce = nonce_store.next()
+        nonce_prep_ms = int((time.time() - nonce_prep_start) * 1000)
+        try:
+            _persist_listener_nonce(listener_id, cid, nonce)
+        except Exception:
+            pass
+
+        sign_start = time.time()
+        sig_hex, sig_err = _sign_message(client_key, cid, nonce, sign_template)
+        sign_ms = int((time.time() - sign_start) * 1000)
+        if not sig_hex:
+            last_err = sig_err or "sign_error"
+            continue
+
+        timeout_secs = _safe_int(cfg.get("timeout_secs", PROXY_TIMEOUT_SECS), PROXY_TIMEOUT_SECS)
+        as_header = _safe_bool(cfg.get("arkauth_as_header", PROXY_ARKAUTH_AS_HEADER), bool(PROXY_ARKAUTH_AS_HEADER))
+
+        arkauth4 = f"{cid}:{contract_client}:{nonce}:{sig_hex}"
+        _log("info", f"forwarding 4-part to sentinel={sentinel} svc={service} cid={cid} nonce={nonce} provider={provider_filter}")
+        fwd_start = time.time()
+        code, resp_body, resp_hdrs, fwd_url, fwd_headers = _forward_to_sentinel(
+            sentinel,
+            service_path,
+            body,
+            arkauth4,
+            timeout=timeout_secs,
+            as_header=as_header,
+            method=method,
+            query_string=query_string,
+        )
+        if code == 401:
+            arkauth3 = f"{cid}:{nonce}:{sig_hex}"
+            code, resp_body, resp_hdrs, fwd_url, fwd_headers = _forward_to_sentinel(
+                sentinel,
+                service_path,
+                body,
+                arkauth3,
+                timeout=timeout_secs,
+                as_header=as_header,
+                method=method,
+                query_string=query_string,
+            )
+        sentinel_forward_ms = int((time.time() - fwd_start) * 1000)
+
+        def _is_nonce_error(code_val, body_val) -> bool:
+            if int(code_val or 0) in (401, 403):
+                return True
+            try:
+                if isinstance(body_val, (bytes, bytearray)) and b"nonce" in body_val.lower():
+                    return True
+            except Exception:
+                pass
+            try:
+                if isinstance(body_val, str) and "nonce" in body_val.lower():
+                    return True
+            except Exception:
+                pass
+            return False
+
+        # Sync nonce from sentinel on nonce-related errors, retry once.
+        if _is_nonce_error(code, resp_body):
+            try:
+                highest = _claims_highest_nonce(sentinel, cid, contract_client)
+                if highest >= 0:
+                    nonce_store.set(highest)
+            except Exception:
+                pass
+            nonce = nonce_store.next()
+            try:
+                _persist_listener_nonce(listener_id, cid, nonce)
+            except Exception:
+                pass
+            sign_start = time.time()
+            sig_hex, sig_err = _sign_message(client_key, cid, nonce, sign_template)
+            sign_ms += int((time.time() - sign_start) * 1000)
+            if not sig_hex:
+                last_err = sig_err or "sign_error"
+                continue
+            arkauth_retry = f"{cid}:{contract_client}:{nonce}:{sig_hex}"
+            fwd_start = time.time()
+            code, resp_body, resp_hdrs, fwd_url, fwd_headers = _forward_to_sentinel(
+                sentinel,
+                service_path,
+                body,
+                arkauth_retry,
+                timeout=timeout_secs,
+                as_header=as_header,
+                method=method,
+                query_string=query_string,
+            )
+            if code == 401:
+                arkauth3_retry = f"{cid}:{nonce}:{sig_hex}"
+                code, resp_body, resp_hdrs, fwd_url, fwd_headers = _forward_to_sentinel(
+                    sentinel,
+                    service_path,
+                    body,
+                    arkauth3_retry,
+                    timeout=timeout_secs,
+                    as_header=as_header,
+                    method=method,
+                    query_string=query_string,
+                )
+            sentinel_forward_ms = int((time.time() - fwd_start) * 1000)
+
+        total_ms = int((time.time() - t_start) * 1000)
+        other_ms = total_ms - contract_fetch_ms - contract_select_ms - nonce_prep_ms - sign_ms - sentinel_forward_ms
+        if other_ms < 0:
+            other_ms = 0
+
+        hdrs = {"Content-Type": resp_hdrs.get("Content-Type", "application/json")}
+        # Decorate response headers with Arkeo metadata.
+        try:
+            hdrs["X-Arkeo-Contract-Id"] = cid
+            hdrs["X-Arkeo-Nonce"] = str(nonce)
+            hdrs["X-Arkeo-Provider"] = provider_filter or ""
+            hdrs["X-Arkeo-Service-Id"] = str(svc_id)
+            if cfg.get("decorate_response"):
+                hdrs["X-Arkeo-Client"] = contract_client
+                hdrs["X-Arkeo-Sentinel"] = sentinel
+        except Exception:
+            pass
+
+        # Cache active contract and last request info for status/debug.
+        try:
+            if server_ref is not None:
+                server_ref.active_contract = active
+                server_ref.last_nonce = nonce
+                server_ref.last_code = code
+                server_ref.last_candidate = {
+                    "provider": provider_filter,
+                    "sentinel": sentinel,
+                    "service_id": svc_id,
+                    "service_name": service,
+                }
+                server_ref.last_upstream = {
+                    "code": code,
+                    "body": resp_body.decode(errors="ignore") if isinstance(resp_body, (bytes, bytearray)) else str(resp_body),
+                    "url": fwd_url,
+                    "headers": fwd_headers,
+                    "method": method,
+                }
+                server_ref.last_timings = {
+                    "total_ms": total_ms,
+                    "contract_fetch_ms": contract_fetch_ms,
+                    "contract_select_ms": contract_select_ms,
+                    "nonce_prep_ms": nonce_prep_ms,
+                    "sign_ms": sign_ms,
+                    "sentinel_forward_ms": sentinel_forward_ms,
+                    "other_ms": other_ms,
+                    "auto_create": bool(auto_created),
+                }
+        except Exception:
+            pass
+
+        # Update listeners.json status/metrics.
+        try:
+            _set_top_service_status(listener_id, provider_filter, "Up")
+        except Exception:
+            pass
+        try:
+            _update_top_service_metrics(listener_id, provider_filter, (time.time() - t_start))
+        except Exception:
+            pass
+
+        _log(
+            "info",
+            "timings "
+            f"total_ms={total_ms} contract_fetch_ms={contract_fetch_ms} contract_select_ms={contract_select_ms} "
+            f"nonce_prep_ms={nonce_prep_ms} sign_ms={sign_ms} sentinel_forward_ms={sentinel_forward_ms} other_ms={other_ms} "
+            f"auto_create={auto_created} provider={provider_filter} sentinel={sentinel} contract_id={cid}",
+        )
+        _log("info", f"proxy done code={code} cid={cid} nonce={nonce} provider={provider_filter}")
+
+        return {"status": code or 502, "body": resp_body or b"", "headers": hdrs}
+
+    return {"status": 503, "body": json.dumps({"error": last_err or "no_active_contract"}), "headers": {"Content-Type": "application/json"}}
 
 
 def _der_to_rs_hex(der: bytes) -> str:
@@ -5856,8 +6522,10 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         # Special status endpoint for health of the listener itself (use /arkeostatus to avoid intercepting upstream /status)
+        cfg = self.server.cfg
+        # Pass server ref into cfg for lane helper access to active contract
+        cfg["_server_ref"] = self.server
         if self.path.strip("/").split("?")[0] == "arkeostatus":
-            cfg = self.server.cfg
             node = cfg.get("node_rpc") or ARKEOD_NODE
             sentinel = cfg.get("provider_sentinel_api") or SENTINEL_URI_DEFAULT
             service_id = cfg.get("service_id")
@@ -6125,583 +6793,158 @@ class PaygProxyHandler(BaseHTTPRequestHandler):
             }
             return self._send_json(502, payload)
 
-    def _do_post_inner(self, method: str = "POST"):
-        cfg = self.server.cfg
-        node = cfg.get("node_rpc") or ARKEOD_NODE
-        sentinel = cfg.get("provider_sentinel_api") or SENTINEL_URI_DEFAULT
-        service = cfg.get("service_name") or cfg.get("service_slug") or cfg.get("service_id") or ""
-        svc_id = _safe_int(cfg.get("service_id"), 0)
-        client_key = cfg.get("client_key") or KEY_NAME
-        method = (method or "POST").upper()
-        parsed_path = urllib.parse.urlparse(self.path or "/")
-        incoming_path = parsed_path.path or "/"
-        service_path = service
-        orig_query = parsed_path.query or ""
-        if method == "GET":
-            # Preserve path after the service name for REST-style GETs
-            path_no_slash = incoming_path[1:] if incoming_path.startswith("/") else incoming_path
-            if service and path_no_slash.startswith(service):
-                remainder = path_no_slash[len(service):]
-                remainder = remainder[1:] if remainder.startswith("/") else remainder
-            else:
-                remainder = path_no_slash
-            if remainder:
-                service_path = f"{service}/{remainder}" if service else remainder
-        try:
-            length = _safe_int(self.headers.get("Content-Length", "0"))
-        except Exception:
-            length = 0
-        if method == "GET":
-            body = b""
-        else:
-            body = self.rfile.read(length) if length > 0 else b"{}"
-        response_time_sec = 0
-        t_total_start = time.time()
+def _do_post_inner(self, method: str = "POST"):
+    sem = getattr(self.server, "lane_sem", None)
+    if sem is not None:
+        got = sem.acquire(blocking=False)
+        if not got:
+            return self._send_json(503, {"error": "listener busy"})
+    try:
+        return self._do_post_inner_core(method=method)
+    finally:
+        if sem is not None:
+            try:
+                sem.release()
+            except Exception:
+                pass
+
+def _do_post_inner_core(self, method: str = "POST"):
+    """Parse request, enforce whitelist, enqueue to lane, return upstream response."""
+    cfg = self.server.cfg
+    # Make the server available to the lane worker for caching/state.
+    cfg["_server_ref"] = self.server
+    method = (method or "POST").upper()
+    try:
+        body_len = int(self.headers.get("Content-Length", "0"))
+    except Exception:
+        body_len = 0
+
+    parsed_path = urllib.parse.urlparse(self.path or "/")
+    incoming_path = parsed_path.path or "/"
+    service = cfg.get("service_name") or cfg.get("service_slug") or cfg.get("service_id") or ""
+    svc_id = _safe_int(cfg.get("service_id"), 0)
+    service_path = service
+    orig_query = parsed_path.query or ""
+
+    path_no_slash = incoming_path[1:] if incoming_path.startswith("/") else incoming_path
+    if service and path_no_slash.startswith(service):
+        remainder = path_no_slash[len(service):]
+        remainder = remainder[1:] if remainder.startswith("/") else remainder
+    else:
+        remainder = path_no_slash
+    if remainder:
+        service_path = f"{service}/{remainder}" if service else remainder
+
+    try:
+        body = self.rfile.read(body_len) if body_len > 0 else b""
+    except Exception:
+        body = b""
+
+    try:
         self._log("info", f"req start service={service} svc_id={svc_id} bytes={len(body)} method={method}")
+    except Exception:
+        pass
 
-        # IP whitelist
-        wl = _parse_whitelist(cfg.get("whitelist_ips") or PROXY_WHITELIST_IPS)
-        allow_all = any(ip == "0.0.0.0" for ip in wl)
-        if not allow_all:
-            client_ip = self._client_ip(str(cfg.get("trust_forwarded", PROXY_TRUST_FORWARDED)).lower() in ("1", "true", "yes", "on"))
-            if client_ip not in wl:
+    trust_forwarded = _safe_bool(cfg.get("trust_forwarded", PROXY_TRUST_FORWARDED), bool(PROXY_TRUST_FORWARDED))
+    client_ip = self._client_ip(trust_forwarded)
+    wl = _parse_whitelist(cfg.get("whitelist_ips") or PROXY_WHITELIST_IPS)
+    allow_all = any(ip == "0.0.0.0" for ip in wl)
+    if not allow_all:
+        if client_ip not in wl:
+            try:
                 self._log("warning", f"whitelist block ip={client_ip} wl={wl}")
-                meta = _build_arkeo_meta(getattr(self.server, "active_contract", None), None)
-                headers = {
-                    "X-Arkeo-Contract-Id": meta.get("contract_id", ""),
-                    "X-Arkeo-Nonce": str(meta.get("nonce_request", "")),
-                    "X-Arkeo-Cost": meta.get("cost_request", ""),
-                }
-                return self._send_json(403, {"arkeo": meta_full_clean, "error": "ip not whitelisted", "ip": client_ip}, extra_headers=headers)
-        self._log("info", "whitelist ok")
+            except Exception:
+                pass
+            return self._send_json(403, {"error": "ip not whitelisted", "ip": client_ip})
 
-        # ensure we have client pubkey
-        client_pub = getattr(self.server, "client_pubkey", "") or ""
-        if not client_pub:
-            raw, bech, err = derive_pubkeys(client_key, KEYRING)
-            if err:
-                self._log("error", f"client_pubkey_error: {err}")
-                return self._send_json(500, {"error": "client_pubkey_error", "detail": err})
-            client_pub = bech
-            self.server.client_pubkey = bech
+    lane = getattr(self.server, "lane_exec", None)
+    lane_timeout = getattr(self.server, "lane_timeout", PROXY_TIMEOUT_SECS)
+    if not lane:
+        return self._send_json(500, {"error": "lane_not_initialized"})
 
-        # Contract cache: populated lazily; avoid refetching every request
-        contracts = None
-        fetch_ms = 0
-        nonce_ms = 0
-        overhead_ms = 0
-        fetched_once = False
-
-        candidates = _candidate_providers(cfg)
+    work = WorkItem(
+        method=method,
+        path=service_path,
+        query=orig_query,
+        headers=dict(self.headers),
+        body=body,
+        client_ip=client_ip,
+        deadline=time.time() + float(lane_timeout),
+    )
+    if not lane.submit(work):
         try:
-            cand_desc = []
-            for c in candidates:
-                pk = c.get("provider_pubkey") or "?"
-                sent = c.get("sentinel_url") or cfg.get("provider_sentinel_api") or SENTINEL_URI_DEFAULT
-                cand_desc.append(f"{pk}@{sent}")
-            self._log("info", f"provider candidates (ordered): {', '.join(cand_desc)}")
+            qsz = None
+            try:
+                qsz = lane.q.qsize()
+            except Exception:
+                qsz = None
+            if qsz is not None:
+                self._log("warning", f"lane queue full qsize={qsz}")
+            else:
+                self._log("warning", "lane queue full")
         except Exception:
             pass
-        last_err = None
-        last_meta = None
-        # cooldown map: provider_pubkey -> unix timestamp until retry allowed
-        if not hasattr(self.server, "provider_cooldowns"):
-            self.server.provider_cooldowns = {}
-        cooldowns = self.server.provider_cooldowns
-
-        for idx, cand in enumerate(candidates, start=1):
-            provider_filter = cand.get("provider_pubkey") or cfg.get("provider_pubkey")
-            sentinel = cand.get("sentinel_url") or cfg.get("provider_sentinel_api") or SENTINEL_URI_DEFAULT
-            if not provider_filter:
-                continue
-            auto_created_this_request = False
-            select_ms = 0
-            sign_ms = 0
-            forward_ms = 0
-            t_candidate_start = time.time()
-            self._log("info", f"candidate {idx}/{len(candidates)} provider={provider_filter} sentinel={sentinel}")
-
-            # cooldown check
-            if method != "GET":
-                now = time.time()
-                cool_until = cooldowns.get(provider_filter)
-                if cool_until and cool_until > now:
-                    self._log("warning", f"candidate {idx} provider={provider_filter} on cooldown until {cool_until:.0f}; skipping")
-                    last_err = "provider_cooldown"
-                    last_meta = _build_arkeo_meta_clean(None, None, svc_id, service, provider_filter, client_pub, sentinel, 0)
-                    continue
-
-            # ensure cache map exists
-            if not hasattr(self.server, "contract_cache"):
-                self.server.contract_cache = {}
-            contract_cache = self.server.contract_cache
-
-            cur_h = _get_current_height(node)
-            active = None
-
-            def _cached_contract_still_active(cobj) -> bool:
-                if not isinstance(cobj, dict):
-                    return False
-                if _safe_int(cobj.get("settlement_height")) != 0:
-                    return False
-                if _safe_int(cobj.get("deposit")) <= 0:
-                    return False
-                if (_safe_int(cobj.get("height")) + _safe_int(cobj.get("duration"))) <= cur_h:
-                    return False
-                return True
-
-            cache_entry = contract_cache.get(provider_filter)
-            if cache_entry and _cached_contract_still_active(cache_entry.get("contract")):
-                active = cache_entry.get("contract")
-                self._log("info", f"contract_cache_hit provider={provider_filter} contract_id={active.get('id')}")
-            else:
-                try:
-                    contract_cache.pop(provider_filter, None)
-                except Exception:
-                    pass
-
-            if not active and hasattr(self.server, "active_contracts"):
-                active = self.server.active_contracts.get(provider_filter)
-                if active and not _cached_contract_still_active(active):
-                    active = None
-
-            if not active:
-                if not fetched_once:
-                    t0_fetch = time.time()
-                    contracts = _fetch_contracts(node, timeout=PROXY_CONTRACT_TIMEOUT, active_only=True, client_filter=client_pub)
-                    fetch_ms = int((time.time() - t0_fetch) * 1000)
-                    fetched_once = True
-                    if not contracts and fetch_ms >= PROXY_CONTRACT_TIMEOUT * 1000:
-                        self._log("error", "contract_lookup_timeout")
-                        return self._send_json(503, {"error": "contract_lookup_timeout"})
-                    self._log("info", f"contracts fetched count={len(contracts) if isinstance(contracts,list) else 0}")
-                active = _select_active_contract(contracts or [], client_pub, svc_id, cur_h, provider_filter=provider_filter)
-                if active:
-                    try:
-                        self._log("info", f"contract_chain_select provider={provider_filter} contract_id={active.get('id')} height={active.get('height')}")
-                    except Exception:
-                        pass
-
-            if not active and str(cfg.get("auto_create", PROXY_AUTO_CREATE)).lower() in ("1", "true", "yes", "on"):
-                self._log("info", f"no active contract -> attempting auto-create (provider={provider_filter})")
-                start_h = _get_current_height(node)
-                cfg_override = dict(cfg)
-                cfg_override["create_provider_pubkey"] = provider_filter
-                cand_settle = cand.get("settlement_duration")
-                if cand_settle:
-                    cfg_override["create_settlement"] = cand_settle
-                cand_rate = cand.get("pay_as_you_go_rate")
-                if cand_rate and cand_rate.get("amount") is not None and cand_rate.get("denom"):
-                    cfg_override["create_rate"] = f"{cand_rate.get('amount')}{cand_rate.get('denom')}"
-                cand_qpm = cand.get("queries_per_minute")
-                if cand_qpm:
-                    cfg_override["create_qpm"] = cand_qpm
-                try:
-                    min_dur = _safe_int(cand.get("min_contract_duration"), None)
-                    max_dur = _safe_int(cand.get("max_contract_duration"), None)
-                    cur_dur = _safe_int(cfg_override.get("create_duration", PROXY_CREATE_DURATION), PROXY_CREATE_DURATION)
-                    if max_dur and cur_dur > max_dur:
-                        cur_dur = max_dur
-                    if min_dur and cur_dur < min_dur:
-                        cur_dur = min_dur
-                    cfg_override["create_duration"] = cur_dur
-                except Exception:
-                    pass
-                auto_created_this_request = True
-                txh, tx_raw, dep_used = _create_contract_now(cfg_override, client_pub)
-                self._log("info", f"open-contract attempt deposit={dep_used} rate={cfg_override.get('create_rate', cfg.get('create_rate', PROXY_CREATE_RATE))} dur={cfg_override.get('create_duration', cfg.get('create_duration', PROXY_CREATE_DURATION))} qpm={cfg_override.get('create_qpm', cfg.get('create_qpm', PROXY_CREATE_QPM))} settlement={cfg_override.get('create_settlement', cfg.get('create_settlement', PROXY_CREATE_SETTLEMENT))} provider={provider_filter}")
-                if tx_raw:
-                    self._log("info", f"open-contract response: {tx_raw[:400]}")
-                if txh:
-                    self._log("info", f"open-contract txhash={txh}")
-                    nc = _wait_for_new_contract(cfg_override, client_pub, svc_id, start_h, _safe_int(cfg.get("create_timeout_sec", PROXY_CREATE_TIMEOUT), PROXY_CREATE_TIMEOUT))
-                    if nc:
-                        active = nc
-                        self._log("info", f"auto-created contract id={nc.get('id')} height={nc.get('height')} provider={provider_filter}")
-                if not active:
-                    last_err = "contract_open_failed"
-                    detail = tx_raw[:400] if isinstance(tx_raw, str) else str(tx_raw)
-                    last_meta = _build_arkeo_meta_clean(None, None, svc_id, service, provider_filter, client_pub, sentinel, 0)
-                    last_meta["detail"] = detail
-                    try:
-                        _set_top_service_status(cfg.get("listener_id"), provider_filter, "Down")
-                    except Exception:
-                        pass
-                    # set cooldown on open failure
-                    if PROXY_OPEN_COOLDOWN > 0:
-                        cooldowns[provider_filter] = time.time() + PROXY_OPEN_COOLDOWN
-                        self._log("warning", f"cooling down provider={provider_filter} for {PROXY_OPEN_COOLDOWN}s due to contract_open_failed")
-                    self._log("warning", f"candidate {idx} open-contract failed; trying next candidate")
-                    continue
-
-            if not active:
-                last_err = "no_active_contract"
-                last_meta = _build_arkeo_meta_clean(None, None, svc_id, service, provider_filter, client_pub, sentinel, 0)
-                self._log("warning", f"candidate {idx} has no active contract; trying next candidate")
-                continue
-
-            cid = str(active.get("id"))
-            contract_client = str(active.get("client", ""))
-            select_ms = int((time.time() - t_candidate_start) * 1000)
-            if contract_client and contract_client != client_pub:
-                self._log("error", f"client_key_mismatch contract_client={contract_client} local={client_pub}")
-                meta = _build_arkeo_meta_clean(active, None, svc_id, service, active.get("provider") if active else "", contract_client, sentinel, 0)
-                headers = {
-                    "X-Arkeo-Contract-Id": meta.get("contract_id", ""),
-                    "X-Arkeo-Nonce": str(meta.get("nonce_request", "")),
-                    "X-Arkeo-Cost": meta.get("cost_request", ""),
-                }
-                return self._send_json(503, {"arkeo": meta, "error": "client_key_mismatch"}, extra_headers=headers)
-
-            # Optimistic nonce: use cached counter; on nonce failure, sync from sentinel once and retry
-            # Seed nonce cache from persisted value if available
-            try:
-                persisted_nonce = _read_persisted_nonce(cfg.get("listener_id"), cid)
-                if persisted_nonce is not None:
-                    _seed_nonce_cache(cid, contract_client, persisted_nonce)
-            except Exception:
-                pass
-
-            nonce_start = time.time()
-            nonce_source = "cache"
-            nonce_cache_prev = _peek_nonce_cache(cid, contract_client)
-            nonce = _next_nonce_cached(cid, contract_client)
-            if nonce is None:
-                nonce_source = "sentinel"
-                nonce = _claims_highest_nonce(sentinel, cid, contract_client) + 1
-                _seed_nonce_cache(cid, contract_client, nonce)
-            nonce_ms = int((time.time() - nonce_start) * 1000)
-            try:
-                self.server.last_nonce = nonce
-                self.server.last_nonce_source = nonce_source
-                self.server.last_nonce_cache = _peek_nonce_cache(cid, contract_client)
-                self.server.last_candidate = {
-                    "provider": provider_filter,
-                    "sentinel": sentinel,
-                    "service_id": svc_id,
-                    "service_name": service,
-                }
-            except Exception:
-                pass
-
-            forward_start_time = None
-
-            def _sign_and_forward(nonce_val: int):
-                nonlocal forward_ms, forward_start_time
-                sign_start = time.time()
-                sig_hex_local, sig_err_local = _sign_message(
-                    client_key, cid, nonce_val, cfg.get("sign_template", PROXY_SIGN_TEMPLATE)
-                )
-                sign_ms_local = int((time.time() - sign_start) * 1000)
-                if not sig_hex_local:
-                    return None, None, sig_err_local, sign_ms_local
-                arkauth4 = f"{cid}:{contract_client}:{nonce_val}:{sig_hex_local}"
-                self._log("info", f"forwarding 4-part to sentinel={sentinel} svc={service} cid={cid} nonce={nonce_val} provider={provider_filter}")
-                forward_start_time = time.time()
-                code_local, resp_body_local, resp_hdrs_local, fwd_url_local, fwd_headers_local = _forward_to_sentinel(
-                    sentinel,
-                    service_path,
-                    body,
-                    arkauth4,
-                    timeout=_safe_int(cfg.get("timeout_secs", PROXY_TIMEOUT_SECS), PROXY_TIMEOUT_SECS),
-                    as_header=bool(cfg.get("arkauth_as_header", PROXY_ARKAUTH_AS_HEADER)),
-                    method=method,
-                    query_string=orig_query,
-                )
-                try:
-                    body_preview = body.decode(errors="ignore")[:200] if isinstance(body, (bytes, bytearray)) else str(body)[:200]
-                    self._log(
-                        "info",
-                        f"sentinel request url={fwd_url_local} headers={json.dumps(fwd_headers_local)} body_preview={body_preview}",
-                    )
-                except Exception:
-                    pass
-                if code_local == 401:
-                    self._log("warning", "401 on 4-part arkauth -> retrying 3-part")
-                    arkauth3 = f"{cid}:{nonce_val}:{sig_hex_local}"
-                    code_local, resp_body_local, resp_hdrs_local, fwd_url_local, fwd_headers_local = _forward_to_sentinel(
-                        sentinel,
-                        service_path,
-                        body,
-                        arkauth3,
-                        timeout=_safe_int(cfg.get("timeout_secs", PROXY_TIMEOUT_SECS), PROXY_TIMEOUT_SECS),
-                        as_header=bool(cfg.get("arkauth_as_header", PROXY_ARKAUTH_AS_HEADER)),
-                        method=method,
-                        query_string=orig_query,
-                    )
-                    try:
-                        body_preview = body.decode(errors="ignore")[:200] if isinstance(body, (bytes, bytearray)) else str(body)[:200]
-                        self._log(
-                            "info",
-                            f"sentinel request (3-part) url={fwd_url_local} headers={json.dumps(fwd_headers_local)} body_preview={body_preview}",
-                        )
-                    except Exception:
-                        pass
-                forward_ms = int((time.time() - forward_start_time) * 1000)
-                try:
-                    self.server.last_upstream = {
-                        "code": code_local,
-                        "body": resp_body_local.decode(errors="ignore") if isinstance(resp_body_local, (bytes, bytearray)) else str(resp_body_local),
-                        "url": fwd_url_local,
-                        "headers": fwd_headers_local,
-                        "method": method,
-                    }
-                except Exception:
-                    pass
-                return code_local, resp_body_local, sig_hex_local, sign_ms_local
-
-            code, resp_body, sig_hex, sign_ms = _sign_and_forward(nonce)
-
-            # On nonce/auth failure, sync from sentinel and retry once
-            def _is_nonce_error(code_val, body_val):
-                if code_val in (401, 403):
-                    return True
-                if isinstance(body_val, (bytes, bytearray)) and b"nonce" in body_val:
-                    return True
-                if isinstance(body_val, str) and "nonce" in body_val.lower():
-                    return True
-                return False
-
-            if _is_nonce_error(code, resp_body):
-                try:
-                    highest = _claims_highest_nonce(sentinel, cid, contract_client)
-                    _seed_nonce_cache(cid, contract_client, highest + 1)
-                    nonce = highest + 1
-                    nonce_source = "retry"
-                    code, resp_body, sig_hex, sign_ms = _sign_and_forward(nonce)
-                except Exception as e:
-                    sig_hex = None
-                    sig_err = str(e)
-                    sign_ms = sign_ms or 0
-
-            if not sig_hex:
-                self._log("error", f"sign_failed: {sig_err} timing_ms fetch={fetch_ms} select_ms={select_ms} nonce_ms={nonce_ms} sign_ms={sign_ms}")
-                meta = _build_arkeo_meta_clean(active, nonce, svc_id, service, active.get("provider") if active else "", contract_client, sentinel, response_time_sec)
-                headers = {
-                    "X-Arkeo-Contract-Id": meta.get("contract_id", ""),
-                    "X-Arkeo-Nonce": str(meta.get("nonce_request", "")),
-                    "X-Arkeo-Cost": meta.get("cost_request", ""),
-                }
-                return self._send_json(
-                    500,
-                    {"arkeo": meta, "error": "sign_failed", "detail": sig_err},
-                    extra_headers=headers,
-                )
-            # persist last response info for UI/debug regardless of success
-            self.server.last_code = code
-            self.server.last_nonce = nonce
-            self.server.last_nonce_source = nonce_source
-            try:
-                self.server.last_nonce_cache = _peek_nonce_cache(cid, contract_client)
-                _persist_listener_nonce(cfg.get("listener_id"), cid, nonce)
-            except Exception:
-                self.server.last_nonce_cache = None
-            success = code is not None and 200 <= int(code) < 300
-
-            if success:
-                # response time for the actual forward; fall back to total if missing
-                base_start = forward_start_time or t_total_start
-                response_time_sec = time.time() - base_start
-                total_time_sec = time.time() - t_total_start
-                # Prefer total time for metrics if available
-                if total_time_sec > response_time_sec:
-                    response_time_sec = total_time_sec
-                if forward_ms == 0 and forward_start_time:
-                    forward_ms = int((time.time() - forward_start_time) * 1000)
-                # Everything outside the measured buckets
-                measured = fetch_ms + select_ms + nonce_ms + sign_ms + forward_ms
-                overhead_ms = max(0, int(total_time_sec * 1000) - measured)
-
-                self._log(
-                    "info",
-                    (
-                        "timings total_ms=%d contract_fetch_ms=%d contract_select_ms=%d nonce_prep_ms=%d sign_ms=%d "
-                        "sentinel_forward_ms=%d other_ms=%d auto_create=%s provider=%s sentinel=%s contract_id=%s"
-                    )
-                    % (
-                        int(total_time_sec * 1000),
-                        fetch_ms,
-                        select_ms,
-                        nonce_ms,
-                        sign_ms,
-                        forward_ms,
-                        overhead_ms,
-                        auto_created_this_request,
-                        provider_filter or "",
-                        sentinel or "",
-                        cid or "",
-                    ),
-                )
-            else:
-                # Do not record timings on failure; mark the provider down
-                response_time_sec = 0
-                if forward_ms == 0 and forward_start_time:
-                    forward_ms = int((time.time() - forward_start_time) * 1000)
-                try:
-                    body_preview = ""
-                    if isinstance(resp_body, (bytes, bytearray)):
-                        body_preview = resp_body.decode(errors="ignore")
-                    else:
-                        body_preview = str(resp_body)
-                    if len(body_preview) > 400:
-                        body_preview = body_preview[:400] + "...[truncated]"
-                except Exception:
-                    body_preview = ""
-                self._log("warning", f"forward failed code={code} provider={provider_filter} sentinel={sentinel}; not recording timings body='{body_preview}'")
-                try:
-                    _set_top_service_status(cfg.get("listener_id"), provider_filter, "Down")
-                except Exception:
-                    pass
-
-            meta_full = _build_arkeo_meta_clean(active, nonce, svc_id, service, provider_filter, contract_client, sentinel, response_time_sec)
-            # success → clear cooldown for this provider
-            if provider_filter in cooldowns:
-                try:
-                    del cooldowns[provider_filter]
-                except Exception:
-                    pass
-            if success:
-                try:
-                    _set_top_service_status(cfg.get("listener_id"), provider_filter, "Up")
-                except Exception:
-                    pass
-                try:
-                    # Do not include auto-create paths in latency stats; they skew averages
-                    if self._should_record_metrics(code, auto_created_this_request):
-                        _update_top_service_metrics(cfg.get("listener_id"), provider_filter, response_time_sec)
-                except Exception:
-                    pass
-                if success:
-                    self.server.active_contract = active
-                    if hasattr(self.server, "active_contracts"):
-                        self.server.active_contracts[provider_filter] = active
-                try:
-                    contract_cache[provider_filter] = {"contract": active, "cached_at": time.time(), "height_cached": _safe_int(active.get("height"))}
-                except Exception:
-                    pass
-                self._log("info", f"proxy done code={code} cid={cid} nonce={nonce} provider={provider_filter}")
-                decorate = str(cfg.get("decorate_response", PROXY_DECORATE_RESPONSE)).lower() in ("1", "true", "yes", "on")
-
-                try:
-                    body_text = resp_body.decode() if isinstance(resp_body, (bytes, bytearray)) else str(resp_body)
-                except Exception:
-                    body_text = ""
-
-                try:
-                    prev = getattr(self.server, "last_upstream", {}) if hasattr(self.server, "last_upstream") else {}
-                    merged_last = {"code": code, "body": body_text}
-                    if isinstance(prev, dict):
-                        for k in ("url", "headers", "method"):
-                            if k in prev:
-                                merged_last[k] = prev[k]
-                    self.server.last_upstream = merged_last
-                except Exception:
-                    pass
-
-                if decorate:
-                    try:
-                        upstream = json.loads(body_text)
-                    except Exception:
-                        upstream = body_text
-                    if isinstance(upstream, dict):
-                        merged = dict(upstream)
-                        merged["arkeo"] = meta_full
-                        return self._send_json(code, merged)
-                    return self._send_json(code, {"arkeo": meta_full, "response": upstream})
-
-                if isinstance(resp_body, (bytes, bytearray)):
-                    out_bytes = resp_body
-                else:
-                    out_bytes = str(resp_body).encode()
-                self.send_response(code)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(out_bytes)))
-                self.send_header("Connection", "close")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("X-Arkeo-Contract-Id", cid)
-                self.send_header("X-Arkeo-Nonce", str(nonce))
-                if meta_full.get("cost_request"):
-                    self.send_header("X-Arkeo-Cost", meta_full.get("cost_request"))
-                self.end_headers()
-                try:
-                    self.wfile.write(out_bytes)
-                    self.wfile.flush()
-                except Exception:
-                    pass
-                self.close_connection = True
-                return
-
-            # non-success upstream: return the upstream response (no failover)
-            last_err = f"upstream_status_{code}"
-            last_meta = _build_arkeo_meta_clean(active, nonce, svc_id, service, provider_filter, contract_client, sentinel, 0)
-            try:
-                prev = getattr(self.server, "last_upstream", {}) if hasattr(self.server, "last_upstream") else {}
-                merged_last = {
-                    "code": code,
-                    "body": resp_body.decode(errors="ignore") if isinstance(resp_body, (bytes, bytearray)) else str(resp_body),
-                }
-                if isinstance(prev, dict):
-                    for k in ("url", "headers", "method"):
-                        if k in prev:
-                            merged_last[k] = prev[k]
-                self.server.last_upstream = merged_last
-            except Exception:
-                pass
-            self._log("warning", f"upstream non-2xx code={code} provider={provider_filter} sentinel={sentinel}; returning error (no failover)")
-            # return the upstream payload/code directly
-            if decorate:
-                try:
-                    upstream = json.loads(resp_body.decode(errors="ignore") if isinstance(resp_body, (bytes, bytearray)) else str(resp_body))
-                except Exception:
-                    upstream = resp_body.decode(errors="ignore") if isinstance(resp_body, (bytes, bytearray)) else str(resp_body)
-                meta_full = _build_arkeo_meta_clean(active, nonce, svc_id, service, provider_filter, contract_client, sentinel, 0)
-                if isinstance(upstream, dict):
-                    merged = dict(upstream)
-                    merged["arkeo"] = meta_full
-                    return self._send_json(code, merged)
-                return self._send_json(code, {"arkeo": meta_full, "response": upstream})
-            # raw pass-through
-            if isinstance(resp_body, (bytes, bytearray)):
-                out_bytes = resp_body
-            else:
-                out_bytes = str(resp_body).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(out_bytes)))
-            self.send_header("Connection", "close")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("X-Arkeo-Contract-Id", _safe_str(cid))
-            self.send_header("X-Arkeo-Nonce", _safe_str(nonce))
-            if meta_full.get("cost_request"):
-                self.send_header("X-Arkeo-Cost", meta_full.get("cost_request"))
-            self.end_headers()
-            try:
-                self.wfile.write(out_bytes)
-                self.wfile.flush()
-            except Exception:
-                pass
-            self.close_connection = True
-            return
-
-        # all candidates failed
-        meta = last_meta or _build_arkeo_meta_clean(None, None, svc_id, service, "", client_pub, sentinel, 0)
-        err = last_err or "no_active_contract"
-        headers = {
-            "X-Arkeo-Contract-Id": meta.get("contract_id", ""),
-            "X-Arkeo-Nonce": str(meta.get("nonce_request", "")),
-            "X-Arkeo-Cost": meta.get("cost_request", ""),
-        }
+        return self._send_json(503, {"error": "listener busy"})
+    try:
+        qsz_after = None
         try:
-            prev = getattr(self.server, "last_upstream", {}) if hasattr(self.server, "last_upstream") else {}
-            merged_last = {"code": 503, "body": err}
-            if isinstance(prev, dict):
-                for k in ("url", "headers", "method"):
-                    if k in prev:
-                        merged_last[k] = prev[k]
-            self.server.last_upstream = merged_last
+            qsz_after = lane.q.qsize()
+        except Exception:
+            qsz_after = None
+        if qsz_after is not None:
+            self._log("info", f"lane enqueue ok qsize={qsz_after}")
+    except Exception:
+        pass
+
+    try:
+        resp = work.response.get(timeout=lane_timeout)
+    except Exception:
+        work.cancelled = True
+        try:
+            qsz = None
+            try:
+                qsz = lane.q.qsize()
+            except Exception:
+                qsz = None
+            if qsz is not None:
+                self._log("warning", f"lane timeout waiting for worker response qsize={qsz}")
+            else:
+                self._log("warning", "lane timeout waiting for worker response")
         except Exception:
             pass
-        return self._send_json(503, {"arkeo": meta, "error": err}, extra_headers=headers)
+        return self._send_json(503, {"error": "timeout"})
+
+    status = resp.get("status", 502)
+    body_bytes = resp.get("body", b"")
+    hdrs = resp.get("headers", {})
+    if isinstance(body_bytes, str):
+        body_bytes = body_bytes.encode()
+    try:
+        self.send_response(status)
+        origin = self.headers.get("Origin")
+        if origin:
+            hdrs.setdefault("Access-Control-Allow-Origin", origin)
+            hdrs.setdefault("Access-Control-Allow-Credentials", "true")
+        else:
+            hdrs.setdefault("Access-Control-Allow-Origin", "*")
+        for hk, hv in hdrs.items():
+            self.send_header(hk, hv)
+        self.send_header("Content-Length", str(len(body_bytes)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        if body_bytes:
+            self.wfile.write(body_bytes)
+        self.close_connection = True
+    except Exception as e:
+        try:
+            self._log("error", f"failed to send lane response: {e}")
+        except Exception:
+            pass
+    return
+
+# Bind the lane-aware handlers to the handler class
+PaygProxyHandler._do_post_inner = _do_post_inner
+PaygProxyHandler._do_post_inner_core = _do_post_inner_core
 
 
 class PaygProxyServer(socketserver.ThreadingMixIn, HTTPServer):
@@ -7340,7 +7583,8 @@ def get_listeners():
     floor = _load_port_floor()
     return jsonify({
         "listeners": [_enrich_listener_for_response(l) for l in listeners],
-        "port_range": [floor, LISTENER_PORT_END],
+        # Full allowed range (UI shows all options); floor indicates current minimum.
+        "port_range": [LISTENER_PORT_START, LISTENER_PORT_END],
         "next_port": next_port,
         "port_floor": floor,
     })

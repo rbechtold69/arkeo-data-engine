@@ -62,6 +62,8 @@ COPY admin/ /app/admin/
 COPY --from=ui-builder /app/admin/vendor/cosmos.bundle.js /app/admin/vendor/cosmos.bundle.js
 COPY admin_api.py /app/admin_api.py
 COPY cache_fetcher.py /app/cache_fetcher.py
+# Copy helper scripts (including lane smoke test)
+COPY scripts/ /app/scripts/
 
 # Supervisor + entrypoint
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
