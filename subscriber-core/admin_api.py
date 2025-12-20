@@ -5486,10 +5486,25 @@ def _candidate_providers(cfg: dict) -> list[dict]:
                     prov_meta_cache[pk] = p
     except Exception:
         pass
+    include_down = True
+    # If we have at least one healthy entry, skip "Down"/misconfigured providers from the live candidate set.
+    # This keeps a failed provider in the UI list but avoids routing to it during normal operation.
     if isinstance(top, list):
+        try:
+            include_down = not any(
+                str(ts.get("status") or "").lower() in ("up", "ok") and ts.get("cors_configured") is not False
+                for ts in top
+                if isinstance(ts, dict)
+            )
+        except Exception:
+            include_down = True
         for ts in top:
             if not isinstance(ts, dict):
                 continue
+            if not include_down:
+                ts_status = str(ts.get("status") or "").lower()
+                if ts_status == "down" or ts.get("cors_configured") is False:
+                    continue
             pk = ts.get("provider_pubkey")
             if not pk:
                 continue

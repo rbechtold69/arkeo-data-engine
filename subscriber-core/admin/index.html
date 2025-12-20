@@ -167,6 +167,11 @@
                         <span id="walletOsmoUsdcBalance">—</span>
                         <img src="images/osmosis/info/logo.png" alt="Osmosis" class="chain-icon" aria-hidden="true">
                     </div>
+                    <div class="wallet-actions-inline" id="convertUsdcRow" style="gap:8px; margin:6px 0;">
+                        <button class="wallet-action-btn ghost" id="convertUsdcBtn" onclick="openConvertUsdcModal(event)" title="Convert USDC (IBC) to ARKEO (wrapped) on Osmosis" aria-label="Convert USDC to ARKEO">
+                            USDC<img src="images/osmosis/info/logo.png" alt="Osmosis" class="chain-icon" aria-hidden="true"> to ARKEO<img src="images/osmosis/info/logo.png" alt="Osmosis" class="chain-icon" aria-hidden="true">
+                        </button>
+                    </div>
                     <div class="wallet-meta">
                         <span id="walletOsmoArkeoBalance">—</span>
                         <img src="images/osmosis/info/logo.png" alt="Osmosis" class="chain-icon" aria-hidden="true">
@@ -180,9 +185,6 @@
                         </span>
                     </div>
                     <div class="wallet-actions-inline" style="gap:8px;">
-                        <button class="wallet-action-btn ghost" id="convertUsdcBtn" onclick="openConvertUsdcModal(event)" title="Convert USDC (IBC) to ARKEO (wrapped) on Osmosis" aria-label="Convert USDC to ARKEO">
-                            USDC<img src="images/osmosis/info/logo.png" alt="Osmosis" class="chain-icon" aria-hidden="true"> to ARKEO<img src="images/osmosis/info/logo.png" alt="Osmosis" class="chain-icon" aria-hidden="true">
-                        </button>
                         <button class="wallet-action-btn ghost" id="convertArkeoBtn" onclick="openConvertArkeoModal(event)" title="Convert ARKEO (wrapped) to USDC (IBC) on Osmosis" aria-label="Convert ARKEO to USDC">
                             ARKEO<img src="images/osmosis/info/logo.png" alt="Osmosis" class="chain-icon" aria-hidden="true"> to USDC<img src="images/osmosis/info/logo.png" alt="Osmosis" class="chain-icon" aria-hidden="true">
                         </button>
@@ -1531,7 +1533,7 @@
         const showArkeoToUsdc = dir === "up";
         const showArkeoNative = dir === "down";
         const showArkeoToOsmo = dir === "up";
-        setVisible("convertUsdcBtn", showUsdcToArkeo);
+        setVisible("convertUsdcRow", showUsdcToArkeo);
         setVisible("convertArkeoBtn", showArkeoToUsdc);
         setVisible("convertArkeoNativeBtn", showArkeoNative);
         setVisible("convertArkeoToOsmosisBtn", showArkeoToOsmo);
