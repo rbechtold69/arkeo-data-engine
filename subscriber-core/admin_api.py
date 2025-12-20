@@ -5746,6 +5746,14 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
     query_string = work.query or ""
     body = work.body or b""
     client_ip = work.client_ip or ""
+    queue_wait_ms = 0
+    try:
+        if getattr(work, "created_at", None):
+            queue_wait_ms = int((t_start - float(work.created_at)) * 1000)
+            if queue_wait_ms < 0:
+                queue_wait_ms = 0
+    except Exception:
+        queue_wait_ms = 0
 
     listener_id = cfg.get("listener_id")
     node = cfg.get("node_rpc") or ARKEOD_NODE
@@ -5815,7 +5823,9 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
     except Exception:
         pass
 
+    height_start = time.time()
     cur_height = _get_current_height(node)
+    height_ms = int((time.time() - height_start) * 1000)
 
     def _contract_is_usable(c: dict | None, provider_filter: str) -> bool:
         if not isinstance(c, dict):
@@ -6043,7 +6053,10 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
                     cors_ms = 0
 
         # ---- Per-contract nonce store
+        nonce_store_ms = 0
+        nonce_persist_ms = 0
         nonce_store = None
+        nonce_store_start = time.time()
         try:
             stores = getattr(server_ref, "nonce_stores", None) if server_ref is not None else None
             if not isinstance(stores, dict):
@@ -6067,15 +6080,26 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
         except Exception:
             # Fallback to a throwaway store (still persisted on disk).
             nonce_store = NonceStore(_nonce_store_path(listener_id, cid))
+        finally:
+            try:
+                nonce_store_ms = int((time.time() - nonce_store_start) * 1000)
+            except Exception:
+                nonce_store_ms = 0
 
         # ---- Nonce, sign, forward
         nonce_prep_start = time.time()
         nonce = nonce_store.next()
         nonce_prep_ms = int((time.time() - nonce_prep_start) * 1000)
+        persist_start = time.time()
         try:
             _persist_listener_nonce(listener_id, cid, nonce)
         except Exception:
             pass
+        finally:
+            try:
+                nonce_persist_ms += int((time.time() - persist_start) * 1000)
+            except Exception:
+                pass
 
         sign_start = time.time()
         sig_hex, sig_err = _sign_message(client_key, cid, nonce, sign_template)
@@ -6142,10 +6166,16 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
             except Exception:
                 pass
             nonce = nonce_store.next()
+            persist_start = time.time()
             try:
                 _persist_listener_nonce(listener_id, cid, nonce)
             except Exception:
                 pass
+            finally:
+                try:
+                    nonce_persist_ms += int((time.time() - persist_start) * 1000)
+                except Exception:
+                    pass
             sign_start = time.time()
             sig_hex, sig_err = _sign_message(client_key, cid, nonce, sign_template)
             sign_ms += int((time.time() - sign_start) * 1000)
@@ -6183,7 +6213,18 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
             sentinel_forward_ms = int((time.time() - fwd_start) * 1000)
 
         total_ms = int((time.time() - t_start) * 1000)
-        other_ms = total_ms - contract_fetch_ms - contract_select_ms - nonce_prep_ms - sign_ms - sentinel_forward_ms
+        tracked_ms = (
+            height_ms
+            + contract_fetch_ms
+            + contract_select_ms
+            + cors_ms
+            + nonce_store_ms
+            + nonce_prep_ms
+            + nonce_persist_ms
+            + sign_ms
+            + sentinel_forward_ms
+        )
+        other_ms = total_ms - tracked_ms
         if other_ms < 0:
             other_ms = 0
 
@@ -6221,11 +6262,15 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
                 }
                 server_ref.last_timings = {
                     "total_ms": total_ms,
+                    "queue_wait_ms": queue_wait_ms,
+                    "height_ms": height_ms,
                     "contract_fetch_ms": contract_fetch_ms,
                     "contract_select_ms": contract_select_ms,
                     "cors_ms": cors_ms,
                     "cors_ok": cors_ok,
+                    "nonce_store_ms": nonce_store_ms,
                     "nonce_prep_ms": nonce_prep_ms,
+                    "nonce_persist_ms": nonce_persist_ms,
                     "sign_ms": sign_ms,
                     "sentinel_forward_ms": sentinel_forward_ms,
                     "other_ms": other_ms,
@@ -6259,8 +6304,10 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
         _log(
             "info",
             "timings "
-            f"total_ms={total_ms} contract_fetch_ms={contract_fetch_ms} contract_select_ms={contract_select_ms} "
-            f"nonce_prep_ms={nonce_prep_ms} sign_ms={sign_ms} sentinel_forward_ms={sentinel_forward_ms} other_ms={other_ms} "
+            f"total_ms={total_ms} queue_wait_ms={queue_wait_ms} height_ms={height_ms} "
+            f"contract_fetch_ms={contract_fetch_ms} contract_select_ms={contract_select_ms} cors_ms={cors_ms} "
+            f"nonce_store_ms={nonce_store_ms} nonce_prep_ms={nonce_prep_ms} nonce_persist_ms={nonce_persist_ms} "
+            f"sign_ms={sign_ms} sentinel_forward_ms={sentinel_forward_ms} other_ms={other_ms} "
             f"auto_create={auto_created} provider={provider_filter} sentinel={sentinel} contract_id={cid}",
         )
         _log("info", f"proxy done code={code} cid={cid} nonce={nonce} provider={provider_filter}")
