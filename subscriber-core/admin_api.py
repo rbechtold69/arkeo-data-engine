@@ -6228,6 +6228,23 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
         if other_ms < 0:
             other_ms = 0
 
+        timings_payload = {
+            "total_ms": total_ms,
+            "queue_wait_ms": queue_wait_ms,
+            "height_ms": height_ms,
+            "contract_fetch_ms": contract_fetch_ms,
+            "contract_select_ms": contract_select_ms,
+            "cors_ms": cors_ms,
+            "cors_ok": cors_ok,
+            "nonce_store_ms": nonce_store_ms,
+            "nonce_prep_ms": nonce_prep_ms,
+            "nonce_persist_ms": nonce_persist_ms,
+            "sign_ms": sign_ms,
+            "sentinel_forward_ms": sentinel_forward_ms,
+            "other_ms": other_ms,
+            "auto_create": bool(auto_created),
+        }
+
         hdrs = {"Content-Type": resp_hdrs.get("Content-Type", "application/json")}
         # Decorate response headers with Arkeo metadata.
         try:
@@ -6238,6 +6255,23 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
             if cfg.get("decorate_response"):
                 hdrs["X-Arkeo-Client"] = contract_client
                 hdrs["X-Arkeo-Sentinel"] = sentinel
+        except Exception:
+            pass
+        # Opt-in: include per-request timings in the response headers (used by /api/listeners/<id>/test to avoid races).
+        try:
+            want_timings = False
+            req_headers = getattr(work, "headers", None)
+            if isinstance(req_headers, dict):
+                val = req_headers.get("X-Arkeo-Return-Timings")
+                if val is None:
+                    for hk, hv in req_headers.items():
+                        if str(hk).lower() == "x-arkeo-return-timings":
+                            val = hv
+                            break
+                if val is not None and str(val).strip().lower() not in ("", "0", "false", "no", "off", "null"):
+                    want_timings = True
+            if want_timings:
+                hdrs["X-Arkeo-Timings"] = json.dumps(timings_payload, separators=(",", ":"))
         except Exception:
             pass
 
@@ -6260,22 +6294,7 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
                     "headers": fwd_headers,
                     "method": method,
                 }
-                server_ref.last_timings = {
-                    "total_ms": total_ms,
-                    "queue_wait_ms": queue_wait_ms,
-                    "height_ms": height_ms,
-                    "contract_fetch_ms": contract_fetch_ms,
-                    "contract_select_ms": contract_select_ms,
-                    "cors_ms": cors_ms,
-                    "cors_ok": cors_ok,
-                    "nonce_store_ms": nonce_store_ms,
-                    "nonce_prep_ms": nonce_prep_ms,
-                    "nonce_persist_ms": nonce_persist_ms,
-                    "sign_ms": sign_ms,
-                    "sentinel_forward_ms": sentinel_forward_ms,
-                    "other_ms": other_ms,
-                    "auto_create": bool(auto_created),
-                }
+                server_ref.last_timings = timings_payload
         except Exception:
             pass
 
@@ -7340,7 +7359,7 @@ def _test_listener_port(
     timeout: float = None,
     method: str = "POST",
     path: str = "/",
-) -> tuple[bool, str | None, str | None, dict]:
+) -> tuple[bool, str | None, str | None, dict, int | None]:
     """Attempt an HTTP request against the listener; return headers too."""
     method = (method or "POST").upper()
     path = path or "/"
@@ -7352,15 +7371,21 @@ def _test_listener_port(
     try:
         with urllib.request.urlopen(req, timeout=timeout or PROXY_TEST_TIMEOUT) as resp:
             body = resp.read().decode("utf-8", errors="replace")
-            return True, body, None, dict(resp.headers)
+            return True, body, None, dict(resp.headers), int(getattr(resp, "status", 0) or 0)
     except urllib.error.HTTPError as e:
         try:
             body = e.read().decode("utf-8", errors="replace")
         except Exception:
             body = None
-        return False, body, f"HTTP {e.code}: {e.reason}", dict(e.headers) if e.headers else {}
+        return (
+            False,
+            body,
+            f"HTTP {e.code}: {e.reason}",
+            dict(e.headers) if e.headers else {},
+            int(getattr(e, "code", 0) or 0),
+        )
     except Exception as e:
-        return False, None, str(e), {}
+        return False, None, str(e), {}, None
 
 
 def _min_payg_rate(raw: dict) -> tuple[int | None, str | None]:
@@ -8167,6 +8192,8 @@ def test_listener(listener_id: str):
         warmup = request.args.get("warmup")
         if warmup and str(warmup).strip().lower() not in ("0", "false", "no", "off", "null"):
             headers["X-Arkeo-Ignore-Metrics"] = "1"
+        # Always request per-request timings in headers so the test endpoint is race-free (no reliance on global srv.last_timings).
+        headers["X-Arkeo-Return-Timings"] = "1"
         payload_bytes = b""
         label = ""
         path = "/"
@@ -8202,7 +8229,21 @@ def test_listener(listener_id: str):
             req_url = f"http://127.0.0.1:{port}{req_path}"
         else:
             req_url = req_path
-        ok, resp, err, resp_headers = _test_listener_port(port, payload_bytes if hm != "GET" else None, headers, method=hm, path=req_path)
+        ok, resp, err, resp_headers, resp_code = _test_listener_port(
+            port,
+            payload_bytes if hm != "GET" else None,
+            headers,
+            method=hm,
+            path=req_path,
+        )
+        timings_from_header = None
+        if isinstance(resp_headers, dict):
+            th = resp_headers.get("X-Arkeo-Timings") or resp_headers.get("x-arkeo-timings")
+            if th:
+                try:
+                    timings_from_header = json.loads(th)
+                except Exception:
+                    timings_from_header = None
         headers_cli = " ".join([f"-H '{k}: {v}'" for k, v in headers.items()])
         if hm == "GET":
             cmd = f"curl -X GET http://127.0.0.1:{port}{path} {headers_cli}".strip()
@@ -8257,6 +8298,8 @@ def test_listener(listener_id: str):
             "request_headers": headers,
             "request_body": hp if hm != "GET" else "",
         }
+        if resp_code is not None:
+            payload["last_upstream_code"] = resp_code
         # show the upstream target we expect the sentinel to hit (best-effort)
         health_url_example = None
         if cand_sentinel:
@@ -8314,6 +8357,12 @@ def test_listener(listener_id: str):
                     payload["cors_allowed_origins"] = cors_origins
                 except Exception:
                     pass
+        # Override last_timings with per-request timings when present to avoid races with other in-flight requests.
+        if isinstance(timings_from_header, dict):
+            payload["last_timings"] = timings_from_header
+        # Override last_upstream_code with the actual HTTP status for this test request (race-free).
+        if resp_code is not None:
+            payload["last_upstream_code"] = resp_code
         if isinstance(resp_headers, dict):
             payload["arkeo_nonce"] = resp_headers.get("X-Arkeo-Nonce") or resp_headers.get("x-arkeo-nonce")
             payload["arkeo_contract_id"] = resp_headers.get("X-Arkeo-Contract-Id") or resp_headers.get("x-arkeo-contract-id")

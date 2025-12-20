@@ -2180,49 +2180,49 @@
         if (modal) modal.classList.remove("hidden");
     }
 
-    function showTopServicesHelp(topic, event) {
-        if (event && typeof event.stopPropagation === "function") event.stopPropagation();
-        const t = String(topic || "").toLowerCase();
-        if (t === "contract") {
-            const body = `
-                <div class="muted small" style="line-height:1.5;">
-                    <div style="font-weight:700; margin:0 0 0 0;">Success</div>
-                    <ul style="margin:0 0 0 0;">
-                        <li>There is an active PAYG contract cached for that provider service.</li>
-                    </ul>
-                    <div style="font-weight:700; margin:0 0 0 0;">Common reasons for failure</div>
-                    <ul style="margin:0 0 0 0;">
-                        <li>No active contract found yet (first use / cache cleared).</li>
-                        <li>Auto-create failed (rate/settlement mismatch, insufficient funds, chain error).</li>
-                        <li>Contract exists but is no longer usable (expired/settled/invalid) and needs recreation.</li>
-                        <li>The provider sentinel or node is down. Check the listener log for more details.</li>
-                    </ul>
-                </div>
-            `;
-            showResultModal("Top Services: Contract", body, true);
-            return;
-        }
-        if (t === "config") {
-            const body = `
-                <div class="muted small" style="line-height:1.5;">
-                    <div style="font-weight:700; margin:0 0 0 0;">Success</div>
-                    <ul style="margin:0 0 0 0;">
-                        <li>The subscriber successfully pushed the contract CORS config (Settings → CORS Origins) to the provider sentinel.</li>
-                    </ul>
-                    <div style="font-weight:700; margin:0 0 0 0;">Common reasons for failure</div>
-                    <ul style="margin:0 0 0 0;">
-                        <li>Provider sentinel manage endpoint is unreachable / times out.</li>
-                        <li>Provider metadata <span class="mono">hub_provider_uri</span> is unreachable (often points at <span class="mono">127.0.0.1:1317</span> from their host).</li>
-                        <li>Contract not found on the provider, or auth/signature rejected.</li>
-                        <li>If Config is red, browser clients may hit CORS errors even if the contract works.</li>
-                    </ul>
-                </div>
-            `;
-            showResultModal("Top Services: Config", body, true);
-            return;
-        }
-        showResultModal("Top Services", "Help unavailable.");
-    }
+	    function showTopServicesHelp(topic, event) {
+	        if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+	        const t = String(topic || "").toLowerCase();
+	        if (t === "contract") {
+	            const body = `
+	                <div class="muted small" style="line-height:1.5;">
+	                    <div style="font-weight:700; margin:0 0 6px 0;">Success</div>
+	                    <ul style="margin:0 0 12px 18px; padding:0;">
+	                        <li>There is an active PAYG contract cached for that provider service.</li>
+	                    </ul>
+	                    <div style="font-weight:700; margin:0 0 6px 0;">Common reasons for failure</div>
+	                    <ul style="margin:0 0 0 18px; padding:0;">
+	                        <li>No active contract found yet (first use / cache cleared).</li>
+	                        <li>Auto-create failed (rate/settlement mismatch, insufficient funds, chain error).</li>
+	                        <li>Contract exists but is no longer usable (expired/settled/invalid) and needs recreation.</li>
+	                        <li>The provider sentinel or node is down. Check the listener log for more details.</li>
+	                    </ul>
+	                </div>
+	            `;
+	            showResultModal("Top Services: Contract", body, true);
+	            return;
+	        }
+	        if (t === "config") {
+	            const body = `
+	                <div class="muted small" style="line-height:1.5;">
+	                    <div style="font-weight:700; margin:0 0 6px 0;">Success</div>
+	                    <ul style="margin:0 0 12px 18px; padding:0;">
+	                        <li>The subscriber successfully pushed the contract CORS config (Settings → CORS Origins) to the provider sentinel.</li>
+	                    </ul>
+	                    <div style="font-weight:700; margin:0 0 6px 0;">Common reasons for failure</div>
+	                    <ul style="margin:0 0 0 18px; padding:0;">
+	                        <li>Provider sentinel manage endpoint is unreachable / times out.</li>
+	                        <li>Provider metadata <span class="mono">hub_provider_uri</span> is unreachable (often points at <span class="mono">127.0.0.1:1317</span> from their host).</li>
+	                        <li>Contract not found on the provider, or auth/signature rejected.</li>
+	                        <li>If Config is red, browser clients may hit CORS errors even if the contract works.</li>
+	                    </ul>
+	                </div>
+	            `;
+	            showResultModal("Top Services: Config", body, true);
+	            return;
+	        }
+	        showResultModal("Top Services", "Help unavailable.");
+	    }
 
     function scrollResultModalBottom() {
         const doScroll = () => {
@@ -3595,7 +3595,7 @@
                         // Display end-to-end timing on the Contract line (this is what users care about in polling).
                         const totalMs = Number(timings?.total_ms);
                         const contractMsText = Number.isFinite(totalMs) ? `${Math.round(totalMs)} ms` : "—";
-                        const contractOk = Boolean(data?.arkeo_contract_id || data?.active_contract_id);
+                        const contractOk = ok && Boolean(data?.arkeo_contract_id || data?.active_contract_id);
                         if (!contractOk) allOk = false;
 
                         const corsOkVal = timings?.cors_ok;
