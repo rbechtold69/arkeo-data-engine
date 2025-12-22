@@ -329,6 +329,7 @@ def providers_with_contracts():
             {
                 "pubkey": pubkey,
                 "provider": p.get("provider") or p,
+                "provider_moniker": p.get("provider_moniker") or p.get("providerMoniker"),
                 "metadata_uri": p.get("metadata_uri"),
                 "metadata": p.get("metadata"),
                 "metadata_error": p.get("metadata_error"),

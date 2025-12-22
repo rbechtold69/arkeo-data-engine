@@ -1209,7 +1209,7 @@ docker run -d --name subscriber-core --restart=unless-stopped \\
           const meta = p.metadata || {};
           const raw = p.provider || {};
           const metaConfig = typeof meta === 'object' ? (meta.config || {}) : {};
-          const name = meta.name || meta.moniker || raw.moniker || raw.name || `Provider ${idx + 1}`;
+          const name = meta.name || meta.moniker || metaConfig.moniker || p.provider_moniker || raw.moniker || raw.name || `Provider ${idx + 1}`;
           const description = meta.description || meta.desc || raw.description || raw.desc || '';
           const location = meta.location || meta.geo || metaConfig.location || raw.location || '';
           const region =
