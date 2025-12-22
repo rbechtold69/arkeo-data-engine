@@ -15,6 +15,7 @@ TLS_CERT_PATH=${TLS_CERT_PATH:-/app/config/tls.crt}
 TLS_KEY_PATH=${TLS_KEY_PATH:-/app/config/tls.key}
 TLS_CERT_CN=${TLS_CERT_CN:-localhost}
 TLS_SELF_SIGNED=${TLS_SELF_SIGNED:-1}
+CANONICAL_HOST=${CANONICAL_HOST:-dashboard.builtonarkeo.com}
 CACHE_DIR=${CACHE_DIR:-/app/cache}
 CACHE_INIT_ON_START=${CACHE_INIT_ON_START:-1}
 CACHE_INIT_TIMEOUT=${CACHE_INIT_TIMEOUT:-120}
@@ -34,6 +35,7 @@ echo "  TLS_CERT_PATH        = $TLS_CERT_PATH"
 echo "  TLS_KEY_PATH         = $TLS_KEY_PATH"
 echo "  TLS_CERT_CN          = $TLS_CERT_CN"
 echo "  TLS_SELF_SIGNED      = $TLS_SELF_SIGNED"
+echo "  CANONICAL_HOST       = $CANONICAL_HOST"
 echo "  CACHE_DIR            = $CACHE_DIR"
 echo "  CACHE_INIT_ON_START  = $CACHE_INIT_ON_START"
 echo "  CACHE_INIT_TIMEOUT   = ${CACHE_INIT_TIMEOUT}s"
@@ -68,8 +70,8 @@ fi
 
 cat > /etc/nginx/conf.d/dashboard.conf <<EOF
 server {
-  listen ${HTTP_PORT} default_server;
-  server_name _;
+  listen ${HTTP_PORT};
+  server_name localhost 127.0.0.1;
 
   location /api/ {
     proxy_pass http://127.0.0.1:${ADMIN_API_PORT};
@@ -87,6 +89,12 @@ server {
     proxy_set_header X-Forwarded-Proto \$scheme;
   }
 }
+
+server {
+  listen ${HTTP_PORT} default_server;
+  server_name _;
+  return 301 https://${CANONICAL_HOST}\$request_uri;
+}
 EOF
 
 if [ "$TLS_ACTIVE" = "1" ]; then
@@ -94,6 +102,42 @@ if [ "$TLS_ACTIVE" = "1" ]; then
 server {
   listen ${HTTPS_PORT} ssl http2 default_server;
   server_name _;
+  ssl_certificate ${TLS_CERT_PATH};
+  ssl_certificate_key ${TLS_KEY_PATH};
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_prefer_server_ciphers off;
+  return 301 https://${CANONICAL_HOST}\$request_uri;
+}
+
+server {
+  listen ${HTTPS_PORT} ssl http2;
+  server_name ${CANONICAL_HOST};
+
+  ssl_certificate ${TLS_CERT_PATH};
+  ssl_certificate_key ${TLS_KEY_PATH};
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_prefer_server_ciphers off;
+
+  location /api/ {
+    proxy_pass http://127.0.0.1:${ADMIN_API_PORT};
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+  }
+
+  location / {
+    proxy_pass http://127.0.0.1:${ADMIN_PORT};
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+  }
+}
+
+server {
+  listen ${HTTPS_PORT} ssl http2;
+  server_name localhost 127.0.0.1;
 
   ssl_certificate ${TLS_CERT_PATH};
   ssl_certificate_key ${TLS_KEY_PATH};

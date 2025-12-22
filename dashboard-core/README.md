@@ -60,6 +60,7 @@ Env knobs:
 - `TLS_KEY_PATH` (default `/app/config/tls.key`) TLS key path for nginx.
 - `TLS_CERT_CN` (default `localhost`) CN used for self-signed certs when TLS keys are missing.
 - `TLS_SELF_SIGNED` (default `1`) set to `0` to avoid generating a self-signed cert.
+- `CANONICAL_HOST` (default `dashboard.builtonarkeo.com`) hostname to redirect HTTP and non-canonical HTTPS traffic to.
 
 UI is currently header/footer only; API endpoints mirror the subscriber sync surface (`/api/cache-refresh`, `/api/cache-status`, `/api/cache-counts`, `/api/providers-with-contracts`, `/api/block-height`, etc.).
 
