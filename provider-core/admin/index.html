@@ -3269,10 +3269,20 @@ function renderProviderServices() {
         try {
             let res = await fetch(resolveApi("/api/version"));
             let data = await res.json();
-            if (data.arkeod_version) {
-                document.getElementById("version").textContent = "arkeod version: " + data.arkeod_version;
-            } else if (data.error) {
-                document.getElementById("version").textContent = "Error getting version: " + data.error;
+            const appVersion = data && data.app_version ? data.app_version : "";
+            const arkeodVersion = data && data.arkeod_version ? data.arkeod_version : "";
+            const arkeodError = data && (data.arkeod_error || data.error) ? (data.arkeod_error || data.error) : "";
+            if (appVersion || arkeodVersion) {
+                const parts = [];
+                if (appVersion) parts.push("core version: " + appVersion);
+                if (arkeodVersion) {
+                    parts.push("arkeod version: " + arkeodVersion);
+                } else if (arkeodError) {
+                    parts.push("arkeod version: unavailable");
+                }
+                document.getElementById("version").textContent = parts.join(" | ");
+            } else if (arkeodError) {
+                document.getElementById("version").textContent = "Error getting version: " + arkeodError;
             } else {
                 document.getElementById("version").textContent = "Unknown version response";
             }

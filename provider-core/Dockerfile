@@ -37,6 +37,8 @@ RUN mkdir -p vendor && npm run build
 
 # ---------- Stage 3: Runtime container ----------
 FROM debian:12-slim
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \

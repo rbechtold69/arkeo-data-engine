@@ -41,7 +41,11 @@
     <div class="grid-two">
         <div class="panel stack">
             <div>
-                <strong>Admin API</strong>
+                <strong>Core Version</strong>
+                <div id="adminAppVersion" class="muted mt-6">(loading...)</div>
+            </div>
+            <div>
+                <strong>Arkeod Version</strong>
                 <div id="adminApiVersion" class="muted mt-6">(loading...)</div>
             </div>
             <div>
@@ -370,8 +374,17 @@
             const balance = await parseSafe(balRes);
             const info = await parseSafe(infoRes);
 
+            const appVersionEl = document.getElementById("adminAppVersion");
+            if (appVersionEl) appVersionEl.textContent = version && !version.error ? version.app_version || "(unknown)" : "Unavailable";
+
             const apiVersionEl = document.getElementById("adminApiVersion");
-            if (apiVersionEl) apiVersionEl.textContent = version && !version.error ? version.arkeod_version || "(unknown)" : "Unavailable";
+            if (apiVersionEl) {
+                if (version && !version.error) {
+                    apiVersionEl.textContent = version.arkeod_version || (version.arkeod_error ? "Unavailable" : "(unknown)");
+                } else {
+                    apiVersionEl.textContent = "Unavailable";
+                }
+            }
 
             const apiUrlEl = document.getElementById("adminApiUrl");
             if (apiUrlEl) apiUrlEl.textContent = buildBaseUrl(adminHost, DEFAULT_ADMIN_API_PORT) + "/api/version";
@@ -395,7 +408,7 @@
                 }
             }
 
-            const hasErrors = !!(version && version.error) || !!(height && height.error) || !!(balance && balance.error);
+            const hasErrors = !!(version && (version.error || version.arkeod_error)) || !!(height && height.error) || !!(balance && balance.error);
             setBadge(hasErrors ? "warn" : "ok", hasErrors ? "Partial data" : "Up to date");
         } catch (e) {
             setBadge("err", "Failed to refresh");

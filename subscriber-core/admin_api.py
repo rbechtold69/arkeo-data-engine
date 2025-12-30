@@ -3010,13 +3010,19 @@ def ping():
 
 @app.get("/api/version")
 def version():
+    app_version = (os.getenv("APP_VERSION") or "").strip() or "dev"
     code, out = run("arkeod version")
+    response = {"app_version": app_version}
     if code != 0:
-        return jsonify({"error": "failed to get arkeod version", "detail": out}), 500
-    ver = out.strip()
-    if not ver:
-        ver = "unknown"
-    return jsonify({"arkeod_version": ver})
+        detail = out.strip()
+        response["arkeod_error"] = detail or "failed to get arkeod version"
+        response["error"] = "failed to get arkeod version"
+        if detail:
+            response["detail"] = detail
+        return jsonify(response)
+    ver = out.strip() or "unknown"
+    response["arkeod_version"] = ver
+    return jsonify(response)
 
 @app.get("/api/block-height")
 def block_height():
