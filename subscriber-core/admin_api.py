@@ -215,6 +215,7 @@ class WorkItem:
         self.deadline = deadline
         self.raw_path = raw_path
         self.raw_query = raw_query
+        self.request_id = uuid.uuid4().hex
 
 
 class NonceStore:
@@ -287,7 +288,13 @@ class SingleLaneExecutor:
                 if work.deadline and time.time() > work.deadline:
                     resp = {
                         "status": 503,
-                        "body": json.dumps({"error": "queue_timeout"}),
+                        "body": json.dumps(
+                            {
+                                "error": "queue_timeout",
+                                "detail": "request expired before worker execution",
+                                "request_id": getattr(work, "request_id", None),
+                            }
+                        ),
                         "headers": {"Content-Type": "application/json"},
                     }
                 else:
@@ -299,7 +306,16 @@ class SingleLaneExecutor:
             except Exception as e:
                 try:
                     work.response.put_nowait(
-                        {"status": 502, "body": json.dumps({"error": "worker_exception", "detail": str(e)})}
+                        {
+                            "status": 502,
+                            "body": json.dumps(
+                                {
+                                    "error": "worker_exception",
+                                    "detail": str(e),
+                                    "request_id": getattr(work, "request_id", None),
+                                }
+                            ),
+                        }
                     )
                 except Exception:
                     pass
@@ -2421,6 +2437,7 @@ PROXY_WHITELIST_IPS = os.getenv("PROXY_WHITELIST_IPS", "0.0.0.0")
 PROXY_TRUST_FORWARDED = str(os.getenv("PROXY_TRUST_FORWARDED", "true")).lower() in ("1", "true", "yes", "on")
 PROXY_DECORATE_RESPONSE = str(os.getenv("PROXY_DECORATE_RESPONSE", "true")).lower() in ("1", "true", "yes", "on")
 PROXY_ARKAUTH_AS_HEADER = str(os.getenv("PROXY_ARKAUTH_AS_HEADER", "false")).lower() in ("1", "true", "yes", "on")
+PROXY_WRAP_UPSTREAM_ERRORS = str(os.getenv("PROXY_WRAP_UPSTREAM_ERRORS", "false")).lower() in ("1", "true", "yes", "on")
 PROXY_CONTRACT_TIMEOUT = int(os.getenv("PROXY_CONTRACT_TIMEOUT", "10"))
 PROXY_CONTRACT_LIMIT = int(os.getenv("PROXY_CONTRACT_LIMIT", "5000"))
 # Pagination mode for list-contracts; resolved at runtime on first use.
@@ -6657,6 +6674,13 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
     if raw_query:
         req_path = f"{raw_path}?{raw_query}"
     client_ip = work.client_ip or ""
+    req_id = getattr(work, "request_id", None)
+    if not req_id:
+        req_id = uuid.uuid4().hex
+        try:
+            work.request_id = req_id
+        except Exception:
+            pass
     queue_wait_ms = 0
     try:
         if getattr(work, "created_at", None):
@@ -6710,8 +6734,8 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
     if not allow_all and client_ip and client_ip not in wl:
         return {
             "status": 403,
-            "body": json.dumps({"error": "ip not whitelisted", "ip": client_ip}),
-            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({"error": "ip not whitelisted", "ip": client_ip, "request_id": req_id}),
+            "headers": {"Content-Type": "application/json", "X-Arkeo-Request-Id": req_id},
         }
 
     bypass_uri = (cfg.get("bypass_uri") or "").strip()
@@ -6854,13 +6878,17 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
                     _log(
                         "error",
                         f"request failed code={code} listener={listener_id} method={method} path={req_path} "
-                        f"service={service} service_id={svc_id} ip={client_ip} bypass=1 "
+                        f"service={service} service_id={svc_id} ip={client_ip} bypass=1 request_id={req_id} "
                         f"url={_redact_url_userinfo(fwd_url)} total_ms={total_ms} "
                         f"body={_preview_log_body(resp_body)}",
                     )
                 except Exception:
                     pass
             _log("info", f"bypass ok code={code} url={_redact_url_userinfo(fwd_url)}")
+            try:
+                resp_hdrs["X-Arkeo-Request-Id"] = req_id
+            except Exception:
+                pass
             return {"status": code or 502, "body": resp_body or b"", "headers": resp_hdrs}
         except BypassError as e:
             _log("warning", f"bypass failed ({e}); falling back to arkeo")
@@ -6880,14 +6908,14 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
             _log(
                 "error",
                 f"request failed code=500 error=client_pubkey_unavailable listener={listener_id} "
-                f"method={method} path={req_path} service={service} service_id={svc_id} ip={client_ip}",
+                f"method={method} path={req_path} service={service} service_id={svc_id} ip={client_ip} request_id={req_id}",
             )
         except Exception:
             pass
         return {
             "status": 500,
-            "body": json.dumps({"error": "client_pubkey_unavailable"}),
-            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({"error": "client_pubkey_unavailable", "request_id": req_id}),
+            "headers": {"Content-Type": "application/json", "X-Arkeo-Request-Id": req_id},
         }
 
     # Init caches on the server object for reuse across requests.
@@ -6944,24 +6972,34 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
                     "error",
                     f"request failed code=503 error=forced_provider_not_found listener={listener_id} "
                     f"method={method} path={req_path} service={service} service_id={svc_id} "
-                    f"provider={forced_provider} ip={client_ip}",
+                    f"provider={forced_provider} ip={client_ip} request_id={req_id}",
                 )
             except Exception:
                 pass
             return {
                 "status": 503,
-                "body": json.dumps({"error": "forced_provider_not_found", "provider_pubkey": forced_provider}),
-                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps(
+                    {
+                        "error": "forced_provider_not_found",
+                        "provider_pubkey": forced_provider,
+                        "request_id": req_id,
+                    }
+                ),
+                "headers": {"Content-Type": "application/json", "X-Arkeo-Request-Id": req_id},
             }
         try:
             _log(
                 "error",
                 f"request failed code=503 error=no_providers listener={listener_id} "
-                f"method={method} path={req_path} service={service} service_id={svc_id} ip={client_ip}",
+                f"method={method} path={req_path} service={service} service_id={svc_id} ip={client_ip} request_id={req_id}",
             )
         except Exception:
             pass
-        return {"status": 503, "body": json.dumps({"error": "no_providers"}), "headers": {"Content-Type": "application/json"}}
+        return {
+            "status": 503,
+            "body": json.dumps({"error": "no_providers", "request_id": req_id}),
+            "headers": {"Content-Type": "application/json", "X-Arkeo-Request-Id": req_id},
+        }
     try:
         ordered = ", ".join(
             f"{c.get('provider_pubkey')}@{c.get('sentinel_url')}" for c in candidates if isinstance(c, dict)
@@ -7000,7 +7038,82 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
             return False
         return True
 
+    def _open_contract_error_detail(
+        out_text: str | None,
+        deposit_val: int | None,
+        fees_val: str | None,
+    ) -> tuple[str | None, str | None]:
+        if not out_text:
+            return None, None
+        low = str(out_text).lower()
+        if "insufficient funds" in low or "not enough balance" in low:
+            acct = ""
+            try:
+                m = re.search(r"account\s+([a-z0-9]+):\s+insufficient funds", out_text, re.IGNORECASE)
+                if not m:
+                    m = re.search(r"for account\s+([a-z0-9]+)", out_text, re.IGNORECASE)
+                if m:
+                    acct = m.group(1)
+            except Exception:
+                acct = ""
+            parts = ["insufficient funds to open contract"]
+            if acct:
+                parts.append(f"account={acct}")
+            if deposit_val is not None:
+                parts.append(f"deposit={deposit_val}")
+            if fees_val:
+                parts.append(f"fees={fees_val}")
+            return "insufficient_funds", " ".join(parts)
+        if "account sequence mismatch" in low:
+            expected = ""
+            got = ""
+            try:
+                m_exp = re.search(r"expected\s+(\d+)", out_text, re.IGNORECASE)
+                m_got = re.search(r"got\s+(\d+)", out_text, re.IGNORECASE)
+                if m_exp:
+                    expected = m_exp.group(1)
+                if m_got:
+                    got = m_got.group(1)
+            except Exception:
+                expected, got = "", ""
+            detail = "account sequence mismatch"
+            if expected or got:
+                detail = f"{detail} expected={expected or '?'} got={got or '?'}"
+            return "account_sequence_mismatch", detail
+        if "signature verification failed" in low or "verify account number" in low:
+            acct_num = ""
+            chain_id = ""
+            try:
+                m_acc = re.search(r"account number\s*\((\d+)\)", out_text, re.IGNORECASE)
+                m_chain = re.search(r"chain-id\s*\(([^)]+)\)", out_text, re.IGNORECASE)
+                if m_acc:
+                    acct_num = m_acc.group(1)
+                if m_chain:
+                    chain_id = m_chain.group(1)
+            except Exception:
+                acct_num, chain_id = "", ""
+            detail = "signature verification failed"
+            if acct_num:
+                detail += f" account_number={acct_num}"
+            if chain_id:
+                detail += f" chain_id={chain_id}"
+            return "signature_verification_failed", detail
+        if "chain-id" in low and ("mismatch" in low or "wrong chain-id" in low):
+            chain_id = ""
+            try:
+                m_chain = re.search(r"chain-id\s*\(([^)]+)\)", out_text, re.IGNORECASE)
+                if m_chain:
+                    chain_id = m_chain.group(1)
+            except Exception:
+                chain_id = ""
+            detail = "chain-id mismatch"
+            if chain_id:
+                detail += f" chain_id={chain_id}"
+            return "chain_id_mismatch", detail
+        return None, None
+
     last_err = None
+    last_err_detail = None
     for idx, cand in enumerate(candidates, start=1):
         cand_start = time.time()
         provider_filter = cand.get("provider_pubkey")
@@ -7114,7 +7227,16 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
                 _log("info", f"open-contract txhash={txhash}")
             if not ok:
                 _log("info", "open-contract failed; skipping contract wait")
-                last_err = "open_contract_failed"
+                err_code, err_detail = _open_contract_error_detail(
+                    out,
+                    _dep,
+                    cfg_create.get("create_fees", PROXY_CREATE_FEES),
+                )
+                if err_code:
+                    last_err = err_code
+                    last_err_detail = err_detail
+                else:
+                    last_err = "open_contract_failed"
                 try:
                     _set_top_service_status(listener_id, provider_filter, "Down")
                 except Exception:
@@ -7390,6 +7512,29 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
                 server_ref.cooldowns[provider_filter] = time.time() + float(PROXY_PROVIDER_COOLDOWN)
         except Exception:
             pass
+        # Optional: wrap upstream errors into a JSON error payload for callers that want consistent errors.
+        try:
+            wrap_errors = _safe_bool(cfg.get("wrap_upstream_errors", PROXY_WRAP_UPSTREAM_ERRORS), bool(PROXY_WRAP_UPSTREAM_ERRORS))
+            hdr_wrap = _req_header("X-Arkeo-Wrap-Upstream-Errors") or _req_header("X-Arkeo-Error-Format")
+            if hdr_wrap is not None:
+                hv = str(hdr_wrap).strip().lower()
+                if hv in ("1", "true", "yes", "on", "json"):
+                    wrap_errors = True
+                elif hv in ("0", "false", "no", "off", "none"):
+                    wrap_errors = False
+            if wrap_errors and int(code or 0) >= 400:
+                wrap_payload = {
+                    "error": "upstream_error",
+                    "detail": _preview_log_body(resp_body),
+                    "upstream_code": int(code or 0),
+                    "provider_pubkey": provider_filter,
+                    "sentinel": _redact_url_userinfo(fwd_url),
+                    "request_id": req_id,
+                }
+                resp_body = json.dumps(wrap_payload).encode()
+                resp_hdrs = {"Content-Type": "application/json"}
+        except Exception:
+            pass
 
         total_ms = int((time.time() - t_start) * 1000)
         tracked_ms = (
@@ -7429,13 +7574,14 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
                     "error",
                     f"request failed code={code} listener={listener_id} method={method} path={req_path} "
                     f"service={service} service_id={svc_id} provider={provider_filter} "
-                    f"cid={cid} nonce={nonce} ip={client_ip} total_ms={total_ms} "
+                    f"cid={cid} nonce={nonce} ip={client_ip} total_ms={total_ms} request_id={req_id} "
                     f"sentinel={_redact_url_userinfo(fwd_url)} body={_preview_log_body(resp_body)}",
                 )
             except Exception:
                 pass
 
         hdrs = {"Content-Type": resp_hdrs.get("Content-Type", "application/json")}
+        hdrs["X-Arkeo-Request-Id"] = req_id
         # Decorate response headers with Arkeo metadata.
         try:
             hdrs["X-Arkeo-Contract-Id"] = cid
@@ -7541,15 +7687,25 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
         preview = ",".join(provider_list[:5])
         if len(provider_list) > 5:
             preview = f"{preview},..."
+        err_label = last_err or "no_active_contract"
+        detail_label = f" detail={last_err_detail}" if last_err_detail else ""
         _log(
             "error",
-            f"request failed code=503 error={last_err or 'no_active_contract'} listener={listener_id} "
+            f"request failed code=503 error={err_label}{detail_label} listener={listener_id} "
             f"method={method} path={req_path} service={service} service_id={svc_id} "
-            f"ip={client_ip} providers={preview or '-'}",
+            f"ip={client_ip} providers={preview or '-'} request_id={req_id}",
         )
     except Exception:
         pass
-    return {"status": 503, "body": json.dumps({"error": last_err or "no_active_contract"}), "headers": {"Content-Type": "application/json"}}
+    err_payload = {"error": last_err or "no_active_contract"}
+    if last_err_detail:
+        err_payload["detail"] = last_err_detail
+    err_payload["request_id"] = req_id
+    return {
+        "status": 503,
+        "body": json.dumps(err_payload),
+        "headers": {"Content-Type": "application/json", "X-Arkeo-Request-Id": req_id},
+    }
 
 
 def _der_to_rs_hex(der: bytes) -> str:
@@ -7988,6 +8144,32 @@ def _create_contract_now(cfg: dict, client_pub: str, log_cb=None) -> tuple[str |
         "json",
     ]
     cmd = [*cmd_base, "--gas", "auto", "--gas-adjustment", "1.2"]
+    def _log_insufficient_funds(out_text: str | None) -> bool:
+        if not out_text:
+            return False
+        low = str(out_text).lower()
+        if "insufficient funds" not in low and "not enough balance" not in low:
+            return False
+        acct = ""
+        try:
+            m = re.search(r"account\s+([a-z0-9]+):\s+insufficient funds", out_text, re.IGNORECASE)
+            if not m:
+                m = re.search(r"for account\s+([a-z0-9]+)", out_text, re.IGNORECASE)
+            if m:
+                acct = m.group(1)
+        except Exception:
+            acct = ""
+        fees = cfg.get("create_fees", PROXY_CREATE_FEES)
+        if callable(log_cb):
+            try:
+                log_cb(
+                    "error",
+                    f"open-contract failed: insufficient funds account={acct or 'unknown'} "
+                    f"deposit={dep} fees={fees}",
+                )
+            except Exception:
+                pass
+        return True
     if callable(log_cb):
         try:
             log_cb("info", f"open-contract cmd={shlex.join(cmd)}")
@@ -8050,11 +8232,13 @@ def _create_contract_now(cfg: dict, client_pub: str, log_cb=None) -> tuple[str |
         except TimeoutError:
             return None, "tx lock busy", dep, False
     if code != 0:
+        _log_insufficient_funds(out)
         return None, out, dep, False
     j = _parse_tx_json(out)
     if isinstance(j, dict):
         code_val = j.get("code")
         if code_val not in (None, "", 0, "0"):
+            _log_insufficient_funds(out)
             return None, out, dep, False
         txh = j.get("txhash") or j.get("TxHash") or ""
         if isinstance(txh, list):
@@ -8398,7 +8582,12 @@ def _do_post_inner(self, method: str = "POST"):
     if sem is not None:
         got = sem.acquire(blocking=False)
         if not got:
-            return self._send_json(503, {"error": "listener busy"})
+            req_id = uuid.uuid4().hex
+            return self._send_json(
+                503,
+                {"error": "listener busy", "detail": "lane capacity reached", "request_id": req_id},
+                {"X-Arkeo-Request-Id": req_id},
+            )
     try:
         return self._do_post_inner_core(method=method)
     finally:
@@ -8414,6 +8603,7 @@ def _do_post_inner_core(self, method: str = "POST"):
     # Make the server available to the lane worker for caching/state.
     cfg["_server_ref"] = self.server
     method = (method or "POST").upper()
+    req_id = uuid.uuid4().hex
     try:
         body_len = int(self.headers.get("Content-Length", "0"))
     except Exception:
@@ -8462,11 +8652,15 @@ def _do_post_inner_core(self, method: str = "POST"):
                 self._log(
                     "error",
                     f"request failed code=403 error=ip_not_whitelisted listener={cfg.get('listener_id')} "
-                    f"method={method} path={req_path} service={service} service_id={svc_id} ip={client_ip}",
+                    f"method={method} path={req_path} service={service} service_id={svc_id} ip={client_ip} request_id={req_id}",
                 )
             except Exception:
                 pass
-            return self._send_json(403, {"error": "ip not whitelisted", "ip": client_ip})
+            return self._send_json(
+                403,
+                {"error": "ip not whitelisted", "ip": client_ip, "request_id": req_id},
+                {"X-Arkeo-Request-Id": req_id},
+            )
 
     lane = getattr(self.server, "lane_exec", None)
     lane_timeout = getattr(self.server, "lane_timeout", PROXY_TIMEOUT_SECS)
@@ -8475,11 +8669,15 @@ def _do_post_inner_core(self, method: str = "POST"):
             self._log(
                 "error",
                 f"request failed code=500 error=lane_not_initialized listener={cfg.get('listener_id')} "
-                f"method={method} path={req_path} service={service} service_id={svc_id} ip={client_ip}",
+                f"method={method} path={req_path} service={service} service_id={svc_id} ip={client_ip} request_id={req_id}",
             )
         except Exception:
             pass
-        return self._send_json(500, {"error": "lane_not_initialized"})
+        return self._send_json(
+            500,
+            {"error": "lane_not_initialized", "request_id": req_id},
+            {"X-Arkeo-Request-Id": req_id},
+        )
 
     work = WorkItem(
         method=method,
@@ -8492,8 +8690,17 @@ def _do_post_inner_core(self, method: str = "POST"):
         raw_path=incoming_path,
         raw_query=orig_query,
     )
+    try:
+        work.request_id = req_id
+    except Exception:
+        pass
+    try:
+        setattr(self.server, "last_request_id", req_id)
+    except Exception:
+        pass
     if not lane.submit(work):
         qsz_val = None
+        qmax_val = None
         try:
             qsz = None
             try:
@@ -8501,6 +8708,10 @@ def _do_post_inner_core(self, method: str = "POST"):
             except Exception:
                 qsz = None
             qsz_val = qsz
+            try:
+                qmax_val = lane.q.maxsize
+            except Exception:
+                qmax_val = None
             if qsz is not None:
                 self._log("warning", f"lane queue full qsize={qsz}")
             else:
@@ -8512,11 +8723,19 @@ def _do_post_inner_core(self, method: str = "POST"):
                 "error",
                 f"request failed code=503 error=lane_queue_full listener={cfg.get('listener_id')} "
                 f"method={method} path={req_path} service={service} service_id={svc_id} "
-                f"ip={client_ip} qsize={qsz_val if qsz_val is not None else 'unknown'}",
+                f"ip={client_ip} qsize={qsz_val if qsz_val is not None else 'unknown'} "
+                f"request_id={req_id}",
             )
         except Exception:
             pass
-        return self._send_json(503, {"error": "listener busy"})
+        detail = None
+        if qsz_val is not None or qmax_val is not None:
+            detail = f"lane queue full size={qsz_val} max={qmax_val}"
+        return self._send_json(
+            503,
+            {"error": "listener busy", "detail": detail or "lane queue full", "request_id": req_id},
+            {"X-Arkeo-Request-Id": req_id},
+        )
     try:
         qsz_after = None
         try:
@@ -8548,17 +8767,25 @@ def _do_post_inner_core(self, method: str = "POST"):
             self._log(
                 "error",
                 f"request failed code=503 error=lane_timeout listener={cfg.get('listener_id')} "
-                f"method={method} path={req_path} service={service} service_id={svc_id} ip={client_ip}",
+                f"method={method} path={req_path} service={service} service_id={svc_id} ip={client_ip} request_id={req_id}",
             )
         except Exception:
             pass
-        return self._send_json(503, {"error": "timeout"})
+        return self._send_json(
+            503,
+            {"error": "timeout", "detail": f"lane timeout {lane_timeout}s", "request_id": req_id},
+            {"X-Arkeo-Request-Id": req_id},
+        )
 
     status = resp.get("status", 502)
     body_bytes = resp.get("body", b"")
     hdrs = resp.get("headers", {})
     if isinstance(body_bytes, str):
         body_bytes = body_bytes.encode()
+    try:
+        hdrs["X-Arkeo-Request-Id"] = req_id
+    except Exception:
+        pass
     try:
         self.send_response(status)
         origin = self.headers.get("Origin")
@@ -10183,6 +10410,21 @@ def test_listener(listener_id: str):
             payload["response"] = resp
         if err:
             payload["error"] = err
+            if resp:
+                try:
+                    parsed = json.loads(resp)
+                except Exception:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    resp_err = parsed.get("error")
+                    resp_detail = parsed.get("detail")
+                    resp_req_id = parsed.get("request_id")
+                    if resp_err:
+                        payload["error"] = resp_err
+                    if resp_detail:
+                        payload["detail"] = resp_detail
+                    if resp_req_id:
+                        payload["request_id"] = resp_req_id
 
         # Always return 200; payload.ok/error indicate result to keep UI polling simple
         return jsonify(payload), 200
