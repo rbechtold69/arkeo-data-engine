@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Arkeo Data Engine | Provider Management</title>
+    <title>Arkeo Data Engine | Edit Provider Service</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="images/favicon.ico">
     <link rel="shortcut icon" href="images/favicon.ico">
@@ -20,7 +20,7 @@
                     <span class="brand-sub">Provider</span>
                 </div>
             </div>
-            <h1>Provider Service Management</h1>
+            <h1>Edit Provider Service</h1>
         </div>
         <div class="header-right header-right-with-actions">
             <a class="btn-ghost" href="index.html">Back to Dashboard</a>
@@ -29,49 +29,210 @@
 </div>
 
 <div class="card">
-    <h2 class="mt-0">Bond Provider Service</h2>
-    <div class="hint mt-6">
-        Saving can take up to ~15 seconds. Two contracts are submitted and verified on-chain, the sentinel config is updated, and the sentinel restarts. Please be patient.
-    </div>
-    <div id="resultModal" class="overlay hidden">
-        <div class="overlay-card modal-card fixed-modal">
-            <h3 id="modalTitle">Result</h3>
-            <div id="modalBody" class="modal-body scroll-body"></div>
-            <div class="modal-actions">
-                <button id="modalCloseBtn" class="primary" type="button" onclick="closeModal()">OK</button>
-            </div>
+    <div class="wizard-page-header">
+        <h2 class="mt-0">Provider Service: <span id="wizardModeType">Edit</span></h2>
+        <div id="wizardServiceName" class="wizard-header-service"></div>
+        <div class="wizard-steps" id="wizardStepsContainer">
+            <!-- Steps will be populated by JavaScript based on mode -->
         </div>
     </div>
-    <form id="bondForm" onsubmit="bondProvider(event)">
+
+    <!-- Step 0: Select Service (Add New mode only) -->
+    <div id="wizardStep0" class="wizard-content hidden">
+        <div class="wizard-step-title">Select Provider Service</div>
+        <div class="wizard-step-desc">Choose which Arkeo-supported service you want to provide on the marketplace.</div>
         <table>
             <tr>
                 <td class="label">
-                    Provider Service
-                    <div class="hint">Select an Arkeo supported service you want to provide on the Arkeo Marketplace.</div>
+                    Service Type
+                    <div class="hint">Select from the list of supported blockchain services.</div>
                 </td>
                 <td class="value">
                     <div class="combo-select">
-                        <div id="bondServiceDropdown" class="combo-display" onclick="toggleBondServiceMenu(event)">
-                            <span id="bondServiceSelected">Select a service</span>
+                        <div id="wizardServiceDropdown" class="combo-display" onclick="toggleWizardServiceMenu(event)">
+                            <span id="wizardServiceSelected">Select a service</span>
                             <span class="combo-caret">▾</span>
                         </div>
-                        <div id="bondServiceMenu" class="combo-menu hidden">
-                            <input type="text" id="bondServiceSearchInput" class="full combo-search" placeholder="Search services..." oninput="filterBondServiceOptions()" autocomplete="off" />
-                            <div id="bondServiceOptions" class="combo-options"></div>
+                        <div id="wizardServiceMenu" class="combo-menu hidden">
+                            <input type="text" id="wizardServiceSearchInput" class="full combo-search" placeholder="Search services..." oninput="filterWizardServiceOptions()" autocomplete="off" />
+                            <div id="wizardServiceOptions" class="combo-options"></div>
                         </div>
-                        <select id="bondService" class="hidden" required>
+                        <select id="wizardServiceSelect" class="hidden">
                             <option value="">Select a service</option>
                         </select>
                     </div>
                 </td>
             </tr>
+        </table>
+        <div class="wizard-support-message">
+            <span class="support-icon">💬</span>
+            <span>Don't see the service you need? <a href="mailto:support@arkeo.network">Contact support</a> and we can add it.</span>
+        </div>
+        <div class="wizard-step-status" id="wizardStatus0">
+            <span class="step-status-icon">▶</span>
+            <span class="step-status-label">Select a service to continue</span>
+        </div>
+    </div>
+
+    <!-- Step 1: Service Endpoint -->
+    <div id="wizardStep1" class="wizard-content">
+        <div class="wizard-step-title">Service Endpoint Configuration</div>
+        <div class="wizard-step-desc">The Arkeo Provider Sentinel will relay requests for this service to your own RPC node.</div>
+        <table>
+            <tr>
+                <td class="label">
+                    RPC URL
+                    <div class="hint">Endpoint for this service (e.g., http://localhost:8332).</div>
+                </td>
+                <td class="value">
+                    <input type="text" id="wizardRpcUrl" placeholder="http://localhost:8332" />
+                </td>
+            </tr>
+            <tr>
+                <td class="label">
+                    RPC User
+                    <div class="hint">Optional RPC username.</div>
+                </td>
+                <td class="value">
+                    <input type="text" id="wizardRpcUser" placeholder="rpc-username" />
+                </td>
+            </tr>
+            <tr>
+                <td class="label">
+                    RPC Password
+                    <div class="hint">Optional RPC password.</div>
+                </td>
+                <td class="value">
+                    <input type="text" id="wizardRpcPass" placeholder="rpc-password" />
+                </td>
+            </tr>
+        </table>
+
+        <div class="wizard-section-title">Polling Options (Health Check)</div>
+        <div class="wizard-section-desc">Configure how the sentinel will poll this endpoint to verify it's online.</div>
+        <table>
+            <tr>
+                <td class="label">
+                    Service Preset
+                    <div class="hint">Auto-populate polling defaults for common service types.</div>
+                </td>
+                <td class="value">
+                    <select id="wizardPollingPreset" onchange="applyPollingPreset()">
+                        <option value="">-- Select preset --</option>
+                        <option value="evm">EVM (Ethereum, Arbitrum, Optimism, Base, Polygon, BSC)</option>
+                        <option value="cosmos">Cosmos / Arkeo / Gaia / Osmosis</option>
+                        <option value="rest">REST API (Cosmos LCD)</option>
+                        <option value="bitcoin">Bitcoin</option>
+                        <option value="polkadot">Polkadot</option>
+                        <option value="solana">Solana</option>
+                        <option value="sui">Sui</option>
+                        <option value="near">Near</option>
+                        <option value="fallback">Fallback (empty POST)</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td class="label">
+                    Method
+                    <div class="hint">HTTP method for polling requests.</div>
+                </td>
+                <td class="value">
+                    <select id="wizardPollingMethod">
+                        <option value="POST" selected>POST</option>
+                        <option value="GET">GET</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td class="label">
+                    Content-Type
+                    <div class="hint">Content-Type header for the request.</div>
+                </td>
+                <td class="value">
+                    <select id="wizardPollingContentType">
+                        <option value="">(no header)</option>
+                        <option value="application/json" selected>application/json</option>
+                        <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>
+                        <option value="text/plain">text/plain</option>
+                        <option value="application/octet-stream">application/octet-stream</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td class="label">
+                    Payload
+                    <div class="hint">Request body (POST) or path (GET). Empty sends to /.</div>
+                </td>
+                <td class="value">
+                    <textarea id="wizardPollingPayload" rows="3"></textarea>
+                </td>
+            </tr>
+            <tr>
+                <td class="label">
+                    Test Connection
+                    <div class="hint">Verify the endpoint is reachable with current settings.</div>
+                </td>
+                <td class="value">
+                    <button type="button" class="primary" id="wizardTestBtn" onclick="testEndpointConnection()">Test</button>
+                </td>
+            </tr>
+            <tr id="wizardTestResponseRow" class="hidden">
+                <td class="label">
+                    Test Response
+                </td>
+                <td class="value">
+                    <div id="wizardTestResponse" class="test-response-box"></div>
+                </td>
+            </tr>
+        </table>
+        <div class="wizard-step-status" id="wizardStatus1">
+            <span class="step-status-icon">▶</span>
+            <span class="step-status-label">Enter RPC URL to continue</span>
+        </div>
+    </div>
+
+    <!-- Step 2: Bond Contract -->
+    <div id="wizardStep2" class="wizard-content hidden">
+        <div class="wizard-step-title">Bond Contract Configuration</div>
+        <div class="wizard-step-desc">Configure the bond amount for this provider service contract.</div>
+        <table>
+            <tr>
+                <td class="label">
+                    Bond Amount
+                    <div class="hint" id="wizardBondHint">For a new provider, 100000000uarkeo is required. For edits, a minimum of 1uarkeo is required.</div>
+                </td>
+                <td class="value">
+                    <input type="number" id="wizardBondAmount" value="1" min="-1000000000" max="1000000000" step="1" />
+                    <div class="hint" id="wizardCurrentBondHint" style="margin-top: 6px;">Current bond: <span id="wizardCurrentBond">–</span></div>
+                </td>
+            </tr>
+            <tr id="wizardBondResponseRow" class="hidden">
+                <td class="label">
+                    Submission Response
+                </td>
+                <td class="value">
+                    <div id="wizardBondResponse" class="test-response-box"></div>
+                </td>
+            </tr>
+        </table>
+        <div class="wizard-step-status valid" id="wizardStatus2">
+            <span class="step-status-icon">✓</span>
+            <span class="step-status-label">Ready to submit bond contract</span>
+        </div>
+    </div>
+
+    <!-- Step 3: Mod Contract -->
+    <div id="wizardStep3" class="wizard-content hidden">
+        <div class="wizard-step-title">Mod Contract Configuration</div>
+        <div class="wizard-step-desc">Configure the service parameters and pricing for your provider contract.</div>
+        <table>
             <tr>
                 <td class="label">
                     Status
-                    <div class="hint">Choose Active or Inactive on this provider service.</div>
+                    <div class="hint">Choose Active or Inactive for this provider service.</div>
                 </td>
                 <td class="value">
-                    <select id="status">
+                    <select id="wizardServiceStatus">
                         <option value="1" selected>Active</option>
                         <option value="0">Inactive</option>
                     </select>
@@ -80,55 +241,46 @@
             <tr>
                 <td class="label">
                     Min Contract Duration
-                    <div class="hint">Minimum supported contract time you want to support, in blocks (5-6 seconds per block).</div>
+                    <div class="hint">Minimum contract time in blocks (5-6 sec/block).</div>
                 </td>
                 <td class="value">
-                    <input type="number" id="minContractDur" value="5" />
+                    <input type="number" id="wizardMinDur" value="5" />
                 </td>
             </tr>
             <tr>
                 <td class="label">
                     Max Contract Duration
-                    <div class="hint">Maximum supported contract time you want to support, in blocks (5-6 seconds per block).</div>
+                    <div class="hint">Maximum contract time in blocks (5-6 sec/block).</div>
                 </td>
                 <td class="value">
-                    <input type="number" id="maxContractDur" value="432000" />
+                    <input type="number" id="wizardMaxDur" value="432000" />
                 </td>
             </tr>
             <tr>
                 <td class="label">
                     Subscription Rate
-                    <div class="hint">Cost per service transaction.</div>
+                    <div class="hint">Cost per subscription transaction.</div>
                 </td>
                 <td class="value">
-                    <input type="text" id="subscriptionRates" value="200uarkeo" />
+                    <input type="text" id="wizardSubRate" value="200uarkeo" />
                 </td>
             </tr>
             <tr>
                 <td class="label">
                     Pay As You Go Rate
-                    <div class="hint">Cost per service transaction.</div>
+                    <div class="hint">Cost per PAYG transaction.</div>
                 </td>
                 <td class="value">
-                    <input type="text" id="payAsYouGoRates" value="200uarkeo" />
+                    <input type="text" id="wizardPaygoRate" value="200uarkeo" />
                 </td>
             </tr>
             <tr>
                 <td class="label">
                     Settlement Duration
-                    <div class="hint">After a contract closes, the time to reconcile transactions before releasing remainder, in blocks (5-6 seconds per block).</div>
+                    <div class="hint">Time to reconcile after contract closes, in blocks.</div>
                 </td>
                 <td class="value">
-                    <input type="number" id="settlementDur" value="1000" />
-                </td>
-            </tr>
-            <tr>
-                <td class="label">
-                    Bond Amount
-                    <div class="hint">On a new provider, 100000000uarkeo is required. On an edit, a minimum of 1uarkeo is required.</div>
-                </td>
-                <td class="value">
-                    <input type="number" id="bondAmountInput" value="" placeholder="100000000" min="-1000000000" max="1000000000" step="1" />
+                    <input type="number" id="wizardSettleDur" value="1000" />
                 </td>
             </tr>
             <tr>
@@ -137,7 +289,7 @@
                     <div class="hint">Select the region for this service.</div>
                 </td>
                 <td class="value">
-                    <select id="locationSelect" required>
+                    <select id="wizardLocation">
                         <option value="">Select a region</option>
                         <option>Africa</option>
                         <option>Africa – Northern</option>
@@ -170,131 +322,79 @@
                     </select>
                 </td>
             </tr>
-            <tr>
+            <tr id="wizardModResponseRow" class="hidden">
                 <td class="label">
-                    RPC URL
-                    <div class="hint">Endpoint for this service (e.g., http://localhost:8332).</div>
+                    Submission Response
                 </td>
                 <td class="value">
-                    <input type="text" id="rpcUrl" placeholder="http://localhost:8332" required />
-                </td>
-            </tr>
-            <tr>
-                <td class="label">
-                    RPC User
-                    <div class="hint">Optional RPC username.</div>
-                </td>
-                <td class="value">
-                    <input type="text" id="rpcUser" placeholder="rpc-username" />
-                </td>
-            </tr>
-            <tr>
-                <td class="label">
-                    RPC Password
-                    <div class="hint">Optional RPC password.</div>
-                </td>
-                <td class="value">
-                    <input type="text" id="rpcPass" placeholder="rpc-password" />
-                </td>
-            </tr>
-            <tr>
-                <td colspan="2" class="no-border">
-                    <div class="collapse-wrapper">
-                        <button id="providerReadonlyToggle" type="button" class="collapse-toggle" aria-expanded="false" aria-controls="providerReadonlyBody" onclick="toggleProviderReadonlySection()">
-                            <span id="providerReadonlyIcon" class="collapse-icon">▸</span>
-                            <span>Defaults &amp; Derived</span>
-                        </button>
-                        <div id="providerReadonlyBody" class="collapse-body provider-readonly-body hidden" aria-hidden="true">
-                            <table>
-                                <tr>
-                                    <td class="label">
-                                        Current Bond Amount
-                                        <div class="hint">The minimum total bond amount is 100000000uarkeo.</div>
-                                    </td>
-                                    <td class="value">
-                                        <span id="currentBondAmountLabel">–</span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="label">
-                                        Sentinel URI
-                                        <div class="hint">The URI and port for the sentinel service for your provider.</div>
-                                    </td>
-                                    <td class="value">
-                                        <div id="sentinelUriDisplay" class="muted"></div>
-                                        <input type="hidden" id="sentinelUri" />
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="label">
-                                        Hotwallet Key
-                                        <div class="hint">The hot wallet key used.</div>
-                                    </td>
-                                    <td class="value">
-                                        <span id="walletKey">(loading...)</span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="label">
-                                        Hotwallet Key Backend
-                                        <div class="hint">The keyring backend used.</div>
-                                    </td>
-                                    <td class="value">
-                                        <span id="bondKeyringLabel">test</span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="label">
-                                        Hotwallet Pubkey
-                                        <div class="hint">The pubkey shown on the blockchain contracts.</div>
-                                    </td>
-                                    <td class="value">
-                                        <span id="bech32PubkeyLabel">(pending)</span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="label">
-                                        Bond Fees
-                                        <div class="hint">Default bond fees.</div>
-                                    </td>
-                                    <td class="value">
-                                        <span id="bondFeesLabel">200uarkeo</span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="label">
-                                        Mod Nonce
-                                        <div class="hint">Used to increment updates.</div>
-                                    </td>
-                                    <td class="value">
-                                        <span id="metadataNonceLabel">1</span>
-                                        <input type="hidden" id="metadataNonceHidden" value="1" />
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
-                    </div>
+                    <div id="wizardModResponse" class="test-response-box"></div>
                 </td>
             </tr>
         </table>
-        <button type="submit" id="bondSubmit" class="primary">Submit Provider Info</button>
-    </form>
-    </div>
-</div>
-
-<div class="card footer-card">
-    <div class="footer-links">
-        <div class="footer-brand">
-            <img src="images/arkeo-logo-200px_1.png" alt="Arkeo" class="footer-logo">
-            <span class="footer-title">
-                <span class="brand-main">Arkeo Data Engine</span>
-                <span class="brand-sep">|</span>
-                <span class="brand-sub">Provider</span>
-            </span>
+        <div class="wizard-step-status" id="wizardStatus3">
+            <span class="step-status-icon">▶</span>
+            <span class="step-status-label">Select a location to continue</span>
         </div>
-        <div class="footer-links-right">
-            <div><a href="https://arkeo.network/" target="_blank" rel="noopener">Arkeo Marketplace Website</a></div>
-            <div><a href="https://discord.gg/arkeo" target="_blank" rel="noopener">Arkeo Discord</a></div>
+    </div>
+
+    <!-- Step 4: Provider Sentinel -->
+    <div id="wizardStep4" class="wizard-content hidden">
+        <div class="wizard-step-title">Provider Sentinel Configuration</div>
+        <div class="wizard-step-desc">Update sentinel configuration and restart the service.</div>
+        <div class="wizard-verify-list">
+            <div class="verify-item" id="verifySentinelConfig">
+                <span class="verify-icon">○</span>
+                <span class="verify-label">Update sentinel configuration</span>
+            </div>
+            <div class="verify-item" id="verifySentinelRestart">
+                <span class="verify-icon">○</span>
+                <span class="verify-label">Wait for block confirmation</span>
+            </div>
+            <div class="verify-item" id="verifySentinelSync">
+                <span class="verify-icon">○</span>
+                <span class="verify-label">Sync sentinel with blockchain</span>
+            </div>
+        </div>
+        <div style="margin-top: 16px;">
+            <button type="button" class="primary" id="wizardUpdateSentinelBtn" onclick="runUpdateSentinel()">Update Sentinel</button>
+        </div>
+        <div class="wizard-step-status" id="wizardStatus4">
+            <span class="step-status-icon">▶</span>
+            <span class="step-status-label">Click Update Sentinel to begin</span>
+        </div>
+    </div>
+
+    <!-- Step 5: Verify -->
+    <div id="wizardStep5" class="wizard-content hidden">
+        <div class="wizard-step-title">Verification Complete</div>
+        <div class="wizard-step-desc">Review the results of each step.</div>
+        <div class="wizard-verify-list">
+            <div class="verify-item" id="verifyStep1">
+                <span class="verify-icon">○</span>
+                <span class="verify-label">Service Endpoint configured</span>
+            </div>
+            <div class="verify-item" id="verifyStep2">
+                <span class="verify-icon">○</span>
+                <span class="verify-label">Bond Contract submitted</span>
+            </div>
+            <div class="verify-item" id="verifyStep3">
+                <span class="verify-icon">○</span>
+                <span class="verify-label">Mod Contract submitted</span>
+            </div>
+            <div class="verify-item" id="verifyStep4">
+                <span class="verify-icon">○</span>
+                <span class="verify-label">Provider Sentinel updated</span>
+            </div>
+        </div>
+        <div id="wizardVerifyLog" class="wizard-log hidden"></div>
+        <div id="wizardVerifyResult" class="wizard-result hidden"></div>
+    </div>
+
+    <div class="wizard-actions wizard-page-actions">
+        <a class="btn-ghost" href="index.html" id="wizardCancelBtn">Cancel</a>
+        <div class="wizard-nav">
+            <button type="button" class="btn-ghost" id="wizardBackBtn" onclick="wizardBack()" style="display:none;">Back</button>
+            <button type="button" class="primary" id="wizardNextBtn" onclick="wizardNext()">Next</button>
         </div>
     </div>
 </div>
@@ -302,13 +402,20 @@
 <script>
     let DEFAULT_ADMIN_API_PORT = (() => {
         try {
-            const u = new URL(window.location.href);
-            return u.searchParams.get("api_port") || "9999";
+            const url = new URL(window.location.href);
+            return url.searchParams.get("api_port") || "9999";
         } catch (e) {
             return "9999";
         }
     })();
-    // Always anchor to the page host
+    let DEFAULT_ADMIN_UI_PORT = (() => {
+        try {
+            const url = new URL(window.location.href);
+            return url.searchParams.get("ui_port") || "8080";
+        } catch (e) {
+            return "8080";
+        }
+    })();
     let adminHost = (window.location && window.location.hostname) || "localhost";
     let adminApiBase = buildBaseUrl(adminHost, DEFAULT_ADMIN_API_PORT);
 
@@ -317,10 +424,9 @@
             const res = await fetch("/runtime-ports.json", { cache: "no-store" });
             if (res.ok) {
                 const data = await res.json();
-                if (data && data.ADMIN_API_PORT) {
-                    DEFAULT_ADMIN_API_PORT = String(data.ADMIN_API_PORT);
-                    adminApiBase = buildBaseUrl(adminHost, DEFAULT_ADMIN_API_PORT);
-                }
+                if (data && data.ADMIN_API_PORT) DEFAULT_ADMIN_API_PORT = String(data.ADMIN_API_PORT);
+                if (data && data.ADMIN_PORT) DEFAULT_ADMIN_UI_PORT = String(data.ADMIN_PORT);
+                adminApiBase = buildBaseUrl(adminHost, DEFAULT_ADMIN_API_PORT);
             }
         } catch (e) {
             // ignore
@@ -329,925 +435,1257 @@
 
     function buildBaseUrl(host, port) {
         const proto = (window.location && window.location.protocol === "https:") ? "https:" : "http:";
-        const cleaned = (host || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
-        return `${proto}//${cleaned}${port ? `:${port}` : ""}`;
-    }
-
-    function extractHostFromValue(val) {
-        if (!val) return "";
-        try {
-            const u = val.startsWith("http") ? new URL(val) : new URL(`http://${val}`);
-            return u.hostname || "";
-        } catch (e) {
-            return "";
-        }
-    }
-
-    function setAdminHost(candidateHost) {
-        // Do not override adminApiBase; keep using the page host for API calls
-        return;
-    }
-
-    function toggleProviderReadonlySection() {
-        const body = document.getElementById("providerReadonlyBody");
-        const icon = document.getElementById("providerReadonlyIcon");
-        const toggle = document.getElementById("providerReadonlyToggle");
-        if (!body) return;
-        const isHidden = body.classList.contains("hidden");
-        if (isHidden) {
-            body.classList.remove("hidden");
-            body.setAttribute("aria-hidden", "false");
-            if (icon) icon.textContent = "▼";
-            if (toggle) toggle.setAttribute("aria-expanded", "true");
-        } else {
-            body.classList.add("hidden");
-            body.setAttribute("aria-hidden", "true");
-            if (icon) icon.textContent = "▸";
-            if (toggle) toggle.setAttribute("aria-expanded", "false");
-        }
+        return `${proto}//${host}:${port}`;
     }
 
     function resolveApi(path) {
-        if (!path.startsWith("/")) path = `/${path}`;
-        return `${adminApiBase}${path}`;
+        if (adminApiBase) {
+            return `${adminApiBase}${path}`;
+        }
+        return path;
     }
 
     async function detectAdminApiBase() {
-        const tried = new Set();
-        let apiHostOverride = null;
-        let apiPortOverride = null;
-        try {
-            const u = new URL(window.location.href);
-            apiHostOverride = u.searchParams.get("api_host") || null;
-            apiPortOverride = u.searchParams.get("api_port") || null;
-        } catch (e) {}
-        if (apiPortOverride) {
-            adminApiBase = buildBaseUrl(apiHostOverride || adminHost, apiPortOverride);
-            return;
-        }
-        const candidatePorts = [DEFAULT_ADMIN_API_PORT].filter(Boolean);
-        for (const port of candidatePorts) {
-            const base = buildBaseUrl(apiHostOverride || adminHost, port);
-            if (tried.has(base)) continue;
-            tried.add(base);
+        const candidates = [
+            buildBaseUrl(adminHost, DEFAULT_ADMIN_API_PORT),
+            buildBaseUrl(adminHost, "9999"),
+            buildBaseUrl("localhost", DEFAULT_ADMIN_API_PORT),
+            buildBaseUrl("localhost", "9999"),
+        ];
+        for (const base of candidates) {
             try {
-                const res = await fetch(`${base}/api/ping`, { cache: "no-store" });
+                const res = await fetch(`${base}/api/ping`, { method: "GET" });
                 if (res.ok) {
                     adminApiBase = base;
                     return;
                 }
             } catch (e) {
-                continue;
+                // ignore
             }
         }
     }
 
-    function showResultModal(title, body) {
-        const modal = document.getElementById("resultModal");
-        const modalTitle = document.getElementById("modalTitle");
-        const modalBody = document.getElementById("modalBody");
-        if (modalTitle) modalTitle.textContent = title || "Result";
-        if (modalBody) modalBody.textContent = body || "";
-        if (modal) modal.style.display = "flex";
+    // Service lookup and sentinel services (will be fetched)
+    let providerServiceLookup = {};
+    let providerSentinelServices = [];
+    let availableServices = []; // List of all available services from API
+
+    // ========== Edit Service Wizard ==========
+    let wizardMode = "edit"; // "edit" or "add"
+    let wizardCurrentStep = 1;
+    let wizardServiceData = null;
+    let wizardSentinelMatch = null;
+    let wizardStepResults = { step0: null, step1: null, step2: null, step3: null, step4: null };
+    let wizardValidationActive = false; // Only show valid/invalid icons after user interaction
+    let selectedServiceId = null; // For Add New mode
+    let wizardTestPassed = false; // Track if endpoint test passed
+    let wizardSentinelComplete = false; // Track if sentinel update completed successfully
+
+    function loadServiceData() {
+        // Load service data from localStorage (passed from index.html)
+        const dataStr = localStorage.getItem("editServiceData");
+
+        // Check if we're in "Add New" mode
+        if (!dataStr || dataStr === "null" || dataStr === "add-new") {
+            wizardMode = "add";
+            localStorage.removeItem("editServiceData");
+            return true;
+        }
+
+        try {
+            const data = JSON.parse(dataStr);
+            if (data.mode === "add") {
+                wizardMode = "add";
+                providerServiceLookup = data.serviceLookup || {};
+                return true;
+            }
+            wizardMode = "edit";
+            wizardServiceData = data.serviceData;
+            wizardSentinelMatch = data.sentinelMatch;
+            providerServiceLookup = data.serviceLookup || {};
+            return true;
+        } catch (e) {
+            console.error("Failed to parse service data:", e);
+            wizardMode = "add";
+            return true;
+        }
     }
 
-    function resetModal(title, body) {
-        const modal = document.getElementById("resultModal");
-        const modalTitle = document.getElementById("modalTitle");
-        const modalBody = document.getElementById("modalBody");
-        if (modalTitle) modalTitle.textContent = title || "Result";
-        if (modalBody) modalBody.textContent = body || "";
-        setModalCloseEnabled(false);
-        if (modal) modal.style.display = "flex";
+    async function fetchAvailableServices() {
+        try {
+            const res = await fetch(resolveApi("/api/services"));
+            if (res.ok) {
+                const data = await res.json();
+                availableServices = data.services || data || [];
+                // Also populate lookup
+                availableServices.forEach(svc => {
+                    const id = svc.id || svc.service_id;
+                    if (id) providerServiceLookup[String(id)] = svc;
+                });
+            }
+        } catch (e) {
+            console.error("Failed to fetch services:", e);
+        }
     }
 
-    function appendModalLine(text) {
-        const modalBody = document.getElementById("modalBody");
-        if (!modalBody) return;
-        const current = modalBody.textContent || "";
-        modalBody.textContent = current ? `${current}\n${text}` : text;
-    }
-
-    function setModalCloseEnabled(enabled) {
-        const btn = document.getElementById("modalCloseBtn");
-        if (!btn) return;
-        btn.disabled = !enabled;
-        if (enabled) {
-            btn.removeAttribute("disabled");
+    async function initWizard() {
+        if (wizardMode === "add") {
+            wizardCurrentStep = 0;
+            wizardStepResults = { step0: null, step1: null, step2: null, step3: null, step4: null };
         } else {
-            btn.setAttribute("disabled", "disabled");
+            wizardCurrentStep = 1;
+            wizardStepResults = { step0: true, step1: null, step2: null, step3: null, step4: null };
+        }
+        wizardValidationActive = false;
+        wizardTestPassed = false;
+        wizardSentinelComplete = false;
+
+        renderWizardSteps();
+
+        if (wizardMode === "edit") {
+            await populateWizardFromService();
+        } else {
+            populateServiceDropdown();
+            document.getElementById("wizardModeType").textContent = "Add New";
+            document.getElementById("wizardServiceName").textContent = "";
+            document.querySelector("h1").textContent = "Add Provider Service";
+            document.title = "Arkeo Data Engine | Add Provider Service";
+            // Set default bond for new provider
+            document.getElementById("wizardBondAmount").value = "100000000";
+            // Hide current bond hint for new providers
+            const currentBondHint = document.getElementById("wizardCurrentBondHint");
+            if (currentBondHint) currentBondHint.style.display = "none";
+        }
+
+        updateWizardStepDisplay();
+        updateStepStatusNeutral();
+        resetVerifySteps();
+        setupWizardValidationListeners();
+    }
+
+    function renderWizardSteps() {
+        const container = document.getElementById("wizardStepsContainer");
+        if (!container) return;
+
+        if (wizardMode === "add") {
+            container.innerHTML = `
+                <span class="wizard-step active" data-step="0">Step 1: Select Service</span>
+                <span class="wizard-step" data-step="1">Step 2: Service Endpoint</span>
+                <span class="wizard-step" data-step="2">Step 3: Bond Contract</span>
+                <span class="wizard-step" data-step="3">Step 4: Mod Contract</span>
+                <span class="wizard-step" data-step="4">Step 5: Provider Sentinel</span>
+                <span class="wizard-step" data-step="5">Step 6: Verify</span>
+            `;
+        } else {
+            container.innerHTML = `
+                <span class="wizard-step active" data-step="1">Step 1: Service Endpoint</span>
+                <span class="wizard-step" data-step="2">Step 2: Bond Contract</span>
+                <span class="wizard-step" data-step="3">Step 3: Mod Contract</span>
+                <span class="wizard-step" data-step="4">Step 4: Provider Sentinel</span>
+                <span class="wizard-step" data-step="5">Step 5: Verify</span>
+            `;
         }
     }
 
-    function closeModal() {
-        const modal = document.getElementById("resultModal");
-        if (modal) modal.style.display = "none";
-        window.location.href = "index.html";
+    function populateServiceDropdown() {
+        const optionsContainer = document.getElementById("wizardServiceOptions");
+        const selectEl = document.getElementById("wizardServiceSelect");
+        if (!optionsContainer || !selectEl) return;
+
+        optionsContainer.innerHTML = "";
+        selectEl.innerHTML = '<option value="">Select a service</option>';
+
+        availableServices.forEach(svc => {
+            const id = svc.id || svc.service_id || "";
+            const name = svc.name || svc.service || "";
+            const desc = svc.description || "";
+            const serviceType = svc.service_type || svc.type || "";
+            const displayName = desc || name || `Service ${id}`;
+
+            // Add to dropdown options
+            const optDiv = document.createElement("div");
+            optDiv.className = "combo-option";
+            optDiv.dataset.value = id;
+            optDiv.dataset.name = name;
+            optDiv.dataset.serviceType = serviceType;
+            optDiv.innerHTML = `<strong>${displayName}</strong>${id ? ` <span class="option-id">(${id})</span>` : ""}`;
+            optDiv.onclick = () => selectWizardService(id, name, displayName, serviceType);
+            optionsContainer.appendChild(optDiv);
+
+            // Add to hidden select
+            const opt = document.createElement("option");
+            opt.value = id;
+            opt.textContent = displayName;
+            selectEl.appendChild(opt);
+        });
     }
 
-let pendingEditService = null;
-let cachedProviderForm = null;
-let cachedServiceChoice = null;
-let servicesLoaded = false;
-let servicesCatalog = [];
-let editingExisting = false;
-let noncePrimed = false;
-let nonceLockedFromEdit = false;
-let sentinelServices = [];
-let adminPasswordEnabled = false;
-let adminSessionAuthed = false;
-function requirePasswordGate() {
-    sessionStorage.removeItem("adminAuthed");
-    adminSessionAuthed = false;
-    const gate = document.getElementById("adminPasswordGate");
-    if (gate) gate.classList.remove("hidden");
-}
-const realFetch = window.fetch.bind(window);
-window.fetch = (url, options = {}) =>
-    realFetch(url, { credentials: "include", ...options }).then((resp) => {
-        if (resp && resp.status === 401) {
-            requirePasswordGate();
+    function toggleWizardServiceMenu(e) {
+        e.stopPropagation();
+        const menu = document.getElementById("wizardServiceMenu");
+        if (menu) {
+            menu.classList.toggle("hidden");
+            if (!menu.classList.contains("hidden")) {
+                document.getElementById("wizardServiceSearchInput").focus();
+            }
         }
-        return resp;
+    }
+
+    function filterWizardServiceOptions() {
+        const searchVal = document.getElementById("wizardServiceSearchInput").value.toLowerCase();
+        const options = document.querySelectorAll("#wizardServiceOptions .combo-option");
+        options.forEach(opt => {
+            const text = opt.textContent.toLowerCase();
+            opt.style.display = text.includes(searchVal) ? "" : "none";
+        });
+    }
+
+    function selectWizardService(id, serviceName, displayName, serviceType) {
+        selectedServiceId = id;
+        document.getElementById("wizardServiceSelected").textContent = displayName;
+        document.getElementById("wizardServiceSelect").value = id;
+        document.getElementById("wizardServiceMenu").classList.add("hidden");
+        document.getElementById("wizardServiceName").textContent = `${displayName} (${id})`;
+
+        // Create service data object for the new service
+        // serviceName = actual name like "arkeo-testnet-fullnode"
+        // displayName = human readable like "Arkeo Testnet Fullnode"
+        wizardServiceData = {
+            id: id,
+            service_id: id,
+            service: serviceName,  // actual service name for API calls
+            name: serviceName,     // actual service name for preset detection
+            label: displayName,    // human readable name
+            service_type: serviceType || "",
+            bond: "0",
+            status: "1",
+            min_contract_dur: "5",
+            max_contract_dur: "432000",
+            subscription_rates: "200uarkeo",
+            pay_as_you_go_rates: "200uarkeo",
+            settlement_dur: "1000",
+            location: ""
+        };
+
+        activateAndValidate();
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+        const menu = document.getElementById("wizardServiceMenu");
+        const dropdown = document.getElementById("wizardServiceDropdown");
+        if (menu && dropdown && !dropdown.contains(e.target) && !menu.contains(e.target)) {
+            menu.classList.add("hidden");
+        }
     });
 
-    function setBondAmountForMode() {
-        const input = document.getElementById("bondAmountInput");
-        if (!input) return;
-        // Default new provider to 100000000; edits to 1; respect user-entered value.
-        if (!input.value) input.value = editingExisting ? "1" : "100000000";
+    function updateStepStatusNeutral() {
+        // Show neutral status (no valid/invalid icons) on initial load
+        const statusEl = document.getElementById(`wizardStatus${wizardCurrentStep}`);
+        const nextBtn = document.getElementById("wizardNextBtn");
+
+        let message = "";
+        let isValid = false;
+
+        if (wizardCurrentStep === 0) {
+            isValid = !!selectedServiceId;
+            message = "Select a service to continue";
+        } else if (wizardCurrentStep === 1) {
+            const rpcUrl = document.getElementById("wizardRpcUrl").value.trim();
+            isValid = !!rpcUrl && wizardTestPassed;
+            message = rpcUrl ? "Test endpoint connection to continue" : "Enter Service Endpoint information and verify the connection before continuing.";
+        } else if (wizardCurrentStep === 2) {
+            const bondAmount = document.getElementById("wizardBondAmount").value.trim();
+            isValid = bondAmount && !isNaN(Number(bondAmount));
+            message = isValid ? "Ready to submit bond contract" : "Bond amount is required";
+        } else if (wizardCurrentStep === 3) {
+            const location = document.getElementById("wizardLocation").value;
+            isValid = !!location;
+            message = isValid ? "Ready to submit mod contract" : "Select a location to continue";
+        } else if (wizardCurrentStep === 4) {
+            isValid = wizardSentinelComplete;
+            message = wizardSentinelComplete ? "Sentinel updated. Click Continue to finish." : "Click Update Sentinel to begin";
+        }
+
+        if (statusEl) {
+            statusEl.classList.remove("valid", "invalid", "hidden");
+            if (message) {
+                statusEl.querySelector(".step-status-icon").textContent = isValid ? "✓" : "✗";
+                statusEl.querySelector(".step-status-label").textContent = message;
+                statusEl.classList.add(isValid ? "valid" : "invalid");
+            } else {
+                statusEl.classList.add("hidden");
+            }
+        }
+
+        if (nextBtn) {
+            nextBtn.disabled = !isValid;
+        }
+    }
+
+    function setupWizardValidationListeners() {
+        // Step 1 validation - reset test when RPC URL changes
+        const rpcUrl = document.getElementById("wizardRpcUrl");
+        if (rpcUrl) rpcUrl.addEventListener("input", () => {
+            wizardTestPassed = false;
+            activateAndValidate();
+        });
+
+        // Step 2 validation
+        const bondAmount = document.getElementById("wizardBondAmount");
+        if (bondAmount) bondAmount.addEventListener("input", activateAndValidate);
+
+        // Step 3 validation
+        const location = document.getElementById("wizardLocation");
+        if (location) location.addEventListener("change", activateAndValidate);
+    }
+
+    function activateAndValidate() {
+        wizardValidationActive = true;
+        validateCurrentStep();
+    }
+
+    async function populateWizardFromService() {
+        if (!wizardServiceData) return;
+        const svc = wizardServiceData;
+
+        // Step 1: Service Endpoint Info (from sentinel match)
+        if (wizardSentinelMatch) {
+            document.getElementById("wizardRpcUrl").value = wizardSentinelMatch.rpc_url || "";
+            document.getElementById("wizardRpcUser").value = wizardSentinelMatch.rpc_user || "";
+            document.getElementById("wizardRpcPass").value = wizardSentinelMatch.rpc_pass || "";
+        } else {
+            document.getElementById("wizardRpcUrl").value = "";
+            document.getElementById("wizardRpcUser").value = "";
+            document.getElementById("wizardRpcPass").value = "";
+        }
+
+        // Step 2: Bond Info
+        const currentBond = svc.bond || "0";
+        document.getElementById("wizardCurrentBond").textContent = formatBondDisplay(currentBond);
+        document.getElementById("wizardBondAmount").value = "1";
+
+        // Step 3: Mod Info
+        const statusVal = svc.status;
+        const statusStr = statusVal === undefined ? "1" : String(statusVal).toLowerCase();
+        const isActive = statusStr === "1" || statusStr === "active" || statusStr === "online" || statusStr === "true";
+        document.getElementById("wizardServiceStatus").value = isActive ? "1" : "0";
+
+        document.getElementById("wizardMinDur").value = svc.min_contract_dur || "5";
+        document.getElementById("wizardMaxDur").value = svc.max_contract_dur || "432000";
+        document.getElementById("wizardSubRate").value = svc.subscription_rates || "200uarkeo";
+        document.getElementById("wizardPaygoRate").value = svc.pay_as_you_go_rates || "200uarkeo";
+        document.getElementById("wizardSettleDur").value = svc.settlement_dur || "1000";
+
+        // Location - try to match from service data, sentinel match, or provider settings
+        const locSelect = document.getElementById("wizardLocation");
+        let svcLocation = svc.location || wizardSentinelMatch?.location || wizardSentinelMatch?.Location || "";
+
+        // Fallback: fetch from sentinel-metadata if not available
+        if (!svcLocation) {
+            try {
+                const metaRes = await fetch(resolveApi("/api/sentinel-metadata?loopback=1"));
+                if (metaRes.ok) {
+                    const metaData = await metaRes.json();
+                    svcLocation = metaData?.metadata?.config?.location || metaData?.metadata?.location || "";
+                }
+            } catch (e) {
+                console.warn("Failed to fetch sentinel metadata for location:", e);
+            }
+        }
+
+        if (svcLocation && locSelect) {
+            const exists = Array.from(locSelect.options).some(o => o.value === svcLocation);
+            if (exists) {
+                locSelect.value = svcLocation;
+            } else {
+                locSelect.selectedIndex = 0;
+            }
+        }
+
+        // Update wizard header with service info - use numeric ID to lookup service details
+        const rawId = svc.id ?? svc.service_id ?? svc.serviceID;
+        const lookup = rawId ? providerServiceLookup[String(rawId)] : null;
+
+        // Get service type from lookup (most reliable source via ID)
+        const lookupType = lookup && typeof lookup === "object"
+            ? (lookup.service_type || lookup.type || "")
+            : "";
+
+        // Get the actual service name with dashes from lookup
+        // The API returns: { id, name (dashed), description (display), service_type }
+        const lookupServiceName = lookup && typeof lookup === "object"
+            ? (lookup.name || lookup.service || "")
+            : "";
+
+        // Display name for the header
+        const lookupDesc = lookup && typeof lookup === "object" ? lookup.description : "";
+        const displayName = lookupDesc || lookupServiceName || svc.name || svc.service || "Unknown Service";
+
+        // For preset detection, prefer the lookup service name (has dashes)
+        const serviceNameForPreset = lookupServiceName || svc.name || svc.service || "";
+        const serviceType = lookupType || svc.service_type || svc.type || "";
+
+        document.getElementById("wizardModeType").textContent = "Edit";
+        const serviceNameEl = document.getElementById("wizardServiceName");
+        if (serviceNameEl) {
+            const idDisplay = rawId ? ` (${rawId})` : "";
+            serviceNameEl.textContent = `${displayName}${idDisplay}`;
+        }
+
+        // Auto-detect and apply polling preset based on service_type (primary) or service name (fallback)
+        const detectedPreset = detectPollingPreset(serviceType, serviceNameForPreset);
+        console.log("Edit mode preset detection:", {
+            rawId,
+            serviceType,
+            serviceNameForPreset,
+            detectedPreset,
+            lookup,
+            providerServiceLookup
+        });
+        const presetSelect = document.getElementById("wizardPollingPreset");
+        if (presetSelect && detectedPreset) {
+            presetSelect.value = detectedPreset;
+            applyPollingPreset();
+        }
+    }
+
+    const POLLING_PRESETS = {
+        evm: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'
+        },
+        cosmos: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":1,"method":"status","params":[]}'
+        },
+        rest: {
+            method: "GET",
+            contentType: "application/json",
+            payload: "/cosmos/base/tendermint/v1beta1/node_info"
+        },
+        bitcoin: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"1.0","id":"curltext","method":"getblockcount","params":[]}'
+        },
+        polkadot: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":1,"method":"chain_getBlockHash","params":[]}'
+        },
+        solana: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":1,"method":"getSlot","params":[]}'
+        },
+        sui: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":1,"method":"sui_getLatestCheckpointSequenceNumber","params":[]}'
+        },
+        near: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":"dontcare","method":"status","params":[]}'
+        },
+        fallback: {
+            method: "POST",
+            contentType: "application/json",
+            payload: ""
+        }
+    };
+
+    // Hardcoded mapping of service prefixes to polling presets
+    const SERVICE_PRESET_MAP = {
+        // EVM chains (eth_blockNumber)
+        "arbitrum": "evm", "avax": "evm", "babylon": "evm", "base": "evm", "bera": "evm",
+        "blast": "evm", "bsc": "evm", "celo": "evm", "cro": "evm", "dfk": "evm",
+        "etc": "evm", "eth": "evm", "evmos": "evm", "flare": "evm", "frx": "evm",
+        "ftm": "evm", "fuse": "evm", "glmr": "evm", "imx": "evm", "kava": "evm",
+        "klay": "evm", "linea": "evm", "manta": "evm", "mantle": "evm", "movr": "evm",
+        "one": "evm", "optimism": "evm", "polygon": "evm", "scroll": "evm",
+        "shardeum": "evm", "somnia": "evm", "taiko": "evm", "xdai": "evm",
+        "zircuit": "evm", "zkfair": "evm", "zksync": "evm", "bnb": "evm",
+
+        // Cosmos/Tendermint chains (status RPC)
+        "agoric": "cosmos", "akash": "cosmos", "allora": "cosmos", "arch": "cosmos",
+        "arkeo": "cosmos", "cheqd": "cosmos", "dvpn": "cosmos", "dym": "cosmos",
+        "erowan": "cosmos", "gaia": "cosmos", "inj": "cosmos", "ixo": "cosmos",
+        "jackal": "cosmos", "juno": "cosmos", "mantra": "cosmos", "maya": "cosmos",
+        "namada": "cosmos", "neutron": "cosmos", "ngm": "cosmos", "nibiru": "cosmos",
+        "nomic": "cosmos", "osmosis": "cosmos", "paloma": "cosmos", "penumbra": "cosmos",
+        "router": "cosmos", "scrt": "cosmos", "seda": "cosmos", "sei": "cosmos",
+        "selfchain": "cosmos", "stride": "cosmos", "thorchain": "cosmos", "tia": "cosmos",
+        "union": "cosmos", "xprt": "cosmos", "initia": "cosmos",
+
+        // Bitcoin family (getblockcount)
+        "btc": "bitcoin", "bch": "bitcoin", "btg": "bitcoin", "dash": "bitcoin",
+        "dcr": "bitcoin", "dgb": "bitcoin", "doge": "bitcoin", "flo": "bitcoin",
+        "ftc": "bitcoin", "grs": "bitcoin", "lbtc": "bitcoin", "ltc": "bitcoin",
+        "mona": "bitcoin", "nmc": "bitcoin", "part": "bitcoin", "ppc": "bitcoin",
+        "qtum": "bitcoin", "rdd": "bitcoin", "rvn": "bitcoin", "smart": "bitcoin",
+        "sys": "bitcoin", "via": "bitcoin", "vtc": "bitcoin", "xec": "bitcoin",
+        "zec": "bitcoin", "aur": "bitcoin", "d": "bitcoin", "nlg": "bitcoin",
+
+        // Polkadot/Substrate (chain_getBlockHash)
+        "polkadot": "polkadot", "azero": "polkadot", "cfg": "polkadot", "cere": "polkadot",
+        "tao": "polkadot", "hopr": "polkadot",
+
+        // Solana family (getSlot)
+        "sol": "solana", "koii": "solana", "pyth": "solana",
+
+        // Sui (sui_getLatestCheckpointSequenceNumber)
+        "sui": "sui",
+
+        // Near (status)
+        "near": "near",
+
+        // REST API endpoints
+        "rest": "rest",
+    };
+
+    function detectPollingPreset(serviceType, serviceName) {
+        // Primary: use service_type from API if available
+        if (serviceType) {
+            const stype = String(serviceType).toLowerCase();
+            if (stype === "evm" || stype === "ethereum") return "evm";
+            if (stype === "cosmos" || stype === "tendermint") return "cosmos";
+            if (stype === "rest" || stype === "lcd") return "rest";
+            if (stype === "bitcoin" || stype === "btc") return "bitcoin";
+            if (stype === "polkadot" || stype === "substrate") return "polkadot";
+            if (stype === "solana") return "solana";
+            if (stype === "sui") return "sui";
+            if (stype === "near") return "near";
+        }
+
+        // Secondary: lookup by service name prefix in hardcoded map
+        if (serviceName) {
+            let name = String(serviceName).toLowerCase();
+            // Convert display names with spaces to dashed format (e.g., "Arkeo Mainnet Fullnode" -> "arkeo-mainnet-fullnode")
+            name = name.replace(/\s+/g, "-");
+            // Check for "rest" anywhere in the name
+            if (name.includes("-rest") || name.endsWith("-rest")) return "rest";
+            // Extract prefix (e.g., "arkeo" from "arkeo-mainnet-fullnode")
+            const prefix = name.split("-")[0];
+            if (SERVICE_PRESET_MAP[prefix]) {
+                return SERVICE_PRESET_MAP[prefix];
+            }
+        }
+
+        return "fallback";
+    }
+
+    function applyPollingPreset() {
+        const presetSelect = document.getElementById("wizardPollingPreset");
+        const preset = POLLING_PRESETS[presetSelect.value];
+        if (!preset) return;
+
+        document.getElementById("wizardPollingMethod").value = preset.method;
+        document.getElementById("wizardPollingContentType").value = preset.contentType;
+        document.getElementById("wizardPollingPayload").value = preset.payload;
+    }
+
+    async function testEndpointConnection() {
+        const rpcUrl = document.getElementById("wizardRpcUrl").value.trim();
+        const rpcUser = document.getElementById("wizardRpcUser").value.trim();
+        const rpcPass = document.getElementById("wizardRpcPass").value.trim();
+        const method = document.getElementById("wizardPollingMethod").value;
+        const contentType = document.getElementById("wizardPollingContentType").value;
+        const payload = document.getElementById("wizardPollingPayload").value;
+
+        const statusEl = document.getElementById("wizardStatus1");
+        const testBtn = document.getElementById("wizardTestBtn");
+        const responseRow = document.getElementById("wizardTestResponseRow");
+        const responseBox = document.getElementById("wizardTestResponse");
+
+        if (!rpcUrl) {
+            setStepStatus(statusEl, "invalid", "Enter RPC URL first");
+            return;
+        }
+
+        setStepStatus(statusEl, "pending", "Testing connection...");
+        testBtn.disabled = true;
+        responseRow.classList.add("hidden");
+
+        try {
+            const res = await fetch(resolveApi("/api/test-endpoint"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: rpcUrl,
+                    method: method,
+                    content_type: contentType,
+                    payload: payload,
+                    rpc_user: rpcUser,
+                    rpc_pass: rpcPass
+                })
+            });
+
+            // Handle non-OK responses before parsing JSON
+            if (!res.ok) {
+                wizardTestPassed = false;
+                const errorText = await res.text();
+                setStepStatus(statusEl, "invalid", `Server error (${res.status})`);
+                showTestResponse(responseRow, responseBox, false, `HTTP ${res.status}\n\n${errorText.substring(0, 1000)}`);
+                testBtn.disabled = false;
+                return;
+            }
+
+            let data;
+            try {
+                data = await res.json();
+            } catch (jsonErr) {
+                wizardTestPassed = false;
+                setStepStatus(statusEl, "invalid", "Invalid response from server");
+                showTestResponse(responseRow, responseBox, false, "Failed to parse JSON response");
+                testBtn.disabled = false;
+                return;
+            }
+
+            if (data.success) {
+                wizardTestPassed = true;
+                wizardValidationActive = true;
+                setStepStatus(statusEl, "valid", "Connection successful" + (data.status_code ? ` (${data.status_code})` : ""));
+                // Show full response body, formatted if JSON
+                let responseText = data.response_body || "";
+                try {
+                    const parsed = JSON.parse(responseText);
+                    responseText = JSON.stringify(parsed, null, 2);
+                } catch (e) {
+                    // Not JSON, show as-is
+                }
+                showTestResponse(responseRow, responseBox, true, responseText);
+                // Enable Next button
+                const nextBtn = document.getElementById("wizardNextBtn");
+                if (nextBtn) nextBtn.disabled = false;
+            } else {
+                wizardTestPassed = false;
+                const errMsg = data.error || data.message || "Connection failed";
+                setStepStatus(statusEl, "invalid", errMsg);
+                // Show full response body for errors too
+                let responseText = data.response_body || "";
+                try {
+                    const parsed = JSON.parse(responseText);
+                    responseText = JSON.stringify(parsed, null, 2);
+                } catch (e) {
+                    // Not JSON, show as-is
+                }
+                showTestResponse(responseRow, responseBox, false, responseText || errMsg);
+            }
+        } catch (e) {
+            wizardTestPassed = false;
+            setStepStatus(statusEl, "invalid", "Network error");
+            showTestResponse(responseRow, responseBox, false, String(e));
+        } finally {
+            testBtn.disabled = false;
+        }
+    }
+
+    function showTestResponse(rowEl, boxEl, success, text) {
+        if (!rowEl || !boxEl) return;
+        rowEl.classList.remove("hidden");
+        boxEl.classList.remove("success", "error");
+        boxEl.classList.add(success ? "success" : "error");
+        boxEl.textContent = text;
+    }
+
+    function setStepStatus(statusEl, status, message) {
+        if (!statusEl) return;
+        statusEl.classList.remove("valid", "invalid");
+        const iconEl = statusEl.querySelector(".step-status-icon");
+        const labelEl = statusEl.querySelector(".step-status-label");
+
+        if (status === "valid") {
+            statusEl.classList.add("valid");
+            if (iconEl) iconEl.textContent = "✓";
+        } else if (status === "invalid") {
+            statusEl.classList.add("invalid");
+            if (iconEl) iconEl.textContent = "✗";
+        } else if (status === "pending") {
+            if (iconEl) iconEl.textContent = "◐";
+        } else {
+            // neutral
+            if (iconEl) iconEl.textContent = "▶";
+        }
+
+        if (labelEl) labelEl.textContent = message;
     }
 
     function formatBondDisplay(val) {
         if (!val) return "–";
         const trimmed = String(val).trim();
         if (!trimmed) return "–";
-        // If it already ends with uarkeo (case-insensitive), keep it; otherwise append for display.
         if (trimmed.toLowerCase().endsWith("uarkeo")) return trimmed;
         return `${trimmed}uarkeo`;
     }
 
-    function parseBondAmountUnits(val) {
-        if (!val) return NaN;
-        const m = String(val).trim().match(/^([+-]?\d+)/);
-        if (!m) return NaN;
-        return Number(m[1]);
-    }
+    function validateCurrentStep() {
+        const statusEl = document.getElementById(`wizardStatus${wizardCurrentStep}`);
+        const nextBtn = document.getElementById("wizardNextBtn");
+        let isValid = false;
+        let message = "";
 
-    function showSavingOverlay(show) {
-        // Overlay removed; keep function no-op for compatibility.
-        return;
-    }
-
-    function normalizeSentinelUri(uri) {
-        if (!uri) return "";
-        let cleaned = String(uri).trim();
-        // If it already ends with /metadata.json (case-insensitive), keep it.
-        if (/\/metadata\.json$/i.test(cleaned)) return cleaned;
-        cleaned = cleaned.replace(/\/+$/, "");
-        return `${cleaned}/metadata.json`;
-    }
-
-    function setSentinelUriDisplay(val) {
-        const normalized = normalizeSentinelUri(val || "");
-        const hidden = document.getElementById("sentinelUri");
-        const label = document.getElementById("sentinelUriDisplay");
-        if (hidden) hidden.value = normalized;
-        if (label) label.textContent = normalized || "(not set)";
-    }
-
-    document.addEventListener("click", (e) => {
-        const menu = document.getElementById("bondServiceMenu");
-        const dd = document.getElementById("bondServiceDropdown");
-        if (!menu || !dd) return;
-        if (!dd.contains(e.target) && !menu.contains(e.target)) {
-            menu.classList.add("hidden");
-        }
-    });
-
-    function pullPendingEdit() {
-        try {
-            const raw = localStorage.getItem("providerServiceEdit");
-            if (raw) {
-                pendingEditService = JSON.parse(raw);
-                editingExisting = true;
-                localStorage.removeItem("providerServiceEdit");
+        if (wizardCurrentStep === 0) {
+            if (selectedServiceId) {
+                isValid = true;
+                message = "Ready to continue";
             } else {
-                editingExisting = false;
+                message = "Select a service to continue";
             }
-        } catch (e) {
-            console.warn("Failed to read cached service edit", e);
-            editingExisting = false;
-        }
-        setBondAmountForMode();
-    }
-
-    async function loadServices() {
-        const select = document.getElementById("bondService");
-        const search = document.getElementById("bondServiceSearchInput");
-        if (search) search.value = "";
-        select.innerHTML = '<option value="">Loading services...</option>';
-        try {
-            const res = await fetch(resolveApi("/api/services"));
-            const data = await res.json();
-            setPre("servicesDebug", "");
-            if (!res.ok) {
-                select.innerHTML = '<option value="">Error loading services</option>';
-                setPre("bondResult", "Error: " + JSON.stringify(data, null, 2));
-                setPre("servicesDebug", "Debug services response:\n" + JSON.stringify(data, null, 2));
-                return;
-            }
-            const services = data.services || [];
-            servicesCatalog = services;
-            if (!services.length) {
-                select.innerHTML = '<option value="">No services found</option>';
-                setPre("servicesDebug", "Debug services response:\n" + JSON.stringify(data, null, 2));
-                return;
-            }
-            select.innerHTML = '<option value="">Select a service</option>';
-            const sorted = services.slice().sort((a, b) => {
-                const da = (a.description || "").toLowerCase();
-                const db = (b.description || "").toLowerCase();
-                if (da && db && da !== db) return da.localeCompare(db);
-                const na = (a.name || "").toLowerCase();
-                const nb = (b.name || "").toLowerCase();
-                if (na && nb && na !== nb) return na.localeCompare(nb);
-                const ia = String(a.id ?? "");
-                const ib = String(b.id ?? "");
-                return ia.localeCompare(ib);
-            });
-            for (const svc of sorted) {
-                const id = svc.id ?? "";
-                const name = svc.name ?? "";
-                const desc = svc.description ?? "";
-                if (!id && !name) continue;
-                const opt = document.createElement("option");
-                // Use the service name as the value; fall back to id only if name missing
-                opt.value = name || id;
-                opt.dataset.id = id;
-                const label = name ? `${name} (${id})` : id;
-                const extra = desc ? `${desc} (${name || id} : ${id})` : label;
-                opt.textContent = desc ? extra : label;
-                select.appendChild(opt);
-            }
-            setPre("servicesDebug", "");
-            servicesLoaded = true;
-            renderBondServiceOptions(sorted);
-            applyPendingEdit();
-            applyCachedProviderForm();
-        } catch (e) {
-            select.innerHTML = '<option value="">Failed to load services</option>';
-            setPre("bondResult", "Request failed: " + e);
-            setPre("servicesDebug", "Request failed: " + e);
-        }
-    }
-
-    async function bondProvider(event) {
-        event.preventDefault();
-        const submitBtn = document.getElementById("bondSubmit");
-        submitBtn.disabled = true;
-        submitBtn.textContent = "Submitting...";
-        const bondAmountInput = document.getElementById("bondAmountInput");
-        const bondAmount = (bondAmountInput?.value || "").trim() || (editingExisting ? "1" : "100000000");
-        if (!/^[+-]?\d+$/.test(bondAmount)) {
-            alert("Bond amount must be an integer (no letters or symbols). Use positive or negative values between -1000000000 and 1000000000, excluding 0.");
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Submit Bond + Mod";
-            return;
-        }
-        const bondUnits = parseBondAmountUnits(bondAmount);
-        if (!Number.isFinite(bondUnits) || bondUnits === 0 || Math.abs(bondUnits) > 1_000_000_000) {
-            alert("Bond amount must be between -1000000000 and 1000000000, and cannot be 0.");
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Submit Bond + Mod";
-            return;
-        }
-        showResultModal("Provider Service", "Submitting bond/mod contracts...");
-        // Always increment the metadata nonce immediately before submitting
-        const metadataNonce = incrementMetadataNonce();
-        const select = document.getElementById("bondService");
-        const selectedOption = select.options[select.selectedIndex];
-        const serviceId = selectedOption ? selectedOption.dataset.id || "" : "";
-        const serviceName = document.getElementById("bondService").value.trim();
-        const rpcUrlVal = document.getElementById("rpcUrl").value.trim();
-        const rpcUserVal = document.getElementById("rpcUser").value.trim();
-        const rpcPassVal = document.getElementById("rpcPass").value.trim();
-        const locationSelect = document.getElementById("locationSelect");
-        const locationVal = (locationSelect && locationSelect.value ? locationSelect.value : "").trim();
-        const allowedLocations = locationSelect ? Array.from(locationSelect.options).map((o) => o.value) : [];
-        const normalizedLoc = locationVal.toLowerCase();
-        const isAllowed = !allowedLocations.length || allowedLocations.includes(locationVal);
-        const finalLocation = locationVal && normalizedLoc !== "default location" && isAllowed ? locationVal : "";
-        if (!locationVal) {
-            alert("Please select a location.");
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Submit Bond + Mod";
-            return;
-        }
-        const rawSentinelUri = document.getElementById("sentinelUri").value.trim();
-        const sentinelUriNormalized = normalizeSentinelUri(rawSentinelUri);
-        setSentinelUriDisplay(sentinelUriNormalized);
-        const payload = {
-            service: document.getElementById("bondService").value.trim(),
-            bond: bondAmount,
-            sentinel_uri: sentinelUriNormalized,
-            metadata_nonce: metadataNonce,
-            status: document.getElementById("status").value.trim(),
-            min_contract_dur: document.getElementById("minContractDur").value.trim(),
-            max_contract_dur: document.getElementById("maxContractDur").value.trim(),
-            subscription_rates: document.getElementById("subscriptionRates").value.trim(),
-            pay_as_you_go_rates: document.getElementById("payAsYouGoRates").value.trim(),
-            settlement_dur: document.getElementById("settlementDur").value.trim(),
-            location: finalLocation,
-        };
-        resetModal("Provider Service", "");
-        appendModalLine("Submitting bond/mod contracts...");
-        setModalCloseEnabled(false);
-        try {
-            const res = await fetch(resolveApi("/api/bond-mod-provider"), {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json();
-            const resOk = res.ok;
-            updateDerivedFields(data);
-            if (!resOk) {
-                appendModalLine("Bond contract error.");
-                appendModalLine("Mod contract error.");
-                appendModalLine(JSON.stringify(data, null, 2));
-                appendModalLine("");
-                appendModalLine("Provider service and Sentinel errored. Check the logs for more info.");
-                setModalCloseEnabled(true);
-                return;
-            }
-            if (!bondAndModSucceeded(data)) {
-                appendModalLine("Bond contract error.");
-                appendModalLine("Mod contract error.");
-                appendModalLine(JSON.stringify(data, null, 2));
-                appendModalLine("");
-                appendModalLine("Provider service and Sentinel errored. Check the logs for more info.");
-                setModalCloseEnabled(true);
-                return;
-            }
-            appendModalLine("Bond contract success.");
-            appendModalLine("Mod contract success.");
-            appendModalLine("");
-            // Determine service type from catalog for sentinel.yaml
-            let resolvedType = payload.service;
-            const catalogEntry = servicesCatalog.find(
-                (s) =>
-                    String(s.id ?? s.service_id ?? s.service ?? "") === String(serviceId) ||
-                    s.name === payload.service ||
-                    s.service === payload.service
-            );
-            if (catalogEntry && catalogEntry.service_type) {
-                resolvedType = catalogEntry.service_type;
-            }
-            // Only rebuild sentinel if bond+mod succeeded (no restart here)
-            try {
-                appendModalLine("Updating Sentinel...");
-                const rebuildRes = await fetch(resolveApi("/api/sentinel-rebuild"), {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        service_overrides: [
-                            {
-                                name: payload.service,
-                                id: serviceId,
-                                service: serviceName,
-                                status: payload.status,
-                                rpc_url: rpcUrlVal,
-                                rpc_user: rpcUserVal,
-                                rpc_pass: rpcPassVal,
-                                type: resolvedType,
-                                service_type: resolvedType,
-                            },
-                        ],
-                    }),
-                });
-                const rebuildData = await rebuildRes.json();
-                if (!rebuildRes.ok) {
-                    appendModalLine("Sentinel update error.");
-                    appendModalLine("Sentinel rebuild error.");
-                    appendModalLine(JSON.stringify(rebuildData, null, 2));
-                    appendModalLine("");
-                    appendModalLine("Provider service and Sentinel errored. Check the logs for more info.");
-                    setModalCloseEnabled(true);
-                    return;
-                }
-                appendModalLine("Sentinel update success.");
-                appendModalLine("");
-                appendModalLine("Rebuilding Sentinel...");
-                appendModalLine("Sentinel rebuild success.");
-                appendModalLine("");
-            } catch (e) {
-                console.warn("sentinel rebuild failed", e);
-                appendModalLine("Sentinel update error.");
-                appendModalLine("Sentinel rebuild error.");
-                appendModalLine(String(e));
-                appendModalLine("");
-                appendModalLine("Provider service and Sentinel errored. Check the logs for more info.");
-                setModalCloseEnabled(true);
-                return;
-            }
-            // Optional: sync sentinel.yaml with on-chain active services after a short delay (restart happens here)
-            try {
-                await new Promise((resolve) => setTimeout(resolve, 6500)); // ~1 block
-                const syncRes = await fetch(resolveApi("/api/sentinel-sync"), { method: "POST" });
-                const syncData = await syncRes.json();
-                if (syncRes.ok) {
-                    appendModalLine("Resyncing Sentinel...");
-                    appendModalLine("Sentinel resync success.");
-                    appendModalLine("");
-                } else {
-                    appendModalLine("Resyncing Sentinel... Error.");
-                    appendModalLine(JSON.stringify(syncData, null, 2));
-                    appendModalLine("");
-                    appendModalLine("Provider service and Sentinel errored. Check the logs for more info.");
-                    setModalCloseEnabled(true);
-                    return;
-                }
-            } catch (e) {
-                appendModalLine("Resyncing Sentinel... Error.");
-                appendModalLine(String(e));
-                appendModalLine("");
-                appendModalLine("Provider service and Sentinel errored. Check the logs for more info.");
-                setModalCloseEnabled(true);
-                return;
-            }
-            appendModalLine("Provider service and Sentinel updated successfully.");
-            setModalCloseEnabled(true);
-        } catch (e) {
-            appendModalLine("Request failed: " + e);
-            appendModalLine("");
-            appendModalLine("Provider service and Sentinel errored. Check the logs for more info.");
-            setModalCloseEnabled(true);
-        } finally {
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Submit Bond + Mod";
-            // Overlay will be hidden only if we remain on the page (errors)
-        }
-    }
-
-    function incrementMetadataNonce() {
-        const hidden = document.getElementById("metadataNonceHidden");
-        const label = document.getElementById("metadataNonceLabel");
-        const current = parseInt(hidden.value || "0", 10);
-        const next = Number.isFinite(current) ? current + 1 : 1;
-        hidden.value = String(next);
-        if (label) label.textContent = String(next);
-        return String(next);
-    }
-
-    function updateDerivedFields(data) {
-        if (!data) return;
-        const pubkeyLabel = document.getElementById("bech32PubkeyLabel");
-        if (data.pubkey && data.pubkey.bech32) {
-            pubkeyLabel.textContent = data.pubkey.bech32;
-        } else if (data.pubkey_error) {
-            pubkeyLabel.textContent = data.pubkey_error;
-        }
-        if (data.bond && !editingExisting) {
-            const currentBond = document.getElementById("currentBondAmountLabel");
-            if (currentBond) currentBond.textContent = formatBondDisplay(data.bond);
-        }
-        setBondAmountForMode();
-        if (data.fees) {
-            document.getElementById("bondFeesLabel").textContent = data.fees;
-        }
-        if (data.keyring_backend) {
-            document.getElementById("bondKeyringLabel").textContent = data.keyring_backend;
-        }
-        if (data.user) {
-            document.getElementById("walletKey").textContent = data.user;
-        }
-        if (data.sentinel_uri && !editingExisting) {
-            setSentinelUriDisplay(data.sentinel_uri);
-        }
-        if (data.inputs) {
-            if (data.inputs.sentinel_uri && !editingExisting) setSentinelUriDisplay(data.inputs.sentinel_uri);
-            if (data.inputs.metadata_nonce && !nonceLockedFromEdit) {
-                document.getElementById("metadataNonceHidden").value = data.inputs.metadata_nonce;
-                document.getElementById("metadataNonceLabel").textContent = data.inputs.metadata_nonce;
-            }
-            if (data.inputs.status) document.getElementById("status").value = data.inputs.status;
-            if (data.inputs.min_contract_dur) document.getElementById("minContractDur").value = data.inputs.min_contract_dur;
-            if (data.inputs.max_contract_dur) document.getElementById("maxContractDur").value = data.inputs.max_contract_dur;
-            if (data.inputs.subscription_rates) document.getElementById("subscriptionRates").value = data.inputs.subscription_rates;
-            if (data.inputs.pay_as_you_go_rates) document.getElementById("payAsYouGoRates").value = data.inputs.pay_as_you_go_rates;
-            if (data.inputs.settlement_dur) document.getElementById("settlementDur").value = data.inputs.settlement_dur;
-        }
-        applyPendingEdit();
-        applyCachedProviderForm();
-        // Write blockchain-derived provider info to debug field
-        setPre("bondResult", JSON.stringify(data, null, 2));
-    }
-
-    async function loadProviderInfo() {
-        try {
-            const [res, settingsRes] = await Promise.all([
-                fetch(resolveApi("/api/provider-info")),
-                fetch(resolveApi("/api/provider-settings"), { cache: "no-store" }),
-            ]);
-            const data = await res.json();
-            const settingsJson = settingsRes.ok ? await settingsRes.json() : {};
-            const settings = (settingsJson && settingsJson.settings) || settingsJson || {};
-            if (!res.ok) {
-                setPre("bondResult", "Error loading provider info: " + JSON.stringify(data, null, 2));
-                return;
-            }
-            cachedProviderForm = (data.provider_export && data.provider_export.provider_form) || null;
-            if (cachedProviderForm && cachedProviderForm.service) {
-                cachedServiceChoice = cachedProviderForm.service;
-            }
-            updateDerivedFields(data);
-            if (data.fees) document.getElementById("bondFeesLabel").textContent = data.fees;
-            if (data.keyring_backend) document.getElementById("bondKeyringLabel").textContent = data.keyring_backend;
-            if (data.user) document.getElementById("walletKey").textContent = data.user;
-            if (data.pubkey_error) setPre("bondResult", data.pubkey_error);
-            if (data.metadata_nonce && !nonceLockedFromEdit) {
-                document.getElementById("metadataNonceHidden").value = data.metadata_nonce;
-                document.getElementById("metadataNonceLabel").textContent = data.metadata_nonce;
-            }
-            // Always populate Sentinel URI from provider settings (SENTINEL_NODE:SENTINEL_PORT) and normalize
-            const baseNode = (settings.SENTINEL_NODE || "").replace(/\/+$/, "");
-            const port = settings.SENTINEL_PORT || "";
-            let sentinelFromSettings = baseNode;
-            if (sentinelFromSettings && port) {
-                sentinelFromSettings = `${sentinelFromSettings}:${port}`;
-            }
-            const normalizedFromSettings = normalizeSentinelUri(sentinelFromSettings);
-            if (normalizedFromSettings) {
-                setSentinelUriDisplay(normalizedFromSettings);
-                setAdminHost(normalizedFromSettings);
-            } else if (data.sentinel_uri) {
-                const normalized = normalizeSentinelUri(data.sentinel_uri);
-                setSentinelUriDisplay(normalized);
-                setAdminHost(normalized);
-            }
-        // Prefill location from export/env if available
-        const envMeta = (data.provider_metadata) || {};
-        const formLocation =
-            (cachedProviderForm && cachedProviderForm.location) ||
-            envMeta.LOCATION ||
-            envMeta.location ||
-            "";
-        const locSel = document.getElementById("locationSelect");
-        if (locSel) {
-            const exists = Array.from(locSel.options).some((o) => o.value === formLocation);
-            // If location missing or not in the allowed list, force placeholder.
-            if (!formLocation || !exists) {
-                locSel.selectedIndex = 0;
+        } else if (wizardCurrentStep === 1) {
+            const rpcUrl = document.getElementById("wizardRpcUrl").value.trim();
+            if (rpcUrl && wizardTestPassed) {
+                isValid = true;
+                message = "Connection verified";
+            } else if (rpcUrl) {
+                message = "Test endpoint connection to continue";
             } else {
-                locSel.value = formLocation;
+                message = "Enter Service Endpoint information and verify the connection before continuing.";
             }
-        }
-        applyPendingEdit();
-        applyCachedProviderForm();
-    } catch (e) {
-        setPre("bondResult", "Request failed: " + e);
-    }
-    }
-
-    async function loadSentinelConfig() {
-        try {
-            const res = await fetch(resolveApi("/api/sentinel-config"));
-            const data = await res.json();
-            if (res.ok && data && data.config && Array.isArray(data.config.services)) {
-                sentinelServices = data.config.services;
-            }
-            applyPendingEdit();
-        } catch (e) {
-            console.warn("Failed to load sentinel config", e);
-        }
-    }
-
-    function setPre(_id, _text) {
-        // Deprecated: debug div removed; use modal for messages.
-        return;
-    }
-
-    function setSelectFromCandidates(select, candidates) {
-        if (!select || !Array.isArray(candidates)) return false;
-        for (const cand of candidates) {
-            if (!cand) continue;
-            const val = String(cand);
-            for (const opt of select.options) {
-                const txt = opt.text || "";
-                const normalizedText = txt.toLowerCase();
-                const normalizedVal = val.toLowerCase();
-                const dataId = (opt.dataset && opt.dataset.id) ? opt.dataset.id.toLowerCase() : "";
-                if (
-                    opt.value.toLowerCase() === normalizedVal ||
-                    dataId === normalizedVal ||
-                    normalizedText === normalizedVal ||
-                    normalizedText.includes(`(${normalizedVal} :`) ||
-                    normalizedText.includes(`(${normalizedVal}:`) ||
-                    normalizedText.includes(`(${normalizedVal})`)
-                ) {
-                    select.value = opt.value;
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    function renderBondServiceOptions(sorted) {
-        const menu = document.getElementById("bondServiceOptions");
-        const select = document.getElementById("bondService");
-        if (!menu || !select) return;
-        menu.innerHTML = "";
-        for (const svc of sorted) {
-            const id = svc.id ?? "";
-            const name = svc.name ?? "";
-            const desc = svc.description ?? "";
-            if (!id && !name) continue;
-            const opt = document.createElement("div");
-            opt.className = "combo-option";
-            opt.dataset.value = name || id;
-            opt.dataset.id = id;
-            const label = name ? `${name} (${id})` : id;
-            opt.textContent = desc ? `${desc} (${name || id} : ${id})` : label;
-            opt.onclick = () => {
-                select.value = opt.dataset.value;
-                updateBondServiceDisplay(opt.textContent || opt.dataset.value || "Select a service");
-                closeBondServiceMenu();
-            };
-            menu.appendChild(opt);
-        }
-        updateBondServiceDisplay();
-    }
-
-    function filterBondServiceOptions() {
-        const search = document.getElementById("bondServiceSearchInput");
-        const menu = document.getElementById("bondServiceOptions");
-        if (!menu) return;
-        const q = (search && search.value ? search.value : "").trim().toLowerCase();
-        for (const opt of Array.from(menu.children)) {
-            const txt = (opt.textContent || "").toLowerCase();
-            opt.style.display = q && !txt.includes(q) ? "none" : "block";
-        }
-    }
-
-    function updateBondServiceDisplay(forceLabel) {
-        const display = document.getElementById("bondServiceSelected");
-        const select = document.getElementById("bondService");
-        if (!display || !select) return;
-        if (forceLabel) {
-            display.textContent = forceLabel;
-            return;
-        }
-        const opt = select.selectedIndex >= 0 ? select.options[select.selectedIndex] : null;
-        display.textContent = (opt && opt.textContent) || "Select a service";
-    }
-
-    function toggleBondServiceMenu(evt) {
-        evt?.stopPropagation();
-        const menu = document.getElementById("bondServiceMenu");
-        if (!menu) return;
-        const isHidden = menu.classList.contains("hidden");
-        document.querySelectorAll(".combo-menu").forEach((el) => el.classList.add("hidden"));
-        if (isHidden) {
-            menu.classList.remove("hidden");
-            const search = document.getElementById("bondServiceSearchInput");
-            if (search) search.focus();
-        }
-    }
-
-    function closeBondServiceMenu() {
-        const menu = document.getElementById("bondServiceMenu");
-        if (menu) menu.classList.add("hidden");
-    }
-
-    function applyPendingEdit() {
-        if (!pendingEditService) return;
-        if (!servicesLoaded) {
-            const select = document.getElementById("bondService");
-            if (select) select.selectedIndex = 0;
-            return;
-        }
-        const search = document.getElementById("bondServiceSearchInput");
-        if (search) search.value = "";
-        const svc = pendingEditService;
-        const select = document.getElementById("bondService");
-        const svcId =
-            svc.id ??
-            svc.service_id ??
-            svc.serviceID ??
-            (typeof svc.service === "number" || typeof svc.service === "string" ? svc.service : null);
-        let resolvedName = svc.name || svc.service || svc.label || "";
-        if (!resolvedName && servicesCatalog && svcId !== undefined && svcId !== null) {
-            const found = servicesCatalog.find(
-                (s) => s && String(s.id ?? "") === String(svcId)
-            );
-            if (found && found.name) {
-                resolvedName = found.name;
-            }
-        }
-        const candidates = [
-            resolvedName,
-            svc.name,
-            svc.service,
-            svc.label,
-            svcId,
-        ].filter(Boolean).map(String);
-        setSelectFromCandidates(select, candidates);
-        updateBondServiceDisplay();
-
-        if (svc.status !== undefined && svc.status !== null) {
-            const rawStatus = String(svc.status).toLowerCase();
-            const statusVal = rawStatus === "online" || rawStatus === "active" || rawStatus === "1" ? "1" : "0";
-            document.getElementById("status").value = statusVal;
-        }
-        if (svc.min_contract_dur) document.getElementById("minContractDur").value = svc.min_contract_dur;
-        if (svc.max_contract_dur) document.getElementById("maxContractDur").value = svc.max_contract_dur;
-        if (svc.subscription_rates) document.getElementById("subscriptionRates").value = svc.subscription_rates;
-        if (svc.pay_as_you_go_rates) document.getElementById("payAsYouGoRates").value = svc.pay_as_you_go_rates;
-        if (svc.settlement_dur) document.getElementById("settlementDur").value = svc.settlement_dur;
-        if (svc.bond !== undefined) {
-            const currentBond = document.getElementById("currentBondAmountLabel");
-            if (currentBond) currentBond.textContent = formatBondDisplay(svc.bond);
-        }
-        if (svc.metadata_uri) setSentinelUriDisplay(normalizeSentinelUri(svc.metadata_uri));
-        if (svc.metadata_nonce) {
-            document.getElementById("metadataNonceHidden").value = svc.metadata_nonce;
-            document.getElementById("metadataNonceLabel").textContent = svc.metadata_nonce;
-            noncePrimed = true;
-            nonceLockedFromEdit = true;
-        }
-        // Fill RPC creds from sentinel.yaml if present
-        if (sentinelServices && sentinelServices.length) {
-            const match = sentinelServices.find((s) => {
-                if (!s) return false;
-                const sid = String(s.id ?? "");
-                const sname = String(s.name ?? s.service ?? "");
-                if (svcId !== undefined && svcId !== null && String(svcId) === sid) return true;
-                if (resolvedName && resolvedName === sname) return true;
-                return false;
-            });
-                if (match) {
-                    if (match.rpc_url) document.getElementById("rpcUrl").value = match.rpc_url;
-                    if (match.rpc_user !== undefined) document.getElementById("rpcUser").value = match.rpc_user;
-                    if (match.rpc_pass !== undefined) document.getElementById("rpcPass").value = match.rpc_pass;
-                }
-        }
-        setBondAmountForMode();
-        pendingEditService = null;
-    }
-
-    function applyCachedProviderForm() {
-        // If editing an existing service, keep the select as chosen by applyPendingEdit.
-        if (editingExisting) return;
-        if (!cachedProviderForm) {
-            const select = document.getElementById("bondService");
-            const search = document.getElementById("bondServiceSearchInput");
-            if (search) search.value = "";
-            if (select) select.selectedIndex = 0;
-            updateBondServiceDisplay();
-            return;
-        }
-        const cf = cachedProviderForm;
-        const setVal = (id, val) => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            if (id === "sentinelUri") {
-                setSentinelUriDisplay(val);
-                return;
-            }
-            if (el.value === "" || el.value === el.placeholder) {
-                el.value = val;
-            }
-        };
-        if (cf.sentinel_uri) setVal("sentinelUri", normalizeSentinelUri(cf.sentinel_uri));
-        if (cf.status) setVal("status", cf.status);
-        if (cf.min_contract_dur) setVal("minContractDur", cf.min_contract_dur);
-        if (cf.max_contract_dur) setVal("maxContractDur", cf.max_contract_dur);
-        if (cf.subscription_rates) setVal("subscriptionRates", cf.subscription_rates);
-        if (cf.pay_as_you_go_rates) setVal("payAsYouGoRates", cf.pay_as_you_go_rates);
-        if (cf.settlement_dur) setVal("settlementDur", cf.settlement_dur);
-        if (cf.location) {
-            const locSel = document.getElementById("locationSelect");
-            if (locSel) {
-                const exists = Array.from(locSel.options).some((o) => o.value === cf.location);
-                if (!exists) {
-                    const opt = document.createElement("option");
-                    opt.value = cf.location;
-                    opt.textContent = cf.location;
-                    locSel.appendChild(opt);
-                }
-                locSel.value = cf.location;
-            }
-        }
-        if (cf.rpc_url) setVal("rpcUrl", cf.rpc_url);
-        if (cf.rpc_user) setVal("rpcUser", cf.rpc_user);
-        if (cf.rpc_pass) setVal("rpcPass", cf.rpc_pass);
-        // Always default to placeholder for new form; do not auto-select service from cached form.
-        const select = document.getElementById("bondService");
-        if (select) select.selectedIndex = 0;
-    }
-
-    function txSucceeded(tx) {
-        if (!tx) return false;
-        if (tx.exit_code !== 0) return false;
-        if (typeof tx.output === "string") {
-            const m = tx.output.match(/code:\s*(\d+)/);
-            if (m && m[1] && m[1] !== "0") return false;
-        }
-        return true;
-    }
-
-    function bondAndModSucceeded(data) {
-        return txSucceeded(data?.bond_tx) && txSucceeded(data?.mod_tx);
-    }
-
-    async function fetchAdminPasswordStatus(showGate = true) {
-        try {
-            const res = await fetch(resolveApi("/api/session"), { cache: "no-store" });
-            const data = await res.json();
-            adminPasswordEnabled = !!(data && data.enabled);
-            adminSessionAuthed = !!(data && data.authed);
-        } catch (e) {
-            adminPasswordEnabled = false;
-            adminSessionAuthed = false;
-        }
-        if (adminPasswordEnabled && !adminSessionAuthed) {
-            sessionStorage.removeItem("adminAuthed");
-        }
-        const gateAuthed = sessionStorage.getItem("adminAuthed") === "1" || adminSessionAuthed;
-        const gate = document.getElementById("adminPasswordGate");
-        if (gate) {
-            if (showGate && adminPasswordEnabled && !gateAuthed) {
-                gate.classList.remove("hidden");
+        } else if (wizardCurrentStep === 2) {
+            const bondAmount = document.getElementById("wizardBondAmount").value.trim();
+            if (bondAmount && !isNaN(Number(bondAmount))) {
+                isValid = true;
+                message = "Ready to submit bond contract";
+                // Always show valid state for bond step when ready
+                wizardValidationActive = true;
             } else {
-                gate.classList.add("hidden");
+                message = "Bond amount is required";
             }
+        } else if (wizardCurrentStep === 3) {
+            const location = document.getElementById("wizardLocation").value;
+            if (location) {
+                isValid = true;
+                message = "Ready to submit mod contract";
+            } else {
+                message = "Select a location to continue";
+            }
+        } else if (wizardCurrentStep === 4) {
+            isValid = wizardSentinelComplete;
+            message = wizardSentinelComplete ? "Sentinel updated. Click Continue to finish." : "Click Update Sentinel to begin";
+        }
+
+        if (statusEl) {
+            statusEl.classList.remove("valid", "invalid", "hidden");
+            // Only show valid/invalid icons after user interaction
+            if (wizardValidationActive) {
+                statusEl.classList.add(isValid ? "valid" : "invalid");
+                statusEl.querySelector(".step-status-icon").textContent = isValid ? "✓" : "✗";
+            } else {
+                statusEl.querySelector(".step-status-icon").textContent = "▶";
+            }
+            statusEl.querySelector(".step-status-label").textContent = message;
+        }
+
+        if (nextBtn) {
+            nextBtn.disabled = !isValid;
+        }
+
+        return isValid;
+    }
+
+    function updateWizardStepDisplay() {
+        // Update step indicators
+        const startStep = wizardMode === "add" ? 0 : 1;
+        document.querySelectorAll(".wizard-step").forEach((el) => {
+            const stepNum = parseInt(el.dataset.step);
+            el.classList.remove("active", "completed");
+            if (stepNum < wizardCurrentStep) {
+                el.classList.add("completed");
+            } else if (stepNum === wizardCurrentStep) {
+                el.classList.add("active");
+            }
+        });
+
+        // Show/hide step content
+        const maxStep = wizardMode === "add" ? 5 : 5;
+        for (let i = 0; i <= maxStep; i++) {
+            const content = document.getElementById(`wizardStep${i}`);
+            if (content) {
+                content.classList.toggle("hidden", i !== wizardCurrentStep);
+            }
+        }
+
+        // Update buttons
+        const backBtn = document.getElementById("wizardBackBtn");
+        const nextBtn = document.getElementById("wizardNextBtn");
+        const cancelBtn = document.getElementById("wizardCancelBtn");
+        const verifyStep = wizardMode === "add" ? 5 : 5;
+        const sentinelStep = 4;
+
+        const minBackStep = wizardMode === "add" ? 0 : 1;
+        if (backBtn) backBtn.style.display = wizardCurrentStep > minBackStep && wizardCurrentStep < verifyStep ? "inline-block" : "none";
+
+        if (wizardCurrentStep === verifyStep) {
+            nextBtn.style.display = "none";
+            cancelBtn.textContent = "Done";
+        } else if (wizardCurrentStep === sentinelStep) {
+            nextBtn.style.display = "inline-block";
+            nextBtn.textContent = "Continue";
+            nextBtn.disabled = !wizardSentinelComplete;
+            cancelBtn.textContent = "Cancel";
+        } else if (wizardCurrentStep === 3) {
+            nextBtn.style.display = "inline-block";
+            nextBtn.textContent = "Submit Mod Contract";
+            cancelBtn.textContent = "Cancel";
+        } else if (wizardCurrentStep === 2) {
+            nextBtn.style.display = "inline-block";
+            nextBtn.textContent = "Submit Bond Contract";
+            cancelBtn.textContent = "Cancel";
+        } else if (wizardCurrentStep === 1) {
+            nextBtn.style.display = "inline-block";
+            nextBtn.textContent = "Save Endpoint Configuration";
+            cancelBtn.textContent = "Cancel";
+        } else if (wizardCurrentStep === 0) {
+            nextBtn.style.display = "inline-block";
+            nextBtn.textContent = "Select Service";
+            cancelBtn.textContent = "Cancel";
+        } else {
+            nextBtn.style.display = "inline-block";
+            nextBtn.textContent = "Next";
+            cancelBtn.textContent = "Cancel";
+        }
+
+        validateCurrentStep();
+    }
+
+    function wizardBack() {
+        const minStep = wizardMode === "add" ? 0 : 1;
+        const maxStep = wizardMode === "add" ? 5 : 5;
+        if (wizardCurrentStep > minStep && wizardCurrentStep < maxStep) {
+            wizardCurrentStep--;
+            wizardValidationActive = false; // Reset for step
+            updateWizardStepDisplay();
+            updateStepStatusNeutral();
         }
     }
 
-    async function submitAdminPasswordGate(event) {
-        if (event && event.preventDefault) event.preventDefault();
-        const input = document.getElementById("adminPasswordGateInput");
-        const statusEl = document.getElementById("adminPasswordGateStatus");
-        const pwd = (input && input.value) || "";
-        if (statusEl) statusEl.textContent = "Verifying...";
+    async function wizardNext() {
+        wizardValidationActive = true; // Show validation status when user clicks Next
+        if (!validateCurrentStep()) return;
+
+        // Clear the status from the current step before transitioning
+        const currentStatusEl = document.getElementById(`wizardStatus${wizardCurrentStep}`);
+        if (currentStatusEl) {
+            setStepStatus(currentStatusEl, "neutral", "");
+        }
+
+        if (wizardCurrentStep === 0) {
+            // Service selected, move to endpoint config
+            wizardStepResults.step0 = true;
+            wizardCurrentStep = 1;
+            wizardValidationActive = false;
+            updateWizardStepDisplay();
+            updateStepStatusNeutral();
+            // Auto-detect polling preset for selected service
+            const serviceType = wizardServiceData?.service_type || "";
+            const serviceName = wizardServiceData?.name || "";
+            const detectedPreset = detectPollingPreset(serviceType, serviceName);
+            console.log("Preset detection:", { serviceType, serviceName, detectedPreset, wizardServiceData });
+            const presetSelect = document.getElementById("wizardPollingPreset");
+            if (presetSelect && detectedPreset) {
+                presetSelect.value = detectedPreset;
+                applyPollingPreset();
+                console.log("Applied preset:", detectedPreset);
+            }
+        } else if (wizardCurrentStep === 1) {
+            // Just save endpoint info and move on
+            wizardStepResults.step1 = true;
+            wizardCurrentStep = 2;
+            wizardValidationActive = false; // Reset for new step
+            updateWizardStepDisplay();
+            updateStepStatusNeutral();
+        } else if (wizardCurrentStep === 2) {
+            // Submit bond contract
+            await submitBondContract();
+        } else if (wizardCurrentStep === 3) {
+            // Submit mod contract
+            await submitModContract();
+        } else if (wizardCurrentStep === 4) {
+            // Continue to final verification step
+            wizardCurrentStep = 5;
+            updateWizardStepDisplay();
+            showFinalVerification();
+        }
+    }
+
+    async function submitBondContract() {
+        const svc = wizardServiceData;
+        if (!svc) return;
+
+        const serviceName = svc.name || svc.service || svc.label || "";
+        const metadataUri = svc.metadata_uri || svc.metadataUri || "";
+        const metadataNonce = svc.metadata_nonce ? String(Number(svc.metadata_nonce) + 1) : "1";
+        const bondAmount = document.getElementById("wizardBondAmount").value.trim() || "1";
+
+        const statusEl = document.getElementById("wizardStatus2");
+        const responseRow = document.getElementById("wizardBondResponseRow");
+        const responseBox = document.getElementById("wizardBondResponse");
+
+        statusEl.classList.remove("valid", "invalid");
+        statusEl.querySelector(".step-status-icon").textContent = "◐";
+        statusEl.querySelector(".step-status-label").textContent = "Submitting bond contract...";
+        responseRow.classList.add("hidden");
+
         try {
-            const res = await fetch(resolveApi("/api/login"), {
+            const res = await fetch(resolveApi("/api/bond-provider"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ password: pwd }),
+                body: JSON.stringify({
+                    service: serviceName,
+                    bond: bondAmount,
+                    sentinel_uri: metadataUri,
+                    metadata_nonce: metadataNonce,
+                }),
             });
             const data = await res.json();
-            if (data && data.ok) {
-                sessionStorage.setItem("adminAuthed", "1");
-                adminSessionAuthed = true;
-                const gate = document.getElementById("adminPasswordGate");
-                if (gate) gate.classList.add("hidden");
-                if (statusEl) statusEl.textContent = "";
-                window.location.href = "index.html";
-            } else if (statusEl) {
-                statusEl.textContent = "Incorrect password.";
+            const bondOk = data?.status === "bond_submitted" || data?.exit_code === 0 || data?.bond_tx?.exit_code === 0;
+
+            // Show response
+            showTestResponse(responseRow, responseBox, bondOk, JSON.stringify(data, null, 2));
+
+            if (bondOk) {
+                wizardStepResults.step2 = true;
+                statusEl.classList.add("valid");
+                statusEl.querySelector(".step-status-icon").textContent = "✓";
+                statusEl.querySelector(".step-status-label").textContent = "Bond contract submitted successfully";
+                wizardCurrentStep = 3;
+                wizardValidationActive = false; // Reset for new step
+                updateWizardStepDisplay();
+                updateStepStatusNeutral();
+            } else {
+                wizardStepResults.step2 = false;
+                statusEl.classList.add("invalid");
+                statusEl.querySelector(".step-status-icon").textContent = "✗";
+                statusEl.querySelector(".step-status-label").textContent = "Bond contract failed: " + (data?.error || data?.stderr || "Unknown error");
             }
         } catch (e) {
-            if (statusEl) statusEl.textContent = `Failed to verify: ${e}`;
+            wizardStepResults.step2 = false;
+            statusEl.classList.add("invalid");
+            statusEl.querySelector(".step-status-icon").textContent = "✗";
+            statusEl.querySelector(".step-status-label").textContent = "Bond contract error: " + e;
+            showTestResponse(responseRow, responseBox, false, String(e));
         }
     }
 
-    window.addEventListener("load", async () => {
+    async function submitModContract() {
+        const svc = wizardServiceData;
+        if (!svc) return;
+
+        const serviceName = svc.name || svc.service || svc.label || "";
+        const status = document.getElementById("wizardServiceStatus").value;
+        const minDur = document.getElementById("wizardMinDur").value.trim();
+        const maxDur = document.getElementById("wizardMaxDur").value.trim();
+        const subRate = document.getElementById("wizardSubRate").value.trim();
+        const paygoRate = document.getElementById("wizardPaygoRate").value.trim();
+        const settleDur = document.getElementById("wizardSettleDur").value.trim();
+        const location = document.getElementById("wizardLocation").value;
+
+        const statusEl = document.getElementById("wizardStatus3");
+        const responseRow = document.getElementById("wizardModResponseRow");
+        const responseBox = document.getElementById("wizardModResponse");
+
+        // Validate all required fields
+        const missing = [];
+        if (!minDur) missing.push("Min Contract Duration");
+        if (!maxDur) missing.push("Max Contract Duration");
+        if (!subRate) missing.push("Subscription Rate");
+        if (!paygoRate) missing.push("Pay As You Go Rate");
+        if (!settleDur) missing.push("Settlement Duration");
+        if (!location) missing.push("Location");
+
+        if (missing.length > 0) {
+            statusEl.classList.remove("valid");
+            statusEl.classList.add("invalid");
+            statusEl.querySelector(".step-status-icon").textContent = "✗";
+            statusEl.querySelector(".step-status-label").textContent = "Missing required fields: " + missing.join(", ");
+            return;
+        }
+
+        statusEl.classList.remove("valid", "invalid");
+        statusEl.querySelector(".step-status-icon").textContent = "◐";
+        statusEl.querySelector(".step-status-label").textContent = "Submitting mod contract...";
+        responseRow.classList.add("hidden");
+
+        try {
+            const res = await fetch(resolveApi("/api/mod-provider"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    service: serviceName,
+                    status: status,
+                    min_contract_dur: minDur,
+                    max_contract_dur: maxDur,
+                    subscription_rates: subRate,
+                    pay_as_you_go_rates: paygoRate,
+                    settlement_dur: settleDur,
+                    location: location,
+                }),
+            });
+            const data = await res.json();
+            const modOk = data?.status === "mod_submitted" || data?.exit_code === 0 || data?.mod_tx?.exit_code === 0;
+
+            // Show response
+            showTestResponse(responseRow, responseBox, modOk, JSON.stringify(data, null, 2));
+
+            if (modOk) {
+                wizardStepResults.step3 = true;
+                statusEl.classList.add("valid");
+                statusEl.querySelector(".step-status-icon").textContent = "✓";
+                statusEl.querySelector(".step-status-label").textContent = "Mod contract submitted successfully";
+                wizardCurrentStep = 4;
+                wizardValidationActive = false; // Reset for new step
+                updateWizardStepDisplay();
+                updateStepStatusNeutral();
+            } else {
+                wizardStepResults.step3 = false;
+                statusEl.classList.add("invalid");
+                statusEl.querySelector(".step-status-icon").textContent = "✗";
+                statusEl.querySelector(".step-status-label").textContent = "Mod contract failed: " + (data?.error || data?.stderr || "Unknown error");
+            }
+        } catch (e) {
+            wizardStepResults.step3 = false;
+            statusEl.classList.add("invalid");
+            statusEl.querySelector(".step-status-icon").textContent = "✗";
+            statusEl.querySelector(".step-status-label").textContent = "Mod contract error: " + e;
+            showTestResponse(responseRow, responseBox, false, String(e));
+        }
+    }
+
+    async function updateSentinel() {
+        const svc = wizardServiceData;
+        if (!svc) return;
+
+        const rawId = svc.id ?? svc.service_id ?? svc.serviceID;
+        const serviceName = svc.name || svc.service || svc.label || "";
+        const status = document.getElementById("wizardServiceStatus").value;
+        const rpcUrl = document.getElementById("wizardRpcUrl").value.trim();
+        const rpcUser = document.getElementById("wizardRpcUser").value.trim();
+        const rpcPass = document.getElementById("wizardRpcPass").value.trim();
+
+        // Get service type from catalog
+        let resolvedType = serviceName;
+        const catalogEntry = providerServiceLookup[String(rawId)];
+        if (catalogEntry && typeof catalogEntry === "object" && catalogEntry.service_type) {
+            resolvedType = catalogEntry.service_type;
+        }
+
+        const statusEl = document.getElementById("wizardStatus4");
+        let allSuccess = true;
+
+        // Step 1: Update config
+        setVerifyStep("verifySentinelConfig", "in-progress", "Updating sentinel configuration...");
+        statusEl.querySelector(".step-status-icon").textContent = "◐";
+        statusEl.querySelector(".step-status-label").textContent = "Updating sentinel...";
+
+        try {
+            const rebuildRes = await fetch(resolveApi("/api/sentinel-rebuild"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    service_overrides: [{
+                        name: serviceName,
+                        id: rawId,
+                        service: serviceName,
+                        status: status,
+                        rpc_url: rpcUrl,
+                        rpc_user: rpcUser,
+                        rpc_pass: rpcPass,
+                        type: resolvedType,
+                        service_type: resolvedType,
+                    }],
+                }),
+            });
+
+            if (rebuildRes.ok) {
+                setVerifyStep("verifySentinelConfig", "success", "Sentinel configuration updated");
+            } else {
+                setVerifyStep("verifySentinelConfig", "error", "Sentinel update failed");
+                allSuccess = false;
+            }
+        } catch (e) {
+            setVerifyStep("verifySentinelConfig", "error", "Sentinel update error: " + e);
+            allSuccess = false;
+        }
+
+        // Step 2: Wait for block
+        setVerifyStep("verifySentinelRestart", "in-progress", "Waiting for block confirmation...");
+        await new Promise(resolve => setTimeout(resolve, 6500));
+        setVerifyStep("verifySentinelRestart", "success", "Block confirmation complete");
+
+        // Step 3: Sync sentinel
+        setVerifyStep("verifySentinelSync", "in-progress", "Syncing sentinel with blockchain...");
+
+        try {
+            const syncRes = await fetch(resolveApi("/api/sentinel-sync"), { method: "POST" });
+            if (syncRes.ok) {
+                setVerifyStep("verifySentinelSync", "success", "Sentinel synced and restarted");
+            } else {
+                setVerifyStep("verifySentinelSync", "error", "Sentinel sync failed");
+                allSuccess = false;
+            }
+        } catch (e) {
+            setVerifyStep("verifySentinelSync", "error", "Sentinel sync error: " + e);
+            allSuccess = false;
+        }
+
+        wizardStepResults.step4 = allSuccess;
+
+        if (allSuccess) {
+            statusEl.classList.remove("invalid");
+            statusEl.classList.add("valid");
+            statusEl.querySelector(".step-status-icon").textContent = "✓";
+            statusEl.querySelector(".step-status-label").textContent = "Sentinel updated successfully";
+        } else {
+            statusEl.classList.remove("valid");
+            statusEl.classList.add("invalid");
+            statusEl.querySelector(".step-status-icon").textContent = "✗";
+            statusEl.querySelector(".step-status-label").textContent = "Sentinel update had errors";
+        }
+
+        return allSuccess;
+    }
+
+    async function runUpdateSentinel() {
+        const updateBtn = document.getElementById("wizardUpdateSentinelBtn");
+        const nextBtn = document.getElementById("wizardNextBtn");
+        const statusEl = document.getElementById("wizardStatus4");
+
+        // Disable Update Sentinel button while running
+        if (updateBtn) {
+            updateBtn.disabled = true;
+            updateBtn.textContent = "Updating...";
+        }
+
+        // Reset status
+        statusEl.classList.remove("valid", "invalid");
+        statusEl.querySelector(".step-status-icon").textContent = "◐";
+        statusEl.querySelector(".step-status-label").textContent = "Updating sentinel...";
+
+        const success = await updateSentinel();
+
+        // Re-enable Update Sentinel button
+        if (updateBtn) {
+            updateBtn.disabled = false;
+            updateBtn.textContent = "Update Sentinel";
+        }
+
+        if (success) {
+            wizardSentinelComplete = true;
+            statusEl.classList.add("valid");
+            statusEl.querySelector(".step-status-icon").textContent = "✓";
+            statusEl.querySelector(".step-status-label").textContent = "Sentinel updated successfully. Click Continue to finish.";
+            if (nextBtn) {
+                nextBtn.disabled = false;
+            }
+        } else {
+            wizardSentinelComplete = false;
+            statusEl.classList.add("invalid");
+            statusEl.querySelector(".step-status-icon").textContent = "✗";
+            statusEl.querySelector(".step-status-label").textContent = "Sentinel update had errors. You can retry or continue.";
+            // Allow continue even on error so user can see final status
+            if (nextBtn) {
+                nextBtn.disabled = false;
+            }
+            wizardSentinelComplete = true; // Allow continue even on error
+        }
+    }
+
+    function showFinalVerification() {
+        // Update final verification step
+        setVerifyStep("verifyStep1", wizardStepResults.step1 ? "success" : "error",
+            wizardStepResults.step1 ? "Service Endpoint configured" : "Service Endpoint not configured");
+        setVerifyStep("verifyStep2", wizardStepResults.step2 ? "success" : "error",
+            wizardStepResults.step2 ? "Bond Contract submitted successfully" : "Bond Contract failed");
+        setVerifyStep("verifyStep3", wizardStepResults.step3 ? "success" : "error",
+            wizardStepResults.step3 ? "Mod Contract submitted successfully" : "Mod Contract failed");
+        setVerifyStep("verifyStep4", wizardStepResults.step4 ? "success" : "error",
+            wizardStepResults.step4 ? "Provider Sentinel updated successfully" : "Provider Sentinel update failed");
+
+        const allSuccess = wizardStepResults.step1 && wizardStepResults.step2 && wizardStepResults.step3 && wizardStepResults.step4;
+        if (allSuccess) {
+            showWizardResult(true, "Provider service updated successfully!");
+        } else {
+            showWizardResult(false, "Some steps failed. Review the results above.");
+        }
+    }
+
+    function resetVerifySteps() {
+        const steps = ["verifySentinelConfig", "verifySentinelRestart", "verifySentinelSync", "verifyStep1", "verifyStep2", "verifyStep3", "verifyStep4"];
+        steps.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.className = "verify-item pending";
+                const icon = el.querySelector(".verify-icon");
+                if (icon) icon.textContent = "○";
+            }
+        });
+
+        const logEl = document.getElementById("wizardVerifyLog");
+        if (logEl) {
+            logEl.classList.add("hidden");
+            logEl.textContent = "";
+        }
+
+        const resultEl = document.getElementById("wizardVerifyResult");
+        if (resultEl) {
+            resultEl.classList.add("hidden");
+            resultEl.className = "wizard-result hidden";
+            resultEl.textContent = "";
+        }
+    }
+
+    function setVerifyStep(stepId, status, label) {
+        const el = document.getElementById(stepId);
+        if (!el) return;
+
+        el.className = `verify-item ${status}`;
+        const icon = el.querySelector(".verify-icon");
+        const labelEl = el.querySelector(".verify-label");
+
+        if (icon) {
+            if (status === "pending") icon.textContent = "○";
+            else if (status === "in-progress") icon.textContent = "◐";
+            else if (status === "success") icon.textContent = "✓";
+            else if (status === "error") icon.textContent = "✗";
+        }
+
+        if (label && labelEl) labelEl.textContent = label;
+    }
+
+    function appendWizardLog(text) {
+        const logEl = document.getElementById("wizardVerifyLog");
+        if (logEl) {
+            logEl.classList.remove("hidden");
+            logEl.textContent += text + "\n";
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+    }
+
+    function showWizardResult(success, message) {
+        const resultEl = document.getElementById("wizardVerifyResult");
+        if (resultEl) {
+            resultEl.classList.remove("hidden");
+            resultEl.className = `wizard-result ${success ? "success" : "error"}`;
+            resultEl.textContent = message;
+        }
+    }
+    // ========== End Edit Service Wizard ==========
+
+    window.addEventListener('load', async () => {
         await loadRuntimePorts();
         await detectAdminApiBase();
-        fetchAdminPasswordStatus(true);
-        pullPendingEdit();
-        loadServices();
-        loadProviderInfo();
-        loadSentinelConfig();
+
+        // Load service data from localStorage
+        if (loadServiceData()) {
+            // Fetch available services (needed for Add New mode and service lookup)
+            await fetchAvailableServices();
+            await initWizard();
+        }
     });
 </script>
-
-<div id="adminPasswordGate" class="overlay overlay-strong hidden">
-    <div class="overlay-card password-card">
-        <div class="password-title">
-            <span>Arkeo Data Engine</span>
-            <span class="sep">|</span>
-            <span class="sub">Provider</span>
-        </div>
-        <form onsubmit="submitAdminPasswordGate(event); return false;">
-            <div class="password-body">
-                <h3 class="mt-6 mb-0">Password Required</h3>
-                <p class="muted">Enter the admin password to continue.</p>
-                <input type="text" name="admin-username-filler" autocomplete="username" value="admin" class="hidden" aria-hidden="true" tabindex="-1" />
-                <input type="password" id="adminPasswordGateInput" autocomplete="current-password" placeholder="Admin password" />
-            </div>
-            <div class="actions center mt-6">
-                <button class="primary" type="submit">Unlock</button>
-            </div>
-            <div id="adminPasswordGateStatus" class="muted mt-6"></div>
-        </form>
-    </div>
-</div>
-
 </body>
 </html>

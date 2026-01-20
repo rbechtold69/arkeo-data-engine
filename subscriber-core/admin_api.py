@@ -7399,32 +7399,77 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
 
         timeout_secs = _safe_int(cfg.get("timeout_secs", PROXY_TIMEOUT_SECS), PROXY_TIMEOUT_SECS)
         as_header = _safe_bool(cfg.get("arkauth_as_header", PROXY_ARKAUTH_AS_HEADER), bool(PROXY_ARKAUTH_AS_HEADER))
+        arkauth_format = str(cfg.get("arkauth_format", PROXY_ARKAUTH_FORMAT) or "").strip().lower()
+        arkauth_format = arkauth_format.replace("-", "").replace("_", "")
+        use_four_part = arkauth_format not in ("3", "3part", "three", "legacy")
+        allow_fallback = use_four_part
 
-        arkauth4 = f"{cid}:{contract_client}:{nonce}:{sig_hex}"
-        _log("info", f"forwarding 4-part to sentinel={sentinel} svc={service} cid={cid} nonce={nonce} provider={provider_filter}")
-        fwd_start = time.time()
-        code, resp_body, resp_hdrs, fwd_url, fwd_headers = _forward_to_sentinel(
-            sentinel,
-            service_path,
-            body,
-            arkauth4,
-            timeout=timeout_secs,
-            as_header=as_header,
-            method=method,
-            query_string=query_string,
-        )
-        if code == 401:
-            arkauth3 = f"{cid}:{nonce}:{sig_hex}"
-            code, resp_body, resp_hdrs, fwd_url, fwd_headers = _forward_to_sentinel(
+        def _is_arkauth_format_error(code_val, body_val) -> bool:
+            try:
+                if int(code_val or 0) == 401:
+                    return True
+                if int(code_val or 0) != 400:
+                    return False
+            except Exception:
+                return False
+            try:
+                if isinstance(body_val, (bytes, bytearray)):
+                    text = body_val.decode(errors="ignore")
+                else:
+                    text = str(body_val)
+            except Exception:
+                return False
+            text = text.lower()
+            return "parseint" in text or "invalid syntax" in text
+
+        def _forward_with_arkauth(nonce_val, sig_val):
+            arkauth4_val = f"{cid}:{contract_client}:{nonce_val}:{sig_val}"
+            arkauth3_val = f"{cid}:{nonce_val}:{sig_val}"
+            if use_four_part:
+                primary = arkauth4_val
+                primary_label = "4-part"
+                fallback = arkauth3_val
+                fallback_label = "3-part"
+            else:
+                primary = arkauth3_val
+                primary_label = "3-part"
+                fallback = arkauth4_val
+                fallback_label = "4-part"
+            _log(
+                "info",
+                f"forwarding {primary_label} to sentinel={sentinel} svc={service} "
+                f"cid={cid} nonce={nonce_val} provider={provider_filter}",
+            )
+            code_val, body_val, hdrs_val, url_val, headers_val = _forward_to_sentinel(
                 sentinel,
                 service_path,
                 body,
-                arkauth3,
+                primary,
                 timeout=timeout_secs,
                 as_header=as_header,
                 method=method,
                 query_string=query_string,
             )
+            if allow_fallback and _is_arkauth_format_error(code_val, body_val):
+                _log(
+                    "info",
+                    f"retrying with {fallback_label} arkauth sentinel={sentinel} svc={service} "
+                    f"cid={cid} nonce={nonce_val} provider={provider_filter}",
+                )
+                code_val, body_val, hdrs_val, url_val, headers_val = _forward_to_sentinel(
+                    sentinel,
+                    service_path,
+                    body,
+                    fallback,
+                    timeout=timeout_secs,
+                    as_header=as_header,
+                    method=method,
+                    query_string=query_string,
+                )
+            return code_val, body_val, hdrs_val, url_val, headers_val
+
+        fwd_start = time.time()
+        code, resp_body, resp_hdrs, fwd_url, fwd_headers = _forward_with_arkauth(nonce, sig_hex)
         sentinel_forward_ms = int((time.time() - fwd_start) * 1000)
 
         def _is_nonce_error(code_val, body_val) -> bool:
@@ -7471,30 +7516,8 @@ def _handle_forward_lane(work: WorkItem, cfg: dict) -> dict:
                 except Exception:
                     pass
                 continue
-            arkauth_retry = f"{cid}:{contract_client}:{nonce}:{sig_hex}"
             fwd_start = time.time()
-            code, resp_body, resp_hdrs, fwd_url, fwd_headers = _forward_to_sentinel(
-                sentinel,
-                service_path,
-                body,
-                arkauth_retry,
-                timeout=timeout_secs,
-                as_header=as_header,
-                method=method,
-                query_string=query_string,
-            )
-            if code == 401:
-                arkauth3_retry = f"{cid}:{nonce}:{sig_hex}"
-                code, resp_body, resp_hdrs, fwd_url, fwd_headers = _forward_to_sentinel(
-                    sentinel,
-                    service_path,
-                    body,
-                    arkauth3_retry,
-                    timeout=timeout_secs,
-                    as_header=as_header,
-                    method=method,
-                    query_string=query_string,
-                )
+            code, resp_body, resp_hdrs, fwd_url, fwd_headers = _forward_with_arkauth(nonce, sig_hex)
             sentinel_forward_ms = int((time.time() - fwd_start) * 1000)
 
         if int(code or 0) >= 400:

@@ -30,6 +30,19 @@ if not app.logger.handlers:
     app.logger.addHandler(handler)
 app.logger.propagate = False
 
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Return JSON instead of HTML for all errors."""
+    import traceback
+    app.logger.error("Unhandled exception: %s\n%s", str(e), traceback.format_exc())
+    return jsonify({
+        "error": "Internal server error",
+        "detail": str(e),
+        "traceback": traceback.format_exc()
+    }), 500
+
+
 def _build_sentinel_uri() -> str:
     port = os.getenv("SENTINEL_PORT") or "3636"
     external = os.getenv("SENTINEL_NODE")
@@ -190,6 +203,7 @@ ADMIN_SESSION_NAME = os.getenv("ADMIN_SESSION_NAME") or "admin_session"
 ADMIN_UI_ORIGIN = os.getenv("ADMIN_UI_ORIGIN") or f"http://localhost:{os.getenv('ADMIN_PORT', DEFAULT_ADMIN_PORT)}"
 # token -> expiry_ts
 ADMIN_SESSIONS: dict[str, float] = {}
+SESSIONS_LOCK = threading.Lock()
 CLAIMS_HEARTBEAT_PATH = os.path.join(CACHE_DIR, "claims-heartbeat.json") if CACHE_DIR else "claims-heartbeat.json"
 OSMOSIS_RPC = _strip_quotes(os.getenv("OSMOSIS_RPC") or "")
 OSMOSIS_HOME = os.path.expanduser(os.getenv("OSMOSIS_HOME", "/app/config/osmosis"))
@@ -207,8 +221,10 @@ MIN_OSMO_GAS = _safe_float(os.getenv("MIN_OSMO_GAS") or 0.1, 0.1)
 _CONTRACTS_PAGE_MODE = None
 _PROVIDERS_PAGE_MODE = None
 _SERVICE_TYPES_PAGE_MODE = None
+_PAGE_MODE_LOCK = threading.Lock()
 
 TX_LOCK = threading.Lock()
+PROVIDER_SETTINGS_LOCK = threading.Lock()
 
 
 @contextmanager
@@ -272,6 +288,151 @@ def _normalize_base(url: str | None, default_port: str | None = None, default_sc
     return url
 
 
+def _retry_with_backoff(
+    func,
+    max_attempts: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 10.0,
+    backoff_factor: float = 2.0,
+    retryable_exceptions: tuple = (urllib.error.URLError, TimeoutError, ConnectionError, OSError),
+):
+    """
+    Retry a function with exponential backoff.
+
+    Args:
+        func: Callable to retry (should raise on failure)
+        max_attempts: Maximum number of attempts
+        base_delay: Initial delay between retries in seconds
+        max_delay: Maximum delay between retries
+        backoff_factor: Multiplier for delay after each retry
+        retryable_exceptions: Tuple of exception types to retry on
+
+    Returns:
+        Result of func() on success
+
+    Raises:
+        Last exception if all retries fail
+    """
+    last_exception = None
+    delay = base_delay
+
+    for attempt in range(max_attempts):
+        try:
+            return func()
+        except retryable_exceptions as e:
+            last_exception = e
+            if attempt < max_attempts - 1:
+                app.logger.debug(
+                    "Retry attempt %d/%d failed: %s. Retrying in %.1fs...",
+                    attempt + 1,
+                    max_attempts,
+                    e,
+                    delay,
+                )
+                time.sleep(delay)
+                delay = min(delay * backoff_factor, max_delay)
+            else:
+                app.logger.debug(
+                    "All %d retry attempts failed. Last error: %s",
+                    max_attempts,
+                    e,
+                )
+
+    raise last_exception
+
+
+def _atomic_write(path: str, content: str | bytes, encoding: str = "utf-8") -> None:
+    """
+    Atomically write content to a file using temp file + rename pattern.
+
+    This prevents data corruption if the process crashes mid-write.
+    The rename operation is atomic on POSIX filesystems.
+
+    Args:
+        path: Target file path
+        content: Content to write (str or bytes)
+        encoding: Encoding for str content (ignored for bytes)
+    """
+    import tempfile
+
+    dir_path = os.path.dirname(path) or "."
+    os.makedirs(dir_path, exist_ok=True)
+
+    # Create temp file in same directory to ensure same filesystem for atomic rename
+    fd, tmp_path = tempfile.mkstemp(dir=dir_path, prefix=".tmp_", suffix=".tmp")
+    try:
+        if isinstance(content, bytes):
+            os.write(fd, content)
+        else:
+            os.write(fd, content.encode(encoding))
+        os.fsync(fd)  # Ensure content is flushed to disk
+        os.close(fd)
+        fd = -1  # Mark as closed
+        os.rename(tmp_path, path)  # Atomic on POSIX
+    except Exception:
+        if fd >= 0:
+            os.close(fd)
+        # Clean up temp file on failure
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _atomic_write_json(path: str, data, indent: int = 2) -> None:
+    """Atomically write JSON data to a file."""
+    content = json.dumps(data, indent=indent, ensure_ascii=False)
+    _atomic_write(path, content)
+
+
+def _safe_json_loads(data: str | bytes | None, default=None):
+    """
+    Safely parse JSON, returning default on failure or if result is not a dict.
+
+    Args:
+        data: JSON string or bytes to parse
+        default: Value to return on failure (default: None)
+
+    Returns:
+        Parsed JSON as dict, or default if parsing fails or result is not a dict
+    """
+    if not data:
+        return default if default is not None else {}
+    try:
+        result = json.loads(data)
+        if isinstance(result, dict):
+            return result
+        return default if default is not None else {}
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return default if default is not None else {}
+
+
+def _safe_get(data, *keys, default=None):
+    """
+    Safely get a nested value from a dict using a chain of keys.
+
+    Args:
+        data: The dict to traverse
+        *keys: Keys to traverse in order
+        default: Value to return if any key is missing or intermediate value is not a dict
+
+    Returns:
+        The nested value, or default if not found
+
+    Example:
+        _safe_get(data, "account", "base_account", "sequence")
+    """
+    result = data
+    for key in keys:
+        if not isinstance(result, dict):
+            return default
+        result = result.get(key)
+        if result is None:
+            return default
+    return result
+
+
 def _probe_url(base: str, path_override: str | None = None, timeout: float = 4.0, headers: dict | None = None) -> dict:
     """Probe a URL from inside the container."""
     base = (base or "").strip()
@@ -319,15 +480,6 @@ PROVIDER_EXPORT_PATH = os.getenv("PROVIDER_EXPORT_PATH") or os.path.join(
     CACHE_DIR or (os.path.dirname(PROVIDER_ENV_PATH) or "."),
     "provider-export.json",
 )
-
-
-def run(cmd: str) -> tuple[int, str]:
-    """Run a shell command and return (exit_code, output)."""
-    try:
-        out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-        return 0, out.decode("utf-8")
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output.decode("utf-8")
 
 
 def run_list(cmd: list[str], timeout: float | None = None) -> tuple[int, str]:
@@ -556,7 +708,8 @@ def _fetch_contracts_paginated() -> dict:
     """Fetch all contracts across pages, honoring pagination next_key when present."""
     global _CONTRACTS_PAGE_MODE
     forced_mode = _env_page_mode("CONTRACTS_PAGE_MODE")
-    page_mode = forced_mode or _CONTRACTS_PAGE_MODE or "page-key"
+    with _PAGE_MODE_LOCK:
+        page_mode = forced_mode or _CONTRACTS_PAGE_MODE or "page-key"
     page_key = None
     page = 1
     pages = 0
@@ -578,7 +731,8 @@ def _fetch_contracts_paginated() -> dict:
             if page_mode == "page-key" and "unknown flag" in out and "page-key" in out:
                 page_mode = "page"
                 if not forced_mode:
-                    _CONTRACTS_PAGE_MODE = "page"
+                    with _PAGE_MODE_LOCK:
+                        _CONTRACTS_PAGE_MODE = "page"
                 page_key = None
                 page = 1
                 pages = 0
@@ -641,7 +795,8 @@ def _fetch_provider_services_paginated() -> dict:
     """Fetch all providers across pages, honoring pagination next_key when present."""
     global _PROVIDERS_PAGE_MODE
     forced_mode = _env_page_mode("PROVIDER_SERVICES_PAGE_MODE")
-    page_mode = forced_mode or _PROVIDERS_PAGE_MODE or "page-key"
+    with _PAGE_MODE_LOCK:
+        page_mode = forced_mode or _PROVIDERS_PAGE_MODE or "page-key"
     page_key = None
     page = 1
     pages = 0
@@ -663,7 +818,8 @@ def _fetch_provider_services_paginated() -> dict:
             if page_mode == "page-key" and "unknown flag" in out and "page-key" in out:
                 page_mode = "page"
                 if not forced_mode:
-                    _PROVIDERS_PAGE_MODE = "page"
+                    with _PAGE_MODE_LOCK:
+                        _PROVIDERS_PAGE_MODE = "page"
                 page_key = None
                 page = 1
                 pages = 0
@@ -726,7 +882,8 @@ def _fetch_service_types_paginated() -> dict:
     """Fetch service types across pages, honoring pagination next_key when present."""
     global _SERVICE_TYPES_PAGE_MODE
     forced_mode = _env_page_mode("SERVICE_TYPES_PAGE_MODE")
-    page_mode = forced_mode or _SERVICE_TYPES_PAGE_MODE or "page-key"
+    with _PAGE_MODE_LOCK:
+        page_mode = forced_mode or _SERVICE_TYPES_PAGE_MODE or "page-key"
     page_key = None
     page = 1
     pages = 0
@@ -748,7 +905,8 @@ def _fetch_service_types_paginated() -> dict:
             if page_mode == "page-key" and "unknown flag" in out and "page-key" in out:
                 page_mode = "page"
                 if not forced_mode:
-                    _SERVICE_TYPES_PAGE_MODE = "page"
+                    with _PAGE_MODE_LOCK:
+                        _SERVICE_TYPES_PAGE_MODE = "page"
                 page_key = None
                 page = 1
                 pages = 0
@@ -858,16 +1016,17 @@ def _append_hotwallet_log(entry: dict) -> None:
                         tail_lines = bf.readlines()[-500:]
                     with open(HOTWALLET_LOG, "w", encoding="utf-8") as nf:
                         nf.writelines(tail_lines)
-                except Exception:
+                except Exception as e:
+                    app.logger.warning("hotwallet log rotation read/write failed: %s", e)
                     open(HOTWALLET_LOG, "w").close()
-            except Exception:
-                pass
+            except Exception as e:
+                app.logger.warning("hotwallet log rotation failed: %s", e)
         os.makedirs(os.path.dirname(HOTWALLET_LOG), exist_ok=True)
         with open(HOTWALLET_LOG, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False))
             f.write("\n")
-    except Exception:
-        pass
+    except Exception as e:
+        app.logger.warning("_append_hotwallet_log failed: %s", e)
 
 
 def _read_hotwallet_logs(limit: int = 50) -> list[dict]:
@@ -883,9 +1042,10 @@ def _read_hotwallet_logs(limit: int = 50) -> list[dict]:
             try:
                 out.append(json.loads(ln))
             except Exception:
-                continue
+                continue  # Skip malformed log lines
         return out
-    except Exception:
+    except Exception as e:
+        app.logger.warning("_read_hotwallet_logs failed: %s", e)
         return []
 
 
@@ -999,19 +1159,16 @@ def _load_telemetry_state() -> dict:
         with open(TELEMETRY_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
-    except Exception:
+    except Exception as e:
+        app.logger.debug("_load_telemetry_state failed: %s", e)
         return {}
 
 
 def _write_telemetry_state(state: dict) -> None:
     try:
-        dir_path = os.path.dirname(TELEMETRY_PATH)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
-        with open(TELEMETRY_PATH, "w", encoding="utf-8") as f:
-            json.dump(state, f)
-    except Exception:
-        pass
+        _atomic_write_json(TELEMETRY_PATH, state, indent=0)
+    except Exception as e:
+        app.logger.debug("_write_telemetry_state failed: %s", e)
 
 
 def _telemetry_wallet_address() -> str | None:
@@ -1020,7 +1177,8 @@ def _telemetry_wallet_address() -> str | None:
         if err:
             return None
         return addr.strip() or None
-    except Exception:
+    except Exception as e:
+        app.logger.debug("_telemetry_wallet_address failed: %s", e)
         return None
 
 
@@ -1037,8 +1195,8 @@ def _posthog_capture(event: str, distinct_id: str, properties: dict | None = Non
     try:
         req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=2).read()
-    except Exception:
-        pass
+    except Exception as e:
+        app.logger.debug("_posthog_capture failed: %s", e)
 
 
 def _posthog_capture_async(event: str, distinct_id: str, properties: dict | None = None) -> None:
@@ -1148,6 +1306,86 @@ def _telemetry_throttle_allow(key: str, cooldown_s: int = 300) -> bool:
     return True
 
 
+def _telemetry_throttle_allow_all(keys: list[tuple[str, int]]) -> bool:
+    if not keys:
+        return True
+    state = _load_telemetry_state()
+    last_events = state.get("last_events")
+    if not isinstance(last_events, dict):
+        last_events = {}
+    now = int(time.time())
+    for key, cooldown_s in keys:
+        if not key:
+            continue
+        last_ts = last_events.get(key)
+        if isinstance(last_ts, (int, float)) and now - int(last_ts) < cooldown_s:
+            return False
+    for key, _ in keys:
+        if key:
+            last_events[key] = now
+    if len(last_events) > 200:
+        items = sorted(last_events.items(), key=lambda x: x[1], reverse=True)
+        last_events = dict(items[:200])
+    state["last_events"] = last_events
+    _write_telemetry_state(state)
+    return True
+
+
+class _PosthogErrorHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            if record.levelno < logging.ERROR:
+                return
+            install_id = _telemetry_install_id()
+            if not install_id:
+                return
+            err_summary = _error_summary(record.getMessage())
+            exc_type = ""
+            if record.exc_info and record.exc_info[0]:
+                exc_type = record.exc_info[0].__name__
+            key = "|".join(
+                [
+                    "provider_error",
+                    record.name or "",
+                    record.levelname or "",
+                    exc_type,
+                    _telemetry_hash(err_summary),
+                ]
+            )
+            if not _telemetry_throttle_allow_all(
+                [
+                    ("provider_error_global", 60),
+                    (key, 900),
+                ]
+            ):
+                return
+            props = {
+                "install_id": install_id,
+                "app_version": APP_VERSION,
+                "chain_id": CHAIN_ID,
+                "logger": record.name,
+                "level": record.levelname,
+                "error_summary": err_summary,
+            }
+            if exc_type:
+                props["exception_type"] = exc_type
+            wallet_address = _telemetry_wallet_address()
+            if wallet_address:
+                props["wallet_address"] = wallet_address
+            _posthog_capture_async("provider_error", f"provider:{install_id}", props)
+        except Exception:
+            pass
+
+
+def _install_posthog_error_handler() -> None:
+    if any(isinstance(handler, _PosthogErrorHandler) for handler in app.logger.handlers):
+        return
+    app.logger.addHandler(_PosthogErrorHandler())
+
+
+_install_posthog_error_handler()
+
+
 def _emit_provider_service_failed(
     stage: str,
     service: str | None,
@@ -1165,8 +1403,8 @@ def _emit_provider_service_failed(
         [
             "provider_service_failed",
             stage or "",
-            service or "",
-            resolved_service or "",
+            str(service) if service else "",
+            str(resolved_service) if resolved_service else "",
             _telemetry_hash(err_summary),
         ]
     )
@@ -1487,18 +1725,18 @@ def _load_osmo_cache() -> dict:
         if os.path.exists(OSMOSIS_DENOM_CACHE):
             with open(OSMOSIS_DENOM_CACHE, "r") as f:
                 return json.load(f)
-    except Exception:
+    except Exception as e:
+        app.logger.debug("_load_osmo_cache failed: %s", e)
         return {}
     return {}
 
 
 def _save_osmo_cache(cache: dict) -> None:
     try:
-        os.makedirs(os.path.dirname(OSMOSIS_DENOM_CACHE) or ".", exist_ok=True)
-        with open(OSMOSIS_DENOM_CACHE, "w") as f:
-            json.dump(cache, f, indent=2, sort_keys=True)
-    except Exception:
-        pass
+        content = json.dumps(cache, indent=2, sort_keys=True)
+        _atomic_write(OSMOSIS_DENOM_CACHE, content)
+    except Exception as e:
+        app.logger.warning("_save_osmo_cache failed: %s", e)
 
 
 def _query_denom_trace_cached(ibc_hash: str, cache: dict) -> tuple[dict, dict, bool]:
@@ -1996,7 +2234,8 @@ def _osmosis_block_height_internal() -> tuple[str | None, str | None]:
     rpc = _ensure_http_rpc(OSMOSIS_RPC)
     if not rpc:
         return None, "OSMOSIS_RPC not configured"
-    try:
+
+    def _fetch_height():
         payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "status", "params": []}).encode()
         req = urllib.request.Request(
             rpc,
@@ -2009,8 +2248,14 @@ def _osmosis_block_height_internal() -> tuple[str | None, str | None]:
             sync_info = data.get("result", {}).get("sync_info") or data.get("SyncInfo") or {}
             height = sync_info.get("latest_block_height") or sync_info.get("latest_block")
             if height is None:
-                return None, "no height in response"
-            return str(height), None
+                raise ValueError("no height in response")
+            return str(height)
+
+    try:
+        height = _retry_with_backoff(_fetch_height, max_attempts=3, base_delay=1.0)
+        return height, None
+    except ValueError as e:
+        return None, str(e)
     except Exception as e:
         return None, str(e)
 
@@ -2129,30 +2374,28 @@ def ensure_cache_dir():
     if CACHE_DIR and not os.path.isdir(CACHE_DIR):
         try:
             os.makedirs(CACHE_DIR, exist_ok=True)
-        except OSError:
-            pass
+        except OSError as e:
+            app.logger.warning("ensure_cache_dir failed to create %s: %s", CACHE_DIR, e)
 
 def write_cache_json(name: str, data: dict | list | str):
-    """Write JSON data to /app/cache/{name}.json."""
+    """Write JSON data to /app/cache/{name}.json (atomic write)."""
     ensure_cache_dir()
     path = os.path.join(CACHE_DIR, f"{name}.json")
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            if isinstance(data, (dict, list)):
-                json.dump(data, f, indent=2)
-            else:
-                f.write(str(data))
-    except OSError:
-        pass
+        if isinstance(data, (dict, list)):
+            _atomic_write_json(path, data)
+        else:
+            _atomic_write(path, str(data))
+    except OSError as e:
+        app.logger.warning("write_cache_json failed for %s: %s", name, e)
 
 def write_heartbeat(path: str, payload: dict):
-    """Write a small JSON heartbeat to the given path."""
+    """Write a small JSON heartbeat to the given path (atomic write)."""
     ensure_cache_dir()
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-    except OSError:
-        pass
+        _atomic_write_json(path, payload)
+    except OSError as e:
+        app.logger.warning("write_heartbeat failed for %s: %s", path, e)
 
 def read_heartbeat(path: str):
     """Read a small JSON heartbeat file."""
@@ -2163,7 +2406,8 @@ def read_heartbeat(path: str):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        app.logger.debug("read_heartbeat failed for %s: %s", path, e)
         return None
 
 def read_cache_json(name: str):
@@ -2174,7 +2418,8 @@ def read_cache_json(name: str):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        app.logger.debug("read_cache_json failed for %s: %s", name, e)
         return None
 
 
@@ -2204,7 +2449,11 @@ def derive_pubkeys(user: str, keyring_backend: str) -> tuple[str, str, str | Non
         return "", "", f"failed to fetch raw pubkey: {pubkey_out}"
 
     try:
-        raw_pubkey = json.loads(pubkey_out).get("key", "").strip()
+        parsed = json.loads(pubkey_out)
+        if isinstance(parsed, dict):
+            raw_pubkey = parsed.get("key", "").strip()
+        else:
+            raw_pubkey = ""
     except json.JSONDecodeError:
         raw_pubkey = ""
     if not raw_pubkey:
@@ -2228,12 +2477,13 @@ def derive_pubkeys(user: str, keyring_backend: str) -> tuple[str, str, str | Non
 
 def derive_address(user: str, keyring_backend: str) -> tuple[str, str | None]:
     """Return (address, error) for the given key."""
-    cmd = (
-        f"arkeod --home {ARKEOD_HOME} "
-        f"--keyring-backend {keyring_backend} "
-        f"keys show {user} -a"
-    )
-    code, out = run(cmd)
+    cmd = [
+        "arkeod",
+        "--home", ARKEOD_HOME,
+        "--keyring-backend", keyring_backend,
+        "keys", "show", user, "-a"
+    ]
+    code, out = run_list(cmd)
     if code != 0:
         return "", out
     return out.strip(), None
@@ -2258,7 +2508,7 @@ def ping():
 
 @app.get("/api/version")
 def version():
-    code, out = run("arkeod version")
+    code, out = run_list(["arkeod", "version"])
     response = {"app_version": APP_VERSION}
     if code != 0:
         detail = out.strip()
@@ -2843,12 +3093,13 @@ def hotwallet_arkeo_to_osmosis():
 
 @app.get("/api/key")
 def get_key():
-    cmd = (
-        f"arkeod --home {ARKEOD_HOME} "
-        f"--keyring-backend {KEYRING} "
-        f"keys show {KEY_NAME} -a"
-    )
-    code, out = run(cmd)
+    cmd = [
+        "arkeod",
+        "--home", ARKEOD_HOME,
+        "--keyring-backend", KEYRING,
+        "keys", "show", KEY_NAME, "-a"
+    ]
+    code, out = run_list(cmd)
     if code != 0:
         return jsonify({"address": None, "error": "failed to get key address", "detail": out}), 200
 
@@ -2859,24 +3110,24 @@ def get_key():
 @app.get("/api/balance")
 def get_balance():
     # first get address
-    addr_cmd = (
-        f"arkeod --home {ARKEOD_HOME} "
-        f"--keyring-backend {KEYRING} "
-        f"keys show {KEY_NAME} -a"
-    )
-    code, addr_out = run(addr_cmd)
+    addr_cmd = [
+        "arkeod",
+        "--home", ARKEOD_HOME,
+        "--keyring-backend", KEYRING,
+        "keys", "show", KEY_NAME, "-a"
+    ]
+    code, addr_out = run_list(addr_cmd)
     if code != 0:
         return jsonify({"address": None, "error": "failed to get key address", "detail": addr_out}), 200
 
     address = addr_out.strip()
 
     # then query balances in JSON form
-    bal_cmd = (
-        f"arkeod query bank balances {address} "
-        f"{'--node ' + ARKEOD_NODE if ARKEOD_NODE else ''} "
-        f"-o json"
-    )
-    code, bal_out = run(bal_cmd)
+    bal_cmd = ["arkeod", "query", "bank", "balances", address]
+    if ARKEOD_NODE:
+        bal_cmd.extend(["--node", ARKEOD_NODE])
+    bal_cmd.extend(["-o", "json"])
+    code, bal_out = run_list(bal_cmd)
 
     if code != 0:
         return jsonify(
@@ -2900,6 +3151,8 @@ def bond_provider():
     payload = request.get_json(force=True, silent=True) or {}
     user = KEY_NAME
     service = payload.get("service")
+    if service is not None:
+        service = str(service)
     bond = str(payload.get("bond") or BOND_DEFAULT)
     keyring_backend = KEYRING
     fees = FEES_DEFAULT
@@ -2948,6 +3201,7 @@ def bond_provider():
         service,
         bond,
         *NODE_ARGS,
+        *CHAIN_ARGS,
         "--from",
         user,
         "--fees",
@@ -2956,7 +3210,11 @@ def bond_provider():
         keyring_backend,
         "-y",
     ]
-    code, bond_out = run_list(bond_cmd)
+    try:
+        with tx_lock(timeout_s=45.0):
+            code, bond_out = run_list(bond_cmd)
+    except TimeoutError:
+        return jsonify({"error": "transaction lock timeout", "detail": "another transaction is in progress"}), 503
     bond_txhash = _log_tx_result(f"bond-provider service={service}", code, bond_out)
     _log_tx_height_async("bond-provider", bond_txhash)
     if code != 0:
@@ -2999,6 +3257,128 @@ def bond_provider():
             "pubkey_error": pubkey_err,
         }
     )
+
+
+@app.post("/api/mod-provider")
+def mod_provider():
+    """Modify an existing provider service configuration."""
+    payload = request.get_json(force=True, silent=True) or {}
+    user = KEY_NAME
+    service = payload.get("service")
+    if service is not None:
+        service = str(service)
+    keyring_backend = KEYRING
+    fees = FEES_DEFAULT
+
+    sentinel_uri = payload.get("sentinel_uri") or SENTINEL_URI_DEFAULT
+    metadata_nonce = str(payload.get("metadata_nonce") or METADATA_NONCE_DEFAULT)
+    status = str(payload.get("status") or "1")
+    min_contract_dur = str(payload.get("min_contract_dur") or "5")
+    max_contract_dur = str(payload.get("max_contract_dur") or "432000")
+    subscription_rates = payload.get("subscription_rates") or "200uarkeo"
+    pay_as_you_go_rates = payload.get("pay_as_you_go_rates") or "200uarkeo"
+    settlement_dur = str(payload.get("settlement_dur") or "1000")
+
+    if not service:
+        return jsonify({"error": "service is required"}), 400
+
+    app.logger.info(
+        "mod-provider start service=%s status=%s sentinel_uri=%s",
+        service, status, sentinel_uri,
+    )
+
+    # Resolve numeric service IDs to the service name (CLI expects name)
+    resolved_service = service
+    if isinstance(service, str) and service.strip().isdigit():
+        svc_id = service.strip()
+        svc_payload = _fetch_service_types_paginated()
+        if svc_payload.get("exit_code") == 0:
+            data = svc_payload.get("data")
+            services = _extract_service_types_list(data)
+            for item in services if isinstance(services, list) else []:
+                if not isinstance(item, dict):
+                    continue
+                sid_val = str(item.get("id") or item.get("service_id") or item.get("serviceID") or "")
+                if sid_val == svc_id:
+                    resolved_service = item.get("service") or item.get("name") or svc_id
+                    break
+
+    raw_pubkey, bech32_pubkey, pubkey_err = derive_pubkeys(user, keyring_backend)
+    if pubkey_err:
+        return jsonify({
+            "error": pubkey_err,
+            "pubkey_error": pubkey_err,
+            "user": user,
+        }), 500
+
+    # Build mod-provider command
+    mod_cmd = [
+        "arkeod",
+        "--home",
+        ARKEOD_HOME,
+        "tx",
+        "arkeo",
+        "mod-provider",
+        bech32_pubkey,
+        resolved_service,
+        sentinel_uri,
+        metadata_nonce,
+        status,
+        min_contract_dur,
+        max_contract_dur,
+        subscription_rates,
+        pay_as_you_go_rates,
+        settlement_dur,
+        *NODE_ARGS,
+        *CHAIN_ARGS,
+        "--from",
+        user,
+        "--fees",
+        fees,
+        "--keyring-backend",
+        keyring_backend,
+        "-y",
+    ]
+
+    try:
+        with tx_lock(timeout_s=45.0):
+            code, mod_out = run_list(mod_cmd)
+    except TimeoutError:
+        return jsonify({"error": "transaction lock timeout", "detail": "another transaction is in progress"}), 503
+
+    mod_txhash = _log_tx_result(f"mod-provider service={resolved_service}", code, mod_out)
+    _log_tx_height_async("mod-provider", mod_txhash)
+
+    if code != 0:
+        return jsonify({
+            "error": "failed to mod provider",
+            "detail": mod_out,
+            "exit_code": code,
+            "inputs": {
+                "service": service,
+                "resolved_service": resolved_service,
+                "status": status,
+            },
+        }), 500
+
+    return jsonify({
+        "status": "mod_submitted",
+        "exit_code": 0,
+        "tx_output": mod_out,
+        "txhash": mod_txhash,
+        "inputs": {
+            "service": service,
+            "resolved_service": resolved_service,
+            "status": status,
+            "min_contract_dur": min_contract_dur,
+            "max_contract_dur": max_contract_dur,
+            "subscription_rates": subscription_rates,
+            "pay_as_you_go_rates": pay_as_you_go_rates,
+            "settlement_dur": settlement_dur,
+        },
+        "pubkey": {"raw": raw_pubkey, "bech32": bech32_pubkey},
+        "user": user,
+    })
 
 
 @app.post("/api/bond-mod-provider")
@@ -3135,17 +3515,89 @@ def bond_and_mod_provider():
     except Exception:
         skip_bond = False
 
-    if not skip_bond:
-        bond_cmd = [
+    # Acquire tx_lock for the entire bond+mod transaction sequence to prevent sequence issues
+    if not TX_LOCK.acquire(timeout=90.0):
+        return jsonify({"error": "transaction lock timeout", "detail": "another transaction is in progress"}), 503
+
+    try:
+        if not skip_bond:
+            bond_cmd = [
+                "arkeod",
+                "--home",
+                ARKEOD_HOME,
+                "tx",
+                "arkeo",
+                "bond-provider",
+                bech32_pubkey,
+                resolved_service,
+                bond,
+                *NODE_ARGS,
+                *CHAIN_ARGS,
+                "--from",
+                user,
+                "--fees",
+                fees,
+                "--keyring-backend",
+                keyring_backend,
+                "-y",
+            ]
+            bond_code, bond_out = run_list(bond_cmd)
+            bond_txhash = _log_tx_result(f"bond-mod-provider bond service={resolved_service}", bond_code, bond_out)
+            _log_tx_height_async("bond-mod-provider bond", bond_txhash)
+            if bond_code != 0:
+                _emit_provider_service_failed(
+                    "bond",
+                    service,
+                    resolved_service,
+                    bond_out,
+                    exit_code=bond_code,
+                    txhash=bond_txhash,
+                    extra={"bond": bond},
+                )
+                return jsonify(
+                    {
+                        "error": "failed to bond provider",
+                        "detail": bond_out,
+                        "cmd": bond_cmd,
+                        "inputs": {
+                            "service": service,
+                            "resolved_service": resolved_service,
+                            "lookup_note": lookup_note,
+                            "bond": bond,
+                            "keyring_backend": keyring_backend,
+                            "fees": fees,
+                        },
+                        "pubkey": {"raw": raw_pubkey, "bech32": bech32_pubkey},
+                        "user": user,
+                    }
+                ), 500
+
+            # Give the bond a moment to settle before mod-provider
+            time.sleep(6)
+
+        # Fetch account sequence to avoid mismatch (with retries to catch fresh state)
+        min_expected_seq = None
+        if not skip_bond and initial_seq_val is not None:
+            min_expected_seq = initial_seq_val + 1
+        sequence_arg: list[str] = fetch_sequence(bech32_pubkey, min_expected=min_expected_seq, attempts=5, delay=1.0)
+
+        mod_cmd_base = [
             "arkeod",
             "--home",
             ARKEOD_HOME,
             "tx",
             "arkeo",
-            "bond-provider",
+            "mod-provider",
             bech32_pubkey,
             resolved_service,
-            bond,
+            sentinel_uri,
+            metadata_nonce,
+            status,
+            min_contract_dur,
+            max_contract_dur,
+            subscription_rates,
+            pay_as_you_go_rates,
+            settlement_dur,
             *NODE_ARGS,
             *CHAIN_ARGS,
             "--from",
@@ -3156,161 +3608,96 @@ def bond_and_mod_provider():
             keyring_backend,
             "-y",
         ]
-        bond_code, bond_out = run_list(bond_cmd)
-        bond_txhash = _log_tx_result(f"bond-mod-provider bond service={resolved_service}", bond_code, bond_out)
-        _log_tx_height_async("bond-mod-provider bond", bond_txhash)
-        if bond_code != 0:
+
+        def run_mod_with_sequence(seq_arg: list[str]):
+            cmd = mod_cmd_base.copy()
+            # insert sequence args just before the --from flag
+            try:
+                insert_at = cmd.index("--from")
+            except ValueError:
+                insert_at = len(cmd)
+            cmd[insert_at:insert_at] = seq_arg
+            return cmd, *run_list(cmd)
+
+        app.logger.info("bond-mod-provider mod sequence arg=%s", sequence_arg)
+        mod_cmd, mod_code, mod_out = run_mod_with_sequence(sequence_arg)
+        app.logger.info("bond-mod-provider mod cmd=%s", mod_cmd)
+        mod_txhash = _log_tx_result(f"bond-mod-provider mod service={resolved_service}", mod_code, mod_out)
+        _log_tx_height_async("bond-mod-provider mod", mod_txhash)
+
+        # Retry once on account-sequence mismatch by refetching or using the expected sequence
+        if "account sequence mismatch" in str(mod_out):
+            time.sleep(1)
+            retry_seq: list[str] = []
+            # First, try to parse the expected sequence from the error text
+            m = re.search(r"expected\s+(\d+)", str(mod_out))
+            if m:
+                retry_seq = ["--sequence", m.group(1)]
+            # If not found, re-query the account for the latest sequence
+            if not retry_seq:
+                for _ in range(2):
+                    try:
+                        acct_cmd = ["arkeod", "--home", ARKEOD_HOME, "query", "auth", "account", bech32_pubkey, "-o", "json"]
+                        if ARKEOD_NODE:
+                            acct_cmd.extend(["--node", ARKEOD_NODE])
+                        code, acct_out = run_list(acct_cmd)
+                        if code == 0:
+                            acct = json.loads(acct_out)
+                            seq_val = None
+                            if isinstance(acct, dict):
+                                account_info = acct.get("account") or acct.get("result") or {}
+                                if isinstance(account_info, dict):
+                                    val = account_info.get("value") or account_info
+                                    if isinstance(val, dict):
+                                        seq_val = val.get("sequence")
+                            if seq_val is not None:
+                                retry_seq = ["--sequence", str(seq_val)]
+                                break
+                    except Exception:
+                        pass
+                    time.sleep(1)
+            mod_cmd, mod_code, mod_out = run_mod_with_sequence(retry_seq)
+            app.logger.info("bond-mod-provider retry mod with sequence=%s code=%s", retry_seq, mod_code)
+            mod_txhash = _log_tx_result(f"bond-mod-provider mod-retry service={resolved_service}", mod_code, mod_out)
+            _log_tx_height_async("bond-mod-provider mod-retry", mod_txhash)
+
+        if mod_code != 0:
             _emit_provider_service_failed(
-                "bond",
+                "mod",
                 service,
                 resolved_service,
-                bond_out,
-                exit_code=bond_code,
-                txhash=bond_txhash,
+                mod_out,
+                exit_code=mod_code,
+                txhash=mod_txhash,
                 extra={"bond": bond},
             )
             return jsonify(
                 {
-                    "error": "failed to bond provider",
-                    "detail": bond_out,
-                    "cmd": bond_cmd,
+                    "error": "failed to mod provider",
+                    "detail": mod_out,
+                    "cmd": mod_cmd,
                     "inputs": {
                         "service": service,
                         "resolved_service": resolved_service,
-                        "lookup_note": lookup_note,
+                        "sentinel_uri": sentinel_uri,
+                        "metadata_nonce": metadata_nonce,
+                        "status": status,
+                        "min_contract_dur": min_contract_dur,
+                        "max_contract_dur": max_contract_dur,
+                        "subscription_rates": subscription_rates,
+                        "pay_as_you_go_rates": pay_as_you_go_rates,
+                        "settlement_dur": settlement_dur,
                         "bond": bond,
                         "keyring_backend": keyring_backend,
                         "fees": fees,
                     },
                     "pubkey": {"raw": raw_pubkey, "bech32": bech32_pubkey},
                     "user": user,
+                    "bond_tx": {"exit_code": bond_code, "output": bond_out},
                 }
             ), 500
-
-        # Give the bond a moment to settle before mod-provider
-        time.sleep(6)
-
-    # Fetch account sequence to avoid mismatch (with retries to catch fresh state)
-    min_expected_seq = None
-    if not skip_bond and initial_seq_val is not None:
-        min_expected_seq = initial_seq_val + 1
-    sequence_arg: list[str] = fetch_sequence(bech32_pubkey, min_expected=min_expected_seq, attempts=5, delay=1.0)
-
-    mod_cmd_base = [
-        "arkeod",
-        "--home",
-        ARKEOD_HOME,
-        "tx",
-        "arkeo",
-        "mod-provider",
-        bech32_pubkey,
-        resolved_service,
-        sentinel_uri,
-        metadata_nonce,
-        status,
-        min_contract_dur,
-        max_contract_dur,
-        subscription_rates,
-        pay_as_you_go_rates,
-        settlement_dur,
-        *NODE_ARGS,
-        *CHAIN_ARGS,
-        "--from",
-        user,
-        "--fees",
-        fees,
-        "--keyring-backend",
-        keyring_backend,
-        "-y",
-    ]
-
-    def run_mod_with_sequence(seq_arg: list[str]):
-        cmd = mod_cmd_base.copy()
-        # insert sequence args just before the --from flag
-        try:
-            insert_at = cmd.index("--from")
-        except ValueError:
-            insert_at = len(cmd)
-        cmd[insert_at:insert_at] = seq_arg
-        return cmd, *run_list(cmd)
-
-    app.logger.info("bond-mod-provider mod sequence arg=%s", sequence_arg)
-    mod_cmd, mod_code, mod_out = run_mod_with_sequence(sequence_arg)
-    app.logger.info("bond-mod-provider mod cmd=%s", mod_cmd)
-    mod_txhash = _log_tx_result(f"bond-mod-provider mod service={resolved_service}", mod_code, mod_out)
-    _log_tx_height_async("bond-mod-provider mod", mod_txhash)
-
-    # Retry once on account-sequence mismatch by refetching or using the expected sequence
-    if "account sequence mismatch" in str(mod_out):
-        time.sleep(1)
-        retry_seq: list[str] = []
-        # First, try to parse the expected sequence from the error text
-        m = re.search(r"expected\s+(\d+)", str(mod_out))
-        if m:
-            retry_seq = ["--sequence", m.group(1)]
-        # If not found, re-query the account for the latest sequence
-        if not retry_seq:
-            for _ in range(2):
-                try:
-                    acct_cmd = ["arkeod", "--home", ARKEOD_HOME, "query", "auth", "account", bech32_pubkey, "-o", "json"]
-                    if ARKEOD_NODE:
-                        acct_cmd.extend(["--node", ARKEOD_NODE])
-                    code, acct_out = run_list(acct_cmd)
-                    if code == 0:
-                        acct = json.loads(acct_out)
-                        seq_val = None
-                        if isinstance(acct, dict):
-                            account_info = acct.get("account") or acct.get("result") or {}
-                            if isinstance(account_info, dict):
-                                val = account_info.get("value") or account_info
-                                if isinstance(val, dict):
-                                    seq_val = val.get("sequence")
-                        if seq_val is not None:
-                            retry_seq = ["--sequence", str(seq_val)]
-                            break
-                except Exception:
-                    pass
-                time.sleep(1)
-        mod_cmd, mod_code, mod_out = run_mod_with_sequence(retry_seq)
-        app.logger.info("bond-mod-provider retry mod with sequence=%s code=%s", retry_seq, mod_code)
-        mod_txhash = _log_tx_result(f"bond-mod-provider mod-retry service={resolved_service}", mod_code, mod_out)
-        _log_tx_height_async("bond-mod-provider mod-retry", mod_txhash)
-
-    if mod_code != 0:
-        _emit_provider_service_failed(
-            "mod",
-            service,
-            resolved_service,
-            mod_out,
-            exit_code=mod_code,
-            txhash=mod_txhash,
-            extra={"bond": bond},
-        )
-        return jsonify(
-            {
-                "error": "failed to mod provider",
-                "detail": mod_out,
-                "cmd": mod_cmd,
-                "inputs": {
-                    "service": service,
-                    "resolved_service": resolved_service,
-                    "sentinel_uri": sentinel_uri,
-                    "metadata_nonce": metadata_nonce,
-                    "status": status,
-                    "min_contract_dur": min_contract_dur,
-                    "max_contract_dur": max_contract_dur,
-                    "subscription_rates": subscription_rates,
-                    "pay_as_you_go_rates": pay_as_you_go_rates,
-                    "settlement_dur": settlement_dur,
-                    "bond": bond,
-                    "keyring_backend": keyring_backend,
-                    "fees": fees,
-                },
-                "pubkey": {"raw": raw_pubkey, "bech32": bech32_pubkey},
-                "user": user,
-                "bond_tx": {"exit_code": bond_code, "output": bond_out},
-            }
-        ), 500
+    finally:
+        TX_LOCK.release()
 
     install_id = _telemetry_install_id()
     if install_id:
@@ -3617,6 +4004,7 @@ def provider_services():
                         "pay_as_you_go_rates": paygo_rate,
                         "settlement_dur": settle,
                         "bond": bond_val,
+                        "location": s.get("location") or p.get("location") or "",
                     }
                 )
         else:
@@ -3645,6 +4033,7 @@ def provider_services():
                     "pay_as_you_go_rates": paygo_rate,
                     "settlement_dur": settle,
                     "bond": bond_val,
+                    "location": p.get("location") or "",
                 }
             )
 
@@ -3746,10 +4135,12 @@ def _load_sentinel_config():
             raw = f.read()
         try:
             parsed = yaml.safe_load(raw)
-        except yaml.YAMLError:
+        except yaml.YAMLError as e:
+            app.logger.warning("_load_sentinel_config: failed to parse YAML: %s", e)
             parsed = None
         return parsed, raw
-    except OSError:
+    except OSError as e:
+        app.logger.warning("_load_sentinel_config: failed to read file: %s", e)
         return None, None
 
 
@@ -3768,20 +4159,19 @@ def _load_env_file(path: str) -> dict:
                 if (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"')):
                     v = v[1:-1]
                 data[k.strip()] = v
-    except OSError:
-        pass
+    except OSError as e:
+        app.logger.warning("_load_env_file failed for %s: %s", path, e)
     return data
 
 def _write_env_file(path: str, data: dict) -> None:
-    """Write env-style file from a dict."""
+    """Write env-style file from a dict (atomic write)."""
     if not path or not isinstance(data, dict):
         return
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            for k, v in data.items():
-                f.write(f"{k}={shlex.quote(str(v))}\n")
-    except OSError:
-        pass
+        lines = [f"{k}={shlex.quote(str(v))}\n" for k, v in data.items()]
+        _atomic_write(path, "".join(lines))
+    except OSError as e:
+        app.logger.error("_write_env_file failed for %s: %s", path, e)
 
 def _expand_tilde(val: str) -> str:
     """Expand leading tilde to $HOME."""
@@ -3806,21 +4196,168 @@ def _load_provider_settings_file() -> dict:
         try:
             with open(p, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except Exception as e:
+            app.logger.warning("_load_provider_settings_file failed for %s: %s", p, e)
             continue
     return {}
 
 
 def _write_provider_settings_file(data: dict) -> None:
-    """Persist provider settings JSON."""
+    """Persist provider settings JSON (atomic write)."""
     if not PROVIDER_SETTINGS_PATH or not isinstance(data, dict):
         return
     try:
-        os.makedirs(os.path.dirname(PROVIDER_SETTINGS_PATH), exist_ok=True)
-        with open(PROVIDER_SETTINGS_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-    except OSError:
-        pass
+        _atomic_write_json(PROVIDER_SETTINGS_PATH, data)
+    except OSError as e:
+        app.logger.error("_write_provider_settings_file failed: %s", e)
+
+
+# Provider settings validation constants
+_VALID_SETTINGS_KEYS = frozenset({
+    "KEY_NAME", "KEY_KEYRING_BACKEND", "KEY_MNEMONIC", "CHAIN_ID",
+    "ARKEOD_HOME", "ARKEOD_NODE", "PROVIDER_HUB_URI", "SENTINEL_NODE",
+    "SENTINEL_PORT", "ADMIN_PORT", "ADMIN_API_PORT", "OSMOSIS_RPC",
+    "OSMOSIS_USDC_DENOMS", "USDC_OSMO_DENOM", "ARKEO_OSMO_DENOM",
+    "MIN_OSMO_GAS", "DEFAULT_SLIPPAGE_BPS", "ARRIVAL_TOLERANCE_BPS",
+    "WALLET_SYNC_INTERVAL",
+})
+
+_PORT_SETTINGS = frozenset({"SENTINEL_PORT", "ADMIN_PORT", "ADMIN_API_PORT"})
+_NUMERIC_SETTINGS = frozenset({"MIN_OSMO_GAS", "DEFAULT_SLIPPAGE_BPS", "ARRIVAL_TOLERANCE_BPS", "WALLET_SYNC_INTERVAL"})
+_URL_SETTINGS = frozenset({"ARKEOD_NODE", "PROVIDER_HUB_URI", "SENTINEL_NODE", "OSMOSIS_RPC"})
+_PATH_SETTINGS = frozenset({"ARKEOD_HOME"})
+
+
+def _validate_provider_settings(data: dict) -> tuple[dict, list[str]]:
+    """Validate and sanitize provider settings before persisting.
+
+    Returns:
+        tuple of (sanitized_data, list of error messages)
+    """
+    if not isinstance(data, dict):
+        return {}, ["settings must be a dictionary"]
+
+    errors: list[str] = []
+    sanitized: dict = {}
+
+    for key, value in data.items():
+        # Skip unknown keys (don't persist them)
+        if key not in _VALID_SETTINGS_KEYS:
+            app.logger.warning("_validate_provider_settings: ignoring unknown key %s", key)
+            continue
+
+        # Handle OSMOSIS_USDC_DENOMS specially (can be list or comma-separated string)
+        if key == "OSMOSIS_USDC_DENOMS":
+            if isinstance(value, list):
+                # Validate all items are strings
+                if all(isinstance(v, str) for v in value):
+                    sanitized[key] = [v.strip() for v in value if v.strip()]
+                else:
+                    errors.append(f"{key}: all items must be strings")
+            elif isinstance(value, str):
+                sanitized[key] = [v.strip() for v in value.split(",") if v.strip()]
+            else:
+                errors.append(f"{key}: must be a list or comma-separated string")
+            continue
+
+        # All other values must be strings
+        if not isinstance(value, str):
+            errors.append(f"{key}: must be a string")
+            continue
+
+        value = value.strip()
+
+        # Validate port numbers
+        if key in _PORT_SETTINGS:
+            if value:
+                try:
+                    port = int(value)
+                    if not (1 <= port <= 65535):
+                        errors.append(f"{key}: port must be between 1 and 65535")
+                        continue
+                except ValueError:
+                    errors.append(f"{key}: must be a valid port number")
+                    continue
+            sanitized[key] = value
+            continue
+
+        # Validate numeric settings
+        if key in _NUMERIC_SETTINGS:
+            if value:
+                try:
+                    num = float(value)
+                    if num < 0:
+                        errors.append(f"{key}: must be non-negative")
+                        continue
+                except ValueError:
+                    errors.append(f"{key}: must be a valid number")
+                    continue
+            sanitized[key] = value
+            continue
+
+        # Validate URL settings (basic format check)
+        if key in _URL_SETTINGS:
+            if value:
+                # Allow tcp://, http://, https://, or bare host:port
+                if not re.match(r'^(tcp://|http://|https://)?[\w.\-]+(:\d+)?(/.*)?$', value):
+                    errors.append(f"{key}: invalid URL format")
+                    continue
+            sanitized[key] = value
+            continue
+
+        # Validate path settings (prevent directory traversal)
+        if key in _PATH_SETTINGS:
+            if value:
+                # Normalize and check for traversal attempts
+                normalized = os.path.normpath(value)
+                if ".." in normalized.split(os.sep):
+                    errors.append(f"{key}: directory traversal not allowed")
+                    continue
+                # Don't allow paths that escape common roots
+                if not (normalized.startswith("/") or normalized.startswith("~")):
+                    errors.append(f"{key}: must be an absolute path")
+                    continue
+            sanitized[key] = value
+            continue
+
+        # KEY_NAME: alphanumeric, underscore, hyphen only
+        if key == "KEY_NAME":
+            if value and not re.match(r'^[\w\-]+$', value):
+                errors.append(f"{key}: must contain only alphanumeric characters, underscores, and hyphens")
+                continue
+            sanitized[key] = value
+            continue
+
+        # KEY_KEYRING_BACKEND: limited set of valid values
+        if key == "KEY_KEYRING_BACKEND":
+            valid_backends = {"test", "file", "os", "kwallet", "pass"}
+            if value and value.lower() not in valid_backends:
+                errors.append(f"{key}: must be one of {sorted(valid_backends)}")
+                continue
+            sanitized[key] = value
+            continue
+
+        # CHAIN_ID: alphanumeric, hyphen, underscore
+        if key == "CHAIN_ID":
+            if value and not re.match(r'^[\w\-]+$', value):
+                errors.append(f"{key}: must contain only alphanumeric characters, underscores, and hyphens")
+                continue
+            sanitized[key] = value
+            continue
+
+        # KEY_MNEMONIC: just ensure it's a string (already checked above)
+        # IBC denoms: allow alphanumeric and slashes
+        if key in ("USDC_OSMO_DENOM", "ARKEO_OSMO_DENOM"):
+            if value and not re.match(r'^[\w/]+$', value):
+                errors.append(f"{key}: invalid denom format")
+                continue
+            sanitized[key] = value
+            continue
+
+        # Default: accept the string value
+        sanitized[key] = value
+
+    return sanitized, errors
 
 
 def _load_admin_password() -> str:
@@ -3830,20 +4367,20 @@ def _load_admin_password() -> str:
     try:
         with open(ADMIN_PASSWORD_PATH, "r", encoding="utf-8") as f:
             return f.read().strip()
-    except OSError:
+    except OSError as e:
+        app.logger.warning("_load_admin_password failed: %s", e)
         return ""
 
 
 def _write_admin_password(password: str) -> bool:
-    """Persist admin password; returns True on success."""
+    """Persist admin password (atomic write); returns True on success."""
     if not ADMIN_PASSWORD_PATH:
         return False
     try:
-        os.makedirs(os.path.dirname(ADMIN_PASSWORD_PATH), exist_ok=True)
-        with open(ADMIN_PASSWORD_PATH, "w", encoding="utf-8") as f:
-            f.write(password.strip())
+        _atomic_write(ADMIN_PASSWORD_PATH, password.strip())
         return True
-    except OSError:
+    except OSError as e:
+        app.logger.error("_write_admin_password failed: %s", e)
         return False
 
 
@@ -3855,7 +4392,8 @@ def _remove_admin_password() -> bool:
         if os.path.isfile(ADMIN_PASSWORD_PATH):
             os.remove(ADMIN_PASSWORD_PATH)
         return True
-    except OSError:
+    except OSError as e:
+        app.logger.error("_remove_admin_password failed: %s", e)
         return False
 
 
@@ -3864,6 +4402,7 @@ def _is_auth_required() -> bool:
 
 
 def _purge_sessions() -> None:
+    """Remove expired sessions. Caller must hold SESSIONS_LOCK."""
     now = time.time()
     expired = [tok for tok, exp in ADMIN_SESSIONS.items() if exp <= now]
     for tok in expired:
@@ -3871,23 +4410,25 @@ def _purge_sessions() -> None:
 
 
 def _generate_session_token(ttl_seconds: int = 3600) -> str:
-    _purge_sessions()
     token = secrets.token_hex(32)
-    ADMIN_SESSIONS[token] = time.time() + ttl_seconds
+    with SESSIONS_LOCK:
+        _purge_sessions()
+        ADMIN_SESSIONS[token] = time.time() + ttl_seconds
     return token
 
 
 def _validate_session(token: str | None) -> bool:
     if not token:
         return False
-    _purge_sessions()
-    exp = ADMIN_SESSIONS.get(token)
-    if not exp:
-        return False
-    if exp <= time.time():
-        ADMIN_SESSIONS.pop(token, None)
-        return False
-    return True
+    with SESSIONS_LOCK:
+        _purge_sessions()
+        exp = ADMIN_SESSIONS.get(token)
+        if not exp:
+            return False
+        if exp <= time.time():
+            ADMIN_SESSIONS.pop(token, None)
+            return False
+        return True
 
 
 def _origin_allowed(origin: str | None) -> bool:
@@ -3998,58 +4539,82 @@ def _merge_provider_settings(overrides: dict | None = None) -> dict:
 
 
 def _apply_provider_settings(settings: dict) -> None:
-    """Apply provider settings to globals and os.environ for runtime use."""
+    """Apply provider settings to globals and os.environ for runtime use.
+
+    Thread-safe: acquires PROVIDER_SETTINGS_LOCK during modifications.
+    """
     global KEY_NAME, KEYRING, ARKEOD_HOME, ARKEOD_NODE, CHAIN_ID, NODE_ARGS, CHAIN_ARGS, OSMOSIS_RPC, OSMOSIS_USDC_DENOMS, MIN_OSMO_GAS, DEFAULT_SLIPPAGE_BPS, OSMO_TO_ARKEO_CHANNEL, ARKEO_TO_OSMO_CHANNEL
     if not isinstance(settings, dict):
         return
-    KEY_NAME = settings.get("KEY_NAME", KEY_NAME)
-    KEYRING = settings.get("KEY_KEYRING_BACKEND", KEYRING)
-    ARKEOD_HOME = _expand_tilde(settings.get("ARKEOD_HOME") or ARKEOD_HOME)
-    node_val = settings.get("ARKEOD_NODE") or ARKEOD_NODE
-    ARKEOD_NODE = _ensure_rpc_port(_strip_quotes(node_val), default_port="26657")
-    CHAIN_ID = _strip_quotes(settings.get("CHAIN_ID") or CHAIN_ID)
-    NODE_ARGS = ["--node", ARKEOD_NODE] if ARKEOD_NODE else []
-    CHAIN_ARGS = ["--chain-id", CHAIN_ID] if CHAIN_ID else []
-    try:
-        denoms = settings.get("OSMOSIS_USDC_DENOMS") or []
-        if isinstance(denoms, str):
-            denoms = [d.strip() for d in denoms.split(",") if d.strip()]
-        if not isinstance(denoms, list):
-            denoms = []
-        if not denoms:
-            denoms = DEFAULT_OSMOSIS_USDC_DENOMS.copy()
-        OSMOSIS_USDC_DENOMS = denoms
-    except Exception:
-        OSMOSIS_USDC_DENOMS = DEFAULT_OSMOSIS_USDC_DENOMS.copy()
-    OSMOSIS_RPC = _ensure_rpc_port(_strip_quotes(settings.get("OSMOSIS_RPC") or OSMOSIS_RPC or ""), default_port="26657")
-    OSMO_TO_ARKEO_CHANNEL = "channel-103074"
-    ARKEO_TO_OSMO_CHANNEL = "channel-1"
+    with PROVIDER_SETTINGS_LOCK:
+        KEY_NAME = settings.get("KEY_NAME", KEY_NAME)
+        KEYRING = settings.get("KEY_KEYRING_BACKEND", KEYRING)
+        ARKEOD_HOME = _expand_tilde(settings.get("ARKEOD_HOME") or ARKEOD_HOME)
+        node_val = settings.get("ARKEOD_NODE") or ARKEOD_NODE
+        ARKEOD_NODE = _ensure_rpc_port(_strip_quotes(node_val), default_port="26657")
+        CHAIN_ID = _strip_quotes(settings.get("CHAIN_ID") or CHAIN_ID)
+        NODE_ARGS = ["--node", ARKEOD_NODE] if ARKEOD_NODE else []
+        CHAIN_ARGS = ["--chain-id", CHAIN_ID] if CHAIN_ID else []
+        try:
+            denoms = settings.get("OSMOSIS_USDC_DENOMS") or []
+            if isinstance(denoms, str):
+                denoms = [d.strip() for d in denoms.split(",") if d.strip()]
+            if not isinstance(denoms, list):
+                denoms = []
+            if not denoms:
+                denoms = DEFAULT_OSMOSIS_USDC_DENOMS.copy()
+            OSMOSIS_USDC_DENOMS = denoms
+        except Exception:
+            OSMOSIS_USDC_DENOMS = DEFAULT_OSMOSIS_USDC_DENOMS.copy()
+        OSMOSIS_RPC = _ensure_rpc_port(_strip_quotes(settings.get("OSMOSIS_RPC") or OSMOSIS_RPC or ""), default_port="26657")
+        OSMO_TO_ARKEO_CHANNEL = "channel-103074"
+        ARKEO_TO_OSMO_CHANNEL = "channel-1"
 
-    env_overrides = {
-        "KEY_NAME": KEY_NAME,
-        "KEY_KEYRING_BACKEND": KEYRING,
-        "CHAIN_ID": CHAIN_ID,
-        "ARKEOD_HOME": ARKEOD_HOME,
-        "ARKEOD_NODE": ARKEOD_NODE,
-        "PROVIDER_HUB_URI": settings.get("PROVIDER_HUB_URI", ""),
-        "SENTINEL_NODE": settings.get("SENTINEL_NODE", ""),
-        "SENTINEL_PORT": settings.get("SENTINEL_PORT", ""),
-        "ADMIN_PORT": settings.get("ADMIN_PORT", ""),
-        "ADMIN_API_PORT": settings.get("ADMIN_API_PORT", ""),
-        "KEY_MNEMONIC": settings.get("KEY_MNEMONIC", ""),
-        "OSMOSIS_RPC": settings.get("OSMOSIS_RPC", ""),
-        "OSMOSIS_USDC_DENOMS": ",".join(OSMOSIS_USDC_DENOMS) if OSMOSIS_USDC_DENOMS else "",
-        "USDC_OSMO_DENOM": settings.get("USDC_OSMO_DENOM", ""),
-        "ARKEO_OSMO_DENOM": settings.get("ARKEO_OSMO_DENOM", ""),
-        "MIN_OSMO_GAS": MIN_OSMO_GAS,
-        "DEFAULT_SLIPPAGE_BPS": DEFAULT_SLIPPAGE_BPS,
-        "ARRIVAL_TOLERANCE_BPS": ARRIVAL_TOLERANCE_BPS,
-        "WALLET_SYNC_INTERVAL": settings.get("WALLET_SYNC_INTERVAL", ""),
-    }
-    for k, v in env_overrides.items():
-        if v is None:
-            continue
-        os.environ[k] = str(v)
+        env_overrides = {
+            "KEY_NAME": KEY_NAME,
+            "KEY_KEYRING_BACKEND": KEYRING,
+            "CHAIN_ID": CHAIN_ID,
+            "ARKEOD_HOME": ARKEOD_HOME,
+            "ARKEOD_NODE": ARKEOD_NODE,
+            "PROVIDER_HUB_URI": settings.get("PROVIDER_HUB_URI", ""),
+            "SENTINEL_NODE": settings.get("SENTINEL_NODE", ""),
+            "SENTINEL_PORT": settings.get("SENTINEL_PORT", ""),
+            "ADMIN_PORT": settings.get("ADMIN_PORT", ""),
+            "ADMIN_API_PORT": settings.get("ADMIN_API_PORT", ""),
+            "KEY_MNEMONIC": settings.get("KEY_MNEMONIC", ""),
+            "OSMOSIS_RPC": settings.get("OSMOSIS_RPC", ""),
+            "OSMOSIS_USDC_DENOMS": ",".join(OSMOSIS_USDC_DENOMS) if OSMOSIS_USDC_DENOMS else "",
+            "USDC_OSMO_DENOM": settings.get("USDC_OSMO_DENOM", ""),
+            "ARKEO_OSMO_DENOM": settings.get("ARKEO_OSMO_DENOM", ""),
+            "MIN_OSMO_GAS": MIN_OSMO_GAS,
+            "DEFAULT_SLIPPAGE_BPS": DEFAULT_SLIPPAGE_BPS,
+            "ARRIVAL_TOLERANCE_BPS": ARRIVAL_TOLERANCE_BPS,
+            "WALLET_SYNC_INTERVAL": settings.get("WALLET_SYNC_INTERVAL", ""),
+        }
+        for k, v in env_overrides.items():
+            if v is None:
+                continue
+            os.environ[k] = str(v)
+
+
+def _get_provider_settings_snapshot() -> dict:
+    """Return a thread-safe snapshot of current provider settings globals."""
+    with PROVIDER_SETTINGS_LOCK:
+        return {
+            "KEY_NAME": KEY_NAME,
+            "KEYRING": KEYRING,
+            "ARKEOD_HOME": ARKEOD_HOME,
+            "ARKEOD_NODE": ARKEOD_NODE,
+            "CHAIN_ID": CHAIN_ID,
+            "NODE_ARGS": NODE_ARGS.copy() if NODE_ARGS else [],
+            "CHAIN_ARGS": CHAIN_ARGS.copy() if CHAIN_ARGS else [],
+            "OSMOSIS_RPC": OSMOSIS_RPC,
+            "OSMOSIS_USDC_DENOMS": OSMOSIS_USDC_DENOMS.copy() if OSMOSIS_USDC_DENOMS else [],
+            "MIN_OSMO_GAS": MIN_OSMO_GAS,
+            "DEFAULT_SLIPPAGE_BPS": DEFAULT_SLIPPAGE_BPS,
+            "OSMO_TO_ARKEO_CHANNEL": OSMO_TO_ARKEO_CHANNEL,
+            "ARKEO_TO_OSMO_CHANNEL": ARKEO_TO_OSMO_CHANNEL,
+        }
 
 
 # Apply persisted provider settings at import time (if present)
@@ -4231,13 +4796,9 @@ def _write_export_bundle(
     if provider_form:
         bundle["provider_form"] = provider_form
     try:
-        export_dir = os.path.dirname(PROVIDER_EXPORT_PATH)
-        if export_dir and not os.path.isdir(export_dir):
-            os.makedirs(export_dir, exist_ok=True)
-        with open(PROVIDER_EXPORT_PATH, "w", encoding="utf-8") as f:
-            json.dump(bundle, f, indent=2)
-    except OSError:
-        pass
+        _atomic_write_json(PROVIDER_EXPORT_PATH, bundle)
+    except OSError as e:
+        app.logger.error("_write_export_bundle failed to write %s: %s", PROVIDER_EXPORT_PATH, e)
     return bundle
 
 
@@ -4246,10 +4807,14 @@ def _fetch_provider_services_internal(bech32_pubkey: str) -> list[dict]:
     # Try REST (if hub URI provided)
     rest_base = _normalize_base(os.getenv("PROVIDER_HUB_URI"))
     if rest_base:
-        try:
-            url = f"{rest_base}/arkeo/services"
+        url = f"{rest_base}/arkeo/services"
+
+        def _fetch_rest():
             with urllib.request.urlopen(url, timeout=6) as resp:
-                body = resp.read().decode("utf-8")
+                return resp.read().decode("utf-8")
+
+        try:
+            body = _retry_with_backoff(_fetch_rest, max_attempts=2, base_delay=1.0)
             data = json.loads(body)
             entries = data.get("services") or data.get("service") or []
             services: list[dict] = []
@@ -4272,8 +4837,8 @@ def _fetch_provider_services_internal(bech32_pubkey: str) -> list[dict]:
                 )
             if services:
                 return services
-        except Exception:
-            pass
+        except Exception as e:
+            app.logger.debug("_fetch_provider_services_internal REST failed: %s", e)
 
     # Fallback to CLI query
     payload = _fetch_provider_services_paginated()
@@ -4652,15 +5217,21 @@ def provider_settings_save():
     if not isinstance(data, dict):
         return jsonify({"error": "invalid payload"}), 400
 
+    # Validate input before processing
+    validated_data, validation_errors = _validate_provider_settings(data)
+    if validation_errors:
+        app.logger.warning("provider-settings-save validation failed: %s", validation_errors)
+        return jsonify({"error": "validation failed", "details": validation_errors}), 400
+
     app.logger.info(
         "provider-settings-save start id=%s keys=%s mnemonic_provided=%s",
         req_id,
-        sorted(list(data.keys())),
-        bool((data.get("KEY_MNEMONIC") or data.get("mnemonic") or "").strip()),
+        sorted(list(validated_data.keys())),
+        bool((validated_data.get("KEY_MNEMONIC") or validated_data.get("mnemonic") or "").strip()),
     )
     current_mnemonic, mnemonic_source = _read_hotwallet_mnemonic()
-    merged = _merge_provider_settings(data)
-    provided_mnemonic = (data.get("KEY_MNEMONIC") or data.get("mnemonic") or "").strip()
+    merged = _merge_provider_settings(validated_data)
+    provided_mnemonic = (validated_data.get("KEY_MNEMONIC") or validated_data.get("mnemonic") or "").strip()
     target_mnemonic = (provided_mnemonic or current_mnemonic or "").strip()
     mnemonic_changed = bool(provided_mnemonic) and provided_mnemonic != current_mnemonic
     rotate = False
@@ -4828,7 +5399,8 @@ def admin_password_set():
             return jsonify({"error": "unauthorized"}), 401
     if not password:
         ok = _remove_admin_password()
-        ADMIN_SESSIONS.clear()
+        with SESSIONS_LOCK:
+            ADMIN_SESSIONS.clear()
         return jsonify({"status": "disabled", "enabled": False, "ok": ok, "path": ADMIN_PASSWORD_PATH})
     ok = _write_admin_password(password)
     if not ok:
@@ -4878,7 +5450,8 @@ def admin_login():
 def admin_logout():
     token = request.cookies.get(ADMIN_SESSION_NAME)
     if token:
-        ADMIN_SESSIONS.pop(token, None)
+        with SESSIONS_LOCK:
+            ADMIN_SESSIONS.pop(token, None)
     resp = jsonify({"ok": True})
     resp.set_cookie(ADMIN_SESSION_NAME, "", expires=0, path="/")
     return resp
@@ -4966,7 +5539,8 @@ def import_provider_bundle():
     if sentinel_cfg_raw:
         try:
             parsed_cfg = yaml.safe_load(sentinel_cfg_raw) or {}
-        except Exception:
+        except Exception as e:
+            app.logger.warning("import_provider_bundle: failed to parse sentinel_config_raw: %s", e)
             parsed_cfg = None
     elif sentinel_cfg_obj:
         parsed_cfg = sentinel_cfg_obj
@@ -4974,7 +5548,8 @@ def import_provider_bundle():
     bech32_pubkey = ""
     try:
         _, bech32_pubkey, _ = derive_pubkeys(KEY_NAME, KEYRING)
-    except Exception:
+    except Exception as e:
+        app.logger.warning("import_provider_bundle: failed to derive pubkeys: %s", e)
         bech32_pubkey = ""
 
     if parsed_cfg is not None and isinstance(parsed_cfg, dict):
@@ -4984,7 +5559,8 @@ def import_provider_bundle():
         skipped_services = skipped
         try:
             raw_cfg = yaml.safe_dump(parsed_cfg, sort_keys=False)
-        except Exception:
+        except Exception as e:
+            app.logger.warning("import_provider_bundle: failed to dump filtered config: %s", e)
             raw_cfg = sentinel_cfg_raw
 
     if raw_cfg:
@@ -5011,7 +5587,11 @@ def import_provider_bundle():
 
     # Persist provider settings if provided (mnemonic rotation must be done separately)
     if isinstance(provider_settings, dict):
-        merged_provider_settings = _merge_provider_settings(provider_settings)
+        validated_ps, ps_errors = _validate_provider_settings(provider_settings)
+        if ps_errors:
+            app.logger.warning("provider_settings validation failed: %s", ps_errors)
+            return jsonify({"error": "provider_settings validation failed", "details": ps_errors}), 400
+        merged_provider_settings = _merge_provider_settings(validated_ps)
         _apply_provider_settings(merged_provider_settings)
         _write_provider_settings_file(merged_provider_settings)
 
@@ -5080,6 +5660,71 @@ def sentinel_sync():
             "sentinel_config_path": SENTINEL_CONFIG_PATH,
         }
     )
+
+
+@app.post("/api/test-endpoint")
+def test_endpoint():
+    """Test connectivity to an RPC endpoint with configurable method, content-type, and payload."""
+    try:
+        import requests as req_lib
+
+        data = request.get_json() or {}
+        url = (data.get("url") or "").strip()
+        method = (data.get("method") or "POST").upper()
+        content_type = data.get("content_type") or ""
+        payload = data.get("payload") or ""
+        rpc_user = data.get("rpc_user") or ""
+        rpc_pass = data.get("rpc_pass") or ""
+
+        if not url:
+            return jsonify({"success": False, "error": "URL is required"}), 400
+
+        # Build headers
+        headers = {}
+        if content_type:
+            headers["Content-Type"] = content_type
+
+        # Build auth if provided
+        auth = None
+        if rpc_user or rpc_pass:
+            auth = (rpc_user, rpc_pass)
+
+        timeout = 10
+        if method == "GET":
+            # For GET, payload is treated as path or full URL
+            if payload:
+                if payload.startswith("http://") or payload.startswith("https://"):
+                    target_url = payload
+                elif payload.startswith("/"):
+                    target_url = url.rstrip("/") + payload
+                else:
+                    target_url = url.rstrip("/") + "/" + payload
+            else:
+                target_url = url
+            resp = req_lib.get(target_url, headers=headers, auth=auth, timeout=timeout)
+        else:
+            # POST
+            body = payload.encode("utf-8") if payload else b""
+            resp = req_lib.post(url, headers=headers, data=body, auth=auth, timeout=timeout)
+
+        # Check response
+        if resp.status_code >= 200 and resp.status_code < 300:
+            return jsonify({
+                "success": True,
+                "status_code": resp.status_code,
+                "response_length": len(resp.content),
+                "response_body": resp.text[:5000] if resp.text else "",
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"HTTP {resp.status_code}",
+                "status_code": resp.status_code,
+                "response_body": resp.text[:5000] if resp.text else "",
+            })
+    except Exception as e:
+        app.logger.error("test-endpoint error: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)})
 
 
 @app.post("/api/sentinel-config")
@@ -5238,10 +5883,13 @@ def provider_claims():
         return seq, o
 
     def fetch_open_claims():
-        try:
+        def _fetch():
             with urllib.request.urlopen(f"{sentinel_api}/open-claims", timeout=10) as resp:
                 claims_raw = resp.read().decode("utf-8")
-                claims = json.loads(claims_raw)
+                return json.loads(claims_raw)
+
+        try:
+            claims = _retry_with_backoff(_fetch, max_attempts=3, base_delay=1.0)
             return [c for c in claims if isinstance(c, dict) and (not c.get("claimed"))], None
         except Exception as e:
             app.logger.error("provider-claims: failed to fetch open-claims: %s", e)
@@ -5413,7 +6061,7 @@ def provider_claims():
             code_val = tx_json.get("code") if isinstance(tx_json, dict) else None
             effective_code = deliver_code if deliver_code is not None else code_val
             if effective_code == 0:
-                try:
+                def _mark_claimed():
                     req = urllib.request.Request(
                         f"{sentinel_api}/mark-claimed",
                         method="POST",
@@ -5421,8 +6069,11 @@ def provider_claims():
                         headers={"Content-Type": "application/json"},
                     )
                     urllib.request.urlopen(req, timeout=5).read()
-                except Exception:
-                    pass
+
+                try:
+                    _retry_with_backoff(_mark_claimed, max_attempts=2, base_delay=0.5)
+                except Exception as e:
+                    app.logger.warning("provider-claims: mark-claimed failed for contract %s: %s", contract_id, e)
 
             results.append({"claim": claim, "exit_code": exit_code, "tx": tx_json})
             processed_this_iter += 1
@@ -5435,8 +6086,8 @@ def provider_claims():
     try:
         now_ts = datetime.datetime.utcnow().isoformat() + "Z"
         write_heartbeat(CLAIMS_HEARTBEAT_PATH, {"last_claims_run": now_ts, "claims_processed": total_processed})
-    except Exception:
-        pass
+    except Exception as e:
+        app.logger.debug("provider-claims: failed to write heartbeat: %s", e)
 
     return jsonify({"status": "ok", "iterations": iterations, "claims_processed": total_processed, "results": results})
 
@@ -5461,7 +6112,9 @@ def claims_ledger():
         return jsonify({"error": "failed to get provider pubkey", "detail": out}), 500
     raw_pub = ""
     try:
-        raw_pub = json.loads(out).get("key") or ""
+        parsed = json.loads(out)
+        if isinstance(parsed, dict):
+            raw_pub = parsed.get("key") or ""
     except Exception:
         pass
     bech_pub = ""
@@ -5628,7 +6281,9 @@ def provider_contracts_summary():
             return empty_summary("", "failed to get provider pubkey", out)
         raw_pub = ""
         try:
-            raw_pub = json.loads(out).get("key") or ""
+            parsed = json.loads(out)
+            if isinstance(parsed, dict):
+                raw_pub = parsed.get("key") or ""
         except Exception:
             raw_pub = ""
         bech_pub = ""
@@ -5884,7 +6539,9 @@ def provider_totals():
         return empty_totals("", "failed to get provider pubkey", out), 200
     raw_pub = ""
     try:
-        raw_pub = json.loads(out).get("key") or ""
+        parsed = json.loads(out)
+        if isinstance(parsed, dict):
+            raw_pub = parsed.get("key") or ""
     except Exception:
         pass
     bech_pub = ""

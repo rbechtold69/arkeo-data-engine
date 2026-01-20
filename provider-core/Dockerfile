@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y git make build-essential curl jq && rm 
 WORKDIR /src
 
 # Clone latest Arkeo source (public repo)
-ARG ARKEO_REF=Upgrade-for-v1.0.17
+ARG ARKEO_REF=master
 RUN git clone --branch "${ARKEO_REF}" --depth 1 --single-branch https://github.com/arkeonetwork/arkeo.git
 
 WORKDIR /src/arkeo
@@ -47,6 +47,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-venv \
     python3-flask \
+    python3-requests \
     jq \
     python3-yaml \
     && rm -rf /var/lib/apt/lists/*

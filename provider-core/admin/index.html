@@ -318,7 +318,7 @@
                         <h3>Provider Services</h3>
                         <p>Add and modify provider services for the marketplace.</p>
                         <p class="muted">* Delayed updates as the refresh pulls from the blockchain.</p>
-                        <a class="btn" href="provider.html">Open Provider Services Form</a>
+                        <a class="btn" href="#" onclick="addNewService(); return false;">Add New Service</a>
                     </div>
                 </div>
                 <div class="section">
@@ -543,6 +543,320 @@
     </div>
 </div>
 
+<!-- Edit Service Wizard Modal -->
+<div id="editServiceModal" class="overlay hidden">
+    <div class="overlay-card modal-card wizard-modal">
+        <div class="wizard-header-fixed">
+            <h2 class="wizard-h2">Provider Service: <span id="wizardModeType">Edit</span></h2>
+            <div id="wizardServiceName" class="wizard-header-service"></div>
+            <div class="wizard-steps">
+                <span class="wizard-step active" data-step="1">Step 1: Service Endpoint</span>
+                <span class="wizard-step" data-step="2">Step 2: Bond Contract</span>
+                <span class="wizard-step" data-step="3">Step 3: Mod Contract</span>
+                <span class="wizard-step" data-step="4">Step 4: Provider Sentinel</span>
+                <span class="wizard-step" data-step="5">Step 5: Verify</span>
+            </div>
+        </div>
+
+        <!-- Step 1: Service Endpoint -->
+        <div id="wizardStep1" class="wizard-content">
+            <div class="wizard-step-title">Service Endpoint Configuration</div>
+            <div class="wizard-step-desc">The Arkeo Provider Sentinel will relay requests for this service to your own RPC node.</div>
+            <table>
+                <tr>
+                    <td class="label">
+                        RPC URL
+                        <div class="hint">Endpoint for this service (e.g., http://localhost:8332).</div>
+                    </td>
+                    <td class="value">
+                        <input type="text" id="wizardRpcUrl" placeholder="http://localhost:8332" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        RPC User
+                        <div class="hint">Optional RPC username.</div>
+                    </td>
+                    <td class="value">
+                        <input type="text" id="wizardRpcUser" placeholder="rpc-username" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        RPC Password
+                        <div class="hint">Optional RPC password.</div>
+                    </td>
+                    <td class="value">
+                        <input type="text" id="wizardRpcPass" placeholder="rpc-password" />
+                    </td>
+                </tr>
+            </table>
+
+            <div class="wizard-section-title">Polling Options (Health Check)</div>
+            <div class="wizard-section-desc">Configure how the sentinel will poll this endpoint to verify it's online.</div>
+            <table>
+                <tr>
+                    <td class="label">
+                        Service Preset
+                        <div class="hint">Auto-populate polling defaults for common service types.</div>
+                    </td>
+                    <td class="value">
+                        <select id="wizardPollingPreset" onchange="applyPollingPreset()">
+                            <option value="">-- Select preset --</option>
+                            <option value="evm">EVM (Ethereum, Arbitrum, Optimism, Base, Polygon, BSC)</option>
+                            <option value="cosmos">Cosmos / Arkeo / Gaia / Osmosis</option>
+                            <option value="rest">REST API (Cosmos LCD)</option>
+                            <option value="bitcoin">Bitcoin</option>
+                            <option value="polkadot">Polkadot</option>
+                            <option value="solana">Solana</option>
+                            <option value="sui">Sui</option>
+                            <option value="near">Near</option>
+                            <option value="fallback">Fallback (empty POST)</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        Method
+                        <div class="hint">HTTP method for polling requests.</div>
+                    </td>
+                    <td class="value">
+                        <select id="wizardPollingMethod">
+                            <option value="POST" selected>POST</option>
+                            <option value="GET">GET</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        Content-Type
+                        <div class="hint">Content-Type header for the request.</div>
+                    </td>
+                    <td class="value">
+                        <select id="wizardPollingContentType">
+                            <option value="">(no header)</option>
+                            <option value="application/json" selected>application/json</option>
+                            <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>
+                            <option value="text/plain">text/plain</option>
+                            <option value="application/octet-stream">application/octet-stream</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        Payload
+                        <div class="hint">Request body (POST) or path (GET). Empty sends to /.</div>
+                    </td>
+                    <td class="value">
+                        <textarea id="wizardPollingPayload" rows="3" placeholder='{"jsonrpc":"2.0","id":1,"method":"status","params":[]}'></textarea>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        Test Connection
+                        <div class="hint">Verify the endpoint is reachable with current settings.</div>
+                    </td>
+                    <td class="value">
+                        <button type="button" class="primary" id="wizardTestBtn" onclick="testEndpointConnection()">Test</button>
+                        <span id="wizardTestResult" class="test-result"></span>
+                    </td>
+                </tr>
+            </table>
+            <div class="wizard-step-status" id="wizardStatus1">
+                <span class="step-status-icon">○</span>
+                <span class="step-status-label">Enter RPC URL to continue</span>
+            </div>
+        </div>
+
+        <!-- Step 2: Bond Contract -->
+        <div id="wizardStep2" class="wizard-content hidden">
+            <div class="wizard-step-title">Bond Contract Configuration</div>
+            <div class="wizard-step-desc">Configure the bond amount for this provider service contract.</div>
+            <table>
+                <tr>
+                    <td class="label">
+                        Bond Amount
+                        <div class="hint">For edits, a minimum of 1uarkeo is required. Current bond: <span id="wizardCurrentBond">–</span></div>
+                    </td>
+                    <td class="value">
+                        <input type="number" id="wizardBondAmount" value="1" min="-1000000000" max="1000000000" step="1" />
+                    </td>
+                </tr>
+            </table>
+            <div class="wizard-step-status" id="wizardStatus2">
+                <span class="step-status-icon">○</span>
+                <span class="step-status-label">Enter bond amount to continue</span>
+            </div>
+        </div>
+
+        <!-- Step 3: Mod Contract -->
+        <div id="wizardStep3" class="wizard-content hidden">
+            <div class="wizard-step-title">Mod Contract Configuration</div>
+            <div class="wizard-step-desc">Configure the service parameters and pricing for your provider contract.</div>
+            <table>
+                <tr>
+                    <td class="label">
+                        Status
+                        <div class="hint">Choose Active or Inactive for this provider service.</div>
+                    </td>
+                    <td class="value">
+                        <select id="wizardServiceStatus">
+                            <option value="1" selected>Active</option>
+                            <option value="0">Inactive</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        Min Contract Duration
+                        <div class="hint">Minimum contract time in blocks (5-6 sec/block).</div>
+                    </td>
+                    <td class="value">
+                        <input type="number" id="wizardMinDur" value="5" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        Max Contract Duration
+                        <div class="hint">Maximum contract time in blocks (5-6 sec/block).</div>
+                    </td>
+                    <td class="value">
+                        <input type="number" id="wizardMaxDur" value="432000" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        Subscription Rate
+                        <div class="hint">Cost per subscription transaction.</div>
+                    </td>
+                    <td class="value">
+                        <input type="text" id="wizardSubRate" value="200uarkeo" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        Pay As You Go Rate
+                        <div class="hint">Cost per PAYG transaction.</div>
+                    </td>
+                    <td class="value">
+                        <input type="text" id="wizardPaygoRate" value="200uarkeo" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        Settlement Duration
+                        <div class="hint">Time to reconcile after contract closes, in blocks.</div>
+                    </td>
+                    <td class="value">
+                        <input type="number" id="wizardSettleDur" value="1000" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">
+                        Location
+                        <div class="hint">Select the region for this service.</div>
+                    </td>
+                    <td class="value">
+                        <select id="wizardLocation">
+                            <option value="">Select a region</option>
+                            <option>Africa</option>
+                            <option>Africa – Northern</option>
+                            <option>Africa – Eastern</option>
+                            <option>Africa – Middle</option>
+                            <option>Africa – Western</option>
+                            <option>Africa – Southern</option>
+                            <option>Americas</option>
+                            <option>Americas – Northern</option>
+                            <option>Americas – Caribbean</option>
+                            <option>Americas – Central</option>
+                            <option>Americas – South</option>
+                            <option>Asia</option>
+                            <option>Asia – Central</option>
+                            <option>Asia – Eastern</option>
+                            <option>Asia – Southeastern</option>
+                            <option>Asia – Southern</option>
+                            <option>Asia – Western</option>
+                            <option>Europe</option>
+                            <option>Europe – Northern</option>
+                            <option>Europe – Eastern</option>
+                            <option>Europe – Southern</option>
+                            <option>Europe – Western</option>
+                            <option>Oceania</option>
+                            <option>Oceania – Australia & New Zealand</option>
+                            <option>Oceania – Melanesia</option>
+                            <option>Oceania – Micronesia</option>
+                            <option>Oceania – Polynesia</option>
+                            <option>Antarctica</option>
+                        </select>
+                    </td>
+                </tr>
+            </table>
+            <div class="wizard-step-status" id="wizardStatus3">
+                <span class="step-status-icon">○</span>
+                <span class="step-status-label">Select a location to continue</span>
+            </div>
+        </div>
+
+        <!-- Step 4: Provider Sentinel -->
+        <div id="wizardStep4" class="wizard-content hidden">
+            <div class="wizard-step-title">Provider Sentinel Configuration</div>
+            <div class="wizard-step-desc">Update sentinel configuration and restart the service.</div>
+            <div class="wizard-verify-list">
+                <div class="verify-item" id="verifySentinelConfig">
+                    <span class="verify-icon">○</span>
+                    <span class="verify-label">Updating sentinel configuration...</span>
+                </div>
+                <div class="verify-item" id="verifySentinelRestart">
+                    <span class="verify-icon">○</span>
+                    <span class="verify-label">Restarting sentinel service...</span>
+                </div>
+                <div class="verify-item" id="verifySentinelSync">
+                    <span class="verify-icon">○</span>
+                    <span class="verify-label">Syncing sentinel with blockchain...</span>
+                </div>
+            </div>
+            <div class="wizard-step-status" id="wizardStatus4">
+                <span class="step-status-icon">○</span>
+                <span class="step-status-label">Click Next to update sentinel</span>
+            </div>
+        </div>
+
+        <!-- Step 5: Verify -->
+        <div id="wizardStep5" class="wizard-content hidden">
+            <div class="wizard-step-title">Verification Complete</div>
+            <div class="wizard-step-desc">Review the results of each step.</div>
+            <div class="wizard-verify-list">
+                <div class="verify-item" id="verifyStep1">
+                    <span class="verify-icon">○</span>
+                    <span class="verify-label">Service Endpoint configured</span>
+                </div>
+                <div class="verify-item" id="verifyStep2">
+                    <span class="verify-icon">○</span>
+                    <span class="verify-label">Bond Contract submitted</span>
+                </div>
+                <div class="verify-item" id="verifyStep3">
+                    <span class="verify-icon">○</span>
+                    <span class="verify-label">Mod Contract submitted</span>
+                </div>
+                <div class="verify-item" id="verifyStep4">
+                    <span class="verify-icon">○</span>
+                    <span class="verify-label">Provider Sentinel updated</span>
+                </div>
+            </div>
+            <div id="wizardVerifyLog" class="wizard-log hidden"></div>
+            <div id="wizardVerifyResult" class="wizard-result hidden"></div>
+        </div>
+
+        <div class="wizard-actions">
+            <button type="button" class="btn-ghost" id="wizardCancelBtn" onclick="closeEditWizard()">Cancel</button>
+            <div class="wizard-nav">
+                <button type="button" class="btn-ghost" id="wizardBackBtn" onclick="wizardBack()" style="display:none;">Back</button>
+                <button type="button" class="primary" id="wizardNextBtn" onclick="wizardNext()">Next</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     let DEFAULT_ADMIN_API_PORT = (() => {
         try {
@@ -716,6 +1030,7 @@ let lastContractsSummary = null;
 let lastSentinelConfig = null;
 let providerSentinelServices = [];
 let providerSentinelHostDisplay = "(unknown)";
+let providerExpectedSentinelUri = "";
 let lastBalance = null;
 let lastBlockHeight = null;
 let lastClaimsRun = null;
@@ -2226,11 +2541,13 @@ let earningsPendingAfterContracts = false;
             const sentinelServices = [];
             const cfg = lastSentinelConfig;
             let sentinelHostDisplay = "(unknown)";
+            let expectedSentinelUri = "";
             const envFile = (cfg && cfg.env_file) || {};
             const sentinelNodeVal = envFile.SENTINEL_NODE || "";
             const sentinelPortVal = envFile.SENTINEL_PORT || "3636";
             if (sentinelNodeVal) {
                 sentinelHostDisplay = `${String(sentinelNodeVal).replace(/\/+$/, "")}:${sentinelPortVal}`;
+                expectedSentinelUri = `${String(sentinelNodeVal).replace(/\/+$/, "")}:${sentinelPortVal}/metadata.json`;
             }
             if (cfg && cfg.config && Array.isArray(cfg.config.services)) {
                 cfg.config.services.forEach(ss => {
@@ -2245,6 +2562,7 @@ let earningsPendingAfterContracts = false;
 
             providerSentinelServices = sentinelServices;
             providerSentinelHostDisplay = sentinelHostDisplay;
+            providerExpectedSentinelUri = expectedSentinelUri;
             renderProviderServices();
             renderClaimTotals();
             updateDashboardMetrics();
@@ -2437,6 +2755,21 @@ function renderProviderServices() {
         const sentinelBadge = inSentinel
             ? '<span class="status-pill status-ok">In Sentinel</span>'
             : '<span class="status-pill status-err">Not in Sentinel</span>';
+
+        // Check for sentinel URI match/mismatch
+        let uriMatchBadge = "";
+        if (metadataUri && providerExpectedSentinelUri) {
+            // Normalize URIs for comparison (remove trailing slashes, handle http/https)
+            const normalizeUri = (uri) => String(uri).toLowerCase().replace(/\/+$/, "").replace(/^https?:\/\//, "");
+            const normalizedMeta = normalizeUri(metadataUri);
+            const normalizedExpected = normalizeUri(providerExpectedSentinelUri);
+            if (normalizedMeta === normalizedExpected) {
+                uriMatchBadge = '<span class="status-pill status-ok">Sentinel URI Match</span>';
+            } else {
+                uriMatchBadge = '<span class="status-pill status-err" title="On-chain sentinel URI does not match admin sentinel config">Sentinel URI Mismatch</span>';
+            }
+        }
+
         const subtitle = rawId ? `${resolvedName} (${rawId})` : resolvedName;
         return `
             <div class="service-row full-width service-row-padded">
@@ -2448,6 +2781,7 @@ function renderProviderServices() {
                     <div class="full-width mt-4">
                         <span class="status-pill ${statusClass}">${statusLabel}</span>
                         ${sentinelBadge}
+                        ${uriMatchBadge}
                     </div>
                 </div>
                 <div class="service-actions-row">
@@ -3429,15 +3763,721 @@ function renderProviderServices() {
         }
     }
 
-    function editService(idx) {
-        if (!providerServicesData || !providerServicesData[idx]) return;
-        try {
-            localStorage.setItem("providerServiceEdit", JSON.stringify(providerServicesData[idx]));
-        } catch (e) {
-            console.warn("Failed to cache service for edit", e);
-        }
+    // ========== Edit Service Wizard ==========
+    let wizardCurrentStep = 1;
+    let wizardServiceData = null;
+    let wizardServiceIndex = -1;
+    let wizardSentinelMatch = null;
+    let wizardStepResults = { step1: null, step2: null, step3: null, step4: null };
+
+    function addNewService() {
+        // Set add mode and redirect to provider.html
+        localStorage.setItem("editServiceData", JSON.stringify({
+            mode: "add",
+            serviceLookup: providerServiceLookup
+        }));
         window.location.href = "provider.html";
     }
+
+    function editService(idx) {
+        if (!providerServicesData || !providerServicesData[idx]) return;
+        const serviceData = providerServicesData[idx];
+
+        // Find matching sentinel service for RPC info
+        const rawId = serviceData.id ?? serviceData.service_id ?? serviceData.serviceID;
+        const rawName = serviceData.name || serviceData.service || serviceData.label || "";
+        const sentinelMatch = providerSentinelServices.find(ss => {
+            if (!ss) return false;
+            const idMatch = rawId && (ss.id === rawId || String(ss.id) === String(rawId));
+            const nameMatch = rawName && ss.name && String(ss.name) === String(rawName);
+            return idMatch || nameMatch;
+        });
+
+        // Store data in localStorage and redirect to provider_2.html
+        localStorage.setItem("editServiceData", JSON.stringify({
+            serviceData: serviceData,
+            sentinelMatch: sentinelMatch,
+            serviceLookup: providerServiceLookup
+        }));
+        window.location.href = "provider.html";
+    }
+
+    function openEditWizard() {
+        wizardCurrentStep = 1;
+        wizardStepResults = { step1: null, step2: null, step3: null, step4: null };
+        populateWizardFromService();
+        updateWizardStepDisplay();
+        validateCurrentStep();
+        resetVerifySteps();
+
+        const modal = document.getElementById("editServiceModal");
+        if (modal) modal.classList.remove("hidden");
+
+        // Add input listeners for validation
+        setupWizardValidationListeners();
+    }
+
+    function setupWizardValidationListeners() {
+        // Step 1 validation
+        const rpcUrl = document.getElementById("wizardRpcUrl");
+        if (rpcUrl) rpcUrl.addEventListener("input", validateCurrentStep);
+
+        // Step 2 validation
+        const bondAmount = document.getElementById("wizardBondAmount");
+        if (bondAmount) bondAmount.addEventListener("input", validateCurrentStep);
+
+        // Step 3 validation
+        const location = document.getElementById("wizardLocation");
+        if (location) location.addEventListener("change", validateCurrentStep);
+    }
+
+    function closeEditWizard() {
+        const modal = document.getElementById("editServiceModal");
+        if (modal) modal.classList.add("hidden");
+        wizardServiceData = null;
+        wizardServiceIndex = -1;
+        wizardSentinelMatch = null;
+
+        // Refresh services on close
+        refreshProviderServices();
+    }
+
+    function populateWizardFromService() {
+        if (!wizardServiceData) return;
+        const svc = wizardServiceData;
+
+        // Step 1: Service Endpoint Info (from sentinel match)
+        if (wizardSentinelMatch) {
+            document.getElementById("wizardRpcUrl").value = wizardSentinelMatch.rpc_url || "";
+            document.getElementById("wizardRpcUser").value = wizardSentinelMatch.rpc_user || "";
+            document.getElementById("wizardRpcPass").value = wizardSentinelMatch.rpc_pass || "";
+        } else {
+            document.getElementById("wizardRpcUrl").value = "";
+            document.getElementById("wizardRpcUser").value = "";
+            document.getElementById("wizardRpcPass").value = "";
+        }
+
+        // Step 2: Bond Info
+        const currentBond = svc.bond || "0";
+        document.getElementById("wizardCurrentBond").textContent = formatBondDisplay(currentBond);
+        document.getElementById("wizardBondAmount").value = "1";
+
+        // Step 3: Mod Info
+        const statusVal = svc.status;
+        const statusStr = statusVal === undefined ? "1" : String(statusVal).toLowerCase();
+        const isActive = statusStr === "1" || statusStr === "active" || statusStr === "online" || statusStr === "true";
+        document.getElementById("wizardServiceStatus").value = isActive ? "1" : "0";
+
+        document.getElementById("wizardMinDur").value = svc.min_contract_dur || "5";
+        document.getElementById("wizardMaxDur").value = svc.max_contract_dur || "432000";
+        document.getElementById("wizardSubRate").value = svc.subscription_rates || "200uarkeo";
+        document.getElementById("wizardPaygoRate").value = svc.pay_as_you_go_rates || "200uarkeo";
+        document.getElementById("wizardSettleDur").value = svc.settlement_dur || "1000";
+
+        // Location - try to match
+        const locSelect = document.getElementById("wizardLocation");
+        const svcLocation = svc.location || "";
+        if (svcLocation && locSelect) {
+            const exists = Array.from(locSelect.options).some(o => o.value === svcLocation);
+            if (exists) {
+                locSelect.value = svcLocation;
+            } else {
+                locSelect.selectedIndex = 0;
+            }
+        }
+
+        // Update wizard header with service info
+        const rawId = svc.id ?? svc.service_id ?? svc.serviceID;
+        const lookup = rawId ? providerServiceLookup[String(rawId)] : null;
+        const lookupDesc = lookup && typeof lookup === "object" ? lookup.description : "";
+        const lookupName = lookup && typeof lookup === "object" ? (lookup.name || "") : lookup;
+        const serviceName = svc.name || svc.service || svc.label || "";
+        const displayName = lookupDesc || lookupName || serviceName || "Unknown Service";
+
+        document.getElementById("wizardModeType").textContent = "Edit";
+        const serviceNameEl = document.getElementById("wizardServiceName");
+        if (serviceNameEl) {
+            const idDisplay = rawId ? ` (${rawId})` : "";
+            serviceNameEl.textContent = `${displayName}${idDisplay}`;
+        }
+
+        // Auto-detect and apply polling preset based on service name
+        const detectedPreset = detectPollingPreset(serviceName || displayName);
+        const presetSelect = document.getElementById("wizardPollingPreset");
+        if (presetSelect && detectedPreset) {
+            presetSelect.value = detectedPreset;
+            applyPollingPreset();
+        }
+    }
+
+    const POLLING_PRESETS = {
+        evm: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'
+        },
+        cosmos: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":1,"method":"status","params":[]}'
+        },
+        rest: {
+            method: "GET",
+            contentType: "application/json",
+            payload: "/cosmos/base/tendermint/v1beta1/node_info"
+        },
+        bitcoin: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"1.0","id":"curltext","method":"getblockcount","params":[]}'
+        },
+        polkadot: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":1,"method":"chain_getBlockHash","params":[]}'
+        },
+        solana: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":1,"method":"getSlot","params":[]}'
+        },
+        sui: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":1,"method":"sui_getLatestCheckpointSequenceNumber","params":[]}'
+        },
+        near: {
+            method: "POST",
+            contentType: "application/json",
+            payload: '{"jsonrpc":"2.0","id":"dontcare","method":"status","params":[]}'
+        },
+        fallback: {
+            method: "POST",
+            contentType: "application/json",
+            payload: ""
+        }
+    };
+
+    function detectPollingPreset(serviceName) {
+        if (!serviceName) return "fallback";
+        if (typeof serviceName !== "string") serviceName = String(serviceName);
+        const name = serviceName.toLowerCase();
+
+        // EVM family
+        if (/\b(eth|ethereum|evm|arbitrum|optimism|base|polygon|matic|bsc|binance|avalanche|avax|fantom|ftm)\b/.test(name)) {
+            return "evm";
+        }
+        // REST API
+        if (/\brest\b/.test(name)) {
+            return "rest";
+        }
+        // Cosmos family
+        if (/\b(cosmos|arkeo|gaia|osmosis|atom|tendermint)\b/.test(name)) {
+            return "cosmos";
+        }
+        // Bitcoin
+        if (/\b(btc|bitcoin)\b/.test(name)) {
+            return "bitcoin";
+        }
+        // Polkadot
+        if (/\b(polkadot|dot|kusama|ksm)\b/.test(name)) {
+            return "polkadot";
+        }
+        // Solana
+        if (/\b(sol|solana)\b/.test(name)) {
+            return "solana";
+        }
+        // Sui
+        if (/\bsui\b/.test(name)) {
+            return "sui";
+        }
+        // Near
+        if (/\bnear\b/.test(name)) {
+            return "near";
+        }
+
+        return "fallback";
+    }
+
+    function applyPollingPreset() {
+        const presetSelect = document.getElementById("wizardPollingPreset");
+        const preset = POLLING_PRESETS[presetSelect.value];
+        if (!preset) return;
+
+        document.getElementById("wizardPollingMethod").value = preset.method;
+        document.getElementById("wizardPollingContentType").value = preset.contentType;
+        document.getElementById("wizardPollingPayload").value = preset.payload;
+    }
+
+    async function testEndpointConnection() {
+        const rpcUrl = document.getElementById("wizardRpcUrl").value.trim();
+        const rpcUser = document.getElementById("wizardRpcUser").value.trim();
+        const rpcPass = document.getElementById("wizardRpcPass").value.trim();
+        const method = document.getElementById("wizardPollingMethod").value;
+        const contentType = document.getElementById("wizardPollingContentType").value;
+        const payload = document.getElementById("wizardPollingPayload").value;
+
+        const resultEl = document.getElementById("wizardTestResult");
+        const testBtn = document.getElementById("wizardTestBtn");
+
+        if (!rpcUrl) {
+            resultEl.textContent = "Enter RPC URL first";
+            resultEl.className = "test-result error";
+            return;
+        }
+
+        resultEl.textContent = "Testing...";
+        resultEl.className = "test-result pending";
+        testBtn.disabled = true;
+
+        try {
+            const res = await fetch(resolveApi("/api/test-endpoint"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: rpcUrl,
+                    method: method,
+                    content_type: contentType,
+                    payload: payload,
+                    rpc_user: rpcUser,
+                    rpc_pass: rpcPass
+                })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                resultEl.textContent = "✓ Connection successful" + (data.status_code ? ` (${data.status_code})` : "");
+                resultEl.className = "test-result success";
+            } else {
+                resultEl.textContent = "✗ " + (data.error || data.message || "Connection failed");
+                resultEl.className = "test-result error";
+            }
+        } catch (e) {
+            resultEl.textContent = "✗ " + e;
+            resultEl.className = "test-result error";
+        } finally {
+            testBtn.disabled = false;
+        }
+    }
+
+    function formatBondDisplay(val) {
+        if (!val) return "–";
+        const trimmed = String(val).trim();
+        if (!trimmed) return "–";
+        if (trimmed.toLowerCase().endsWith("uarkeo")) return trimmed;
+        return `${trimmed}uarkeo`;
+    }
+
+    function validateCurrentStep() {
+        const statusEl = document.getElementById(`wizardStatus${wizardCurrentStep}`);
+        const nextBtn = document.getElementById("wizardNextBtn");
+        let isValid = false;
+        let message = "";
+
+        if (wizardCurrentStep === 1) {
+            const rpcUrl = document.getElementById("wizardRpcUrl").value.trim();
+            if (rpcUrl) {
+                isValid = true;
+                message = "Ready to continue";
+            } else {
+                message = "Enter RPC URL to continue";
+            }
+        } else if (wizardCurrentStep === 2) {
+            const bondAmount = document.getElementById("wizardBondAmount").value.trim();
+            if (bondAmount && !isNaN(Number(bondAmount))) {
+                isValid = true;
+                message = "Ready to submit bond contract";
+            } else {
+                message = "Enter a valid bond amount";
+            }
+        } else if (wizardCurrentStep === 3) {
+            const location = document.getElementById("wizardLocation").value;
+            if (location) {
+                isValid = true;
+                message = "Ready to submit mod contract";
+            } else {
+                message = "Select a location to continue";
+            }
+        } else if (wizardCurrentStep === 4) {
+            isValid = true;
+            message = "Click Next to update sentinel";
+        }
+
+        if (statusEl) {
+            statusEl.classList.remove("valid", "invalid");
+            statusEl.classList.add(isValid ? "valid" : "invalid");
+            statusEl.querySelector(".step-status-icon").textContent = isValid ? "✓" : "✗";
+            statusEl.querySelector(".step-status-label").textContent = message;
+        }
+
+        if (nextBtn) {
+            nextBtn.disabled = !isValid;
+        }
+
+        return isValid;
+    }
+
+    function updateWizardStepDisplay() {
+        // Update step indicators
+        document.querySelectorAll(".wizard-step").forEach((el, idx) => {
+            const stepNum = idx + 1;
+            el.classList.remove("active", "completed");
+            if (stepNum < wizardCurrentStep) {
+                el.classList.add("completed");
+            } else if (stepNum === wizardCurrentStep) {
+                el.classList.add("active");
+            }
+        });
+
+        // Show/hide step content
+        for (let i = 1; i <= 5; i++) {
+            const content = document.getElementById(`wizardStep${i}`);
+            if (content) {
+                content.classList.toggle("hidden", i !== wizardCurrentStep);
+            }
+        }
+
+        // Update buttons
+        const backBtn = document.getElementById("wizardBackBtn");
+        const nextBtn = document.getElementById("wizardNextBtn");
+        const cancelBtn = document.getElementById("wizardCancelBtn");
+
+        if (backBtn) backBtn.style.display = wizardCurrentStep > 1 && wizardCurrentStep < 5 ? "inline-block" : "none";
+
+        if (wizardCurrentStep === 5) {
+            nextBtn.style.display = "none";
+            cancelBtn.textContent = "Close";
+        } else if (wizardCurrentStep === 4) {
+            nextBtn.style.display = "inline-block";
+            nextBtn.textContent = "Update Sentinel";
+            cancelBtn.textContent = "Cancel";
+        } else if (wizardCurrentStep === 3) {
+            nextBtn.style.display = "inline-block";
+            nextBtn.textContent = "Submit Mod Contract";
+            cancelBtn.textContent = "Cancel";
+        } else if (wizardCurrentStep === 2) {
+            nextBtn.style.display = "inline-block";
+            nextBtn.textContent = "Submit Bond Contract";
+            cancelBtn.textContent = "Cancel";
+        } else {
+            nextBtn.style.display = "inline-block";
+            nextBtn.textContent = "Next";
+            cancelBtn.textContent = "Cancel";
+        }
+
+        validateCurrentStep();
+    }
+
+    function wizardBack() {
+        if (wizardCurrentStep > 1 && wizardCurrentStep < 5) {
+            wizardCurrentStep--;
+            updateWizardStepDisplay();
+        }
+    }
+
+    async function wizardNext() {
+        if (!validateCurrentStep()) return;
+
+        if (wizardCurrentStep === 1) {
+            // Just save endpoint info and move on
+            wizardStepResults.step1 = true;
+            wizardCurrentStep = 2;
+            updateWizardStepDisplay();
+        } else if (wizardCurrentStep === 2) {
+            // Submit bond contract
+            await submitBondContract();
+        } else if (wizardCurrentStep === 3) {
+            // Submit mod contract
+            await submitModContract();
+        } else if (wizardCurrentStep === 4) {
+            // Update sentinel
+            await updateSentinel();
+        }
+    }
+
+    async function submitBondContract() {
+        const svc = wizardServiceData;
+        if (!svc) return;
+
+        const serviceName = svc.name || svc.service || svc.label || "";
+        const metadataUri = svc.metadata_uri || svc.metadataUri || "";
+        const metadataNonce = svc.metadata_nonce ? String(Number(svc.metadata_nonce) + 1) : "1";
+        const bondAmount = document.getElementById("wizardBondAmount").value.trim() || "1";
+
+        const statusEl = document.getElementById("wizardStatus2");
+        statusEl.classList.remove("valid", "invalid");
+        statusEl.querySelector(".step-status-icon").textContent = "◐";
+        statusEl.querySelector(".step-status-label").textContent = "Submitting bond contract...";
+
+        try {
+            const res = await fetch(resolveApi("/api/bond-provider"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    service: serviceName,
+                    bond: bondAmount,
+                    sentinel_uri: metadataUri,
+                    metadata_nonce: metadataNonce,
+                }),
+            });
+            const data = await res.json();
+            const bondOk = data?.exit_code === 0 || data?.bond_tx?.exit_code === 0;
+
+            if (bondOk) {
+                wizardStepResults.step2 = true;
+                statusEl.classList.add("valid");
+                statusEl.querySelector(".step-status-icon").textContent = "✓";
+                statusEl.querySelector(".step-status-label").textContent = "Bond contract submitted successfully";
+                wizardCurrentStep = 3;
+                updateWizardStepDisplay();
+            } else {
+                wizardStepResults.step2 = false;
+                statusEl.classList.add("invalid");
+                statusEl.querySelector(".step-status-icon").textContent = "✗";
+                statusEl.querySelector(".step-status-label").textContent = "Bond contract failed: " + (data?.error || data?.stderr || "Unknown error");
+            }
+        } catch (e) {
+            wizardStepResults.step2 = false;
+            statusEl.classList.add("invalid");
+            statusEl.querySelector(".step-status-icon").textContent = "✗";
+            statusEl.querySelector(".step-status-label").textContent = "Bond contract error: " + e;
+        }
+    }
+
+    async function submitModContract() {
+        const svc = wizardServiceData;
+        if (!svc) return;
+
+        const serviceName = svc.name || svc.service || svc.label || "";
+        const status = document.getElementById("wizardServiceStatus").value;
+        const minDur = document.getElementById("wizardMinDur").value.trim();
+        const maxDur = document.getElementById("wizardMaxDur").value.trim();
+        const subRate = document.getElementById("wizardSubRate").value.trim();
+        const paygoRate = document.getElementById("wizardPaygoRate").value.trim();
+        const settleDur = document.getElementById("wizardSettleDur").value.trim();
+        const location = document.getElementById("wizardLocation").value;
+
+        const statusEl = document.getElementById("wizardStatus3");
+        statusEl.classList.remove("valid", "invalid");
+        statusEl.querySelector(".step-status-icon").textContent = "◐";
+        statusEl.querySelector(".step-status-label").textContent = "Submitting mod contract...";
+
+        try {
+            const res = await fetch(resolveApi("/api/mod-provider"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    service: serviceName,
+                    status: status,
+                    min_contract_dur: minDur,
+                    max_contract_dur: maxDur,
+                    subscription_rates: subRate,
+                    pay_as_you_go_rates: paygoRate,
+                    settlement_dur: settleDur,
+                    location: location,
+                }),
+            });
+            const data = await res.json();
+            const modOk = data?.exit_code === 0 || data?.mod_tx?.exit_code === 0;
+
+            if (modOk) {
+                wizardStepResults.step3 = true;
+                statusEl.classList.add("valid");
+                statusEl.querySelector(".step-status-icon").textContent = "✓";
+                statusEl.querySelector(".step-status-label").textContent = "Mod contract submitted successfully";
+                wizardCurrentStep = 4;
+                updateWizardStepDisplay();
+            } else {
+                wizardStepResults.step3 = false;
+                statusEl.classList.add("invalid");
+                statusEl.querySelector(".step-status-icon").textContent = "✗";
+                statusEl.querySelector(".step-status-label").textContent = "Mod contract failed: " + (data?.error || data?.stderr || "Unknown error");
+            }
+        } catch (e) {
+            wizardStepResults.step3 = false;
+            statusEl.classList.add("invalid");
+            statusEl.querySelector(".step-status-icon").textContent = "✗";
+            statusEl.querySelector(".step-status-label").textContent = "Mod contract error: " + e;
+        }
+    }
+
+    async function updateSentinel() {
+        const svc = wizardServiceData;
+        if (!svc) return;
+
+        const rawId = svc.id ?? svc.service_id ?? svc.serviceID;
+        const serviceName = svc.name || svc.service || svc.label || "";
+        const status = document.getElementById("wizardServiceStatus").value;
+        const rpcUrl = document.getElementById("wizardRpcUrl").value.trim();
+        const rpcUser = document.getElementById("wizardRpcUser").value.trim();
+        const rpcPass = document.getElementById("wizardRpcPass").value.trim();
+
+        // Get service type from catalog
+        let resolvedType = serviceName;
+        const catalogEntry = providerServiceLookup[String(rawId)];
+        if (catalogEntry && typeof catalogEntry === "object" && catalogEntry.service_type) {
+            resolvedType = catalogEntry.service_type;
+        }
+
+        const statusEl = document.getElementById("wizardStatus4");
+        let allSuccess = true;
+
+        // Step 1: Update config
+        setVerifyStep("verifySentinelConfig", "in-progress", "Updating sentinel configuration...");
+        statusEl.querySelector(".step-status-icon").textContent = "◐";
+        statusEl.querySelector(".step-status-label").textContent = "Updating sentinel...";
+
+        try {
+            const rebuildRes = await fetch(resolveApi("/api/sentinel-rebuild"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    service_overrides: [{
+                        name: serviceName,
+                        id: rawId,
+                        service: serviceName,
+                        status: status,
+                        rpc_url: rpcUrl,
+                        rpc_user: rpcUser,
+                        rpc_pass: rpcPass,
+                        type: resolvedType,
+                        service_type: resolvedType,
+                    }],
+                }),
+            });
+
+            if (rebuildRes.ok) {
+                setVerifyStep("verifySentinelConfig", "success", "Sentinel configuration updated");
+            } else {
+                setVerifyStep("verifySentinelConfig", "error", "Sentinel update failed");
+                allSuccess = false;
+            }
+        } catch (e) {
+            setVerifyStep("verifySentinelConfig", "error", "Sentinel update error: " + e);
+            allSuccess = false;
+        }
+
+        // Step 2: Wait for block
+        setVerifyStep("verifySentinelRestart", "in-progress", "Waiting for block confirmation...");
+        await new Promise(resolve => setTimeout(resolve, 6500));
+        setVerifyStep("verifySentinelRestart", "success", "Block confirmation complete");
+
+        // Step 3: Sync sentinel
+        setVerifyStep("verifySentinelSync", "in-progress", "Syncing sentinel with blockchain...");
+
+        try {
+            const syncRes = await fetch(resolveApi("/api/sentinel-sync"), { method: "POST" });
+            if (syncRes.ok) {
+                setVerifyStep("verifySentinelSync", "success", "Sentinel synced and restarted");
+            } else {
+                setVerifyStep("verifySentinelSync", "error", "Sentinel sync failed");
+                allSuccess = false;
+            }
+        } catch (e) {
+            setVerifyStep("verifySentinelSync", "error", "Sentinel sync error: " + e);
+            allSuccess = false;
+        }
+
+        wizardStepResults.step4 = allSuccess;
+
+        if (allSuccess) {
+            statusEl.classList.remove("invalid");
+            statusEl.classList.add("valid");
+            statusEl.querySelector(".step-status-icon").textContent = "✓";
+            statusEl.querySelector(".step-status-label").textContent = "Sentinel updated successfully";
+        } else {
+            statusEl.classList.remove("valid");
+            statusEl.classList.add("invalid");
+            statusEl.querySelector(".step-status-icon").textContent = "✗";
+            statusEl.querySelector(".step-status-label").textContent = "Sentinel update had errors";
+        }
+
+        // Move to final step
+        wizardCurrentStep = 5;
+        updateWizardStepDisplay();
+        showFinalVerification();
+    }
+
+    function showFinalVerification() {
+        // Update final verification step
+        setVerifyStep("verifyStep1", wizardStepResults.step1 ? "success" : "error",
+            wizardStepResults.step1 ? "Service Endpoint configured" : "Service Endpoint not configured");
+        setVerifyStep("verifyStep2", wizardStepResults.step2 ? "success" : "error",
+            wizardStepResults.step2 ? "Bond Contract submitted successfully" : "Bond Contract failed");
+        setVerifyStep("verifyStep3", wizardStepResults.step3 ? "success" : "error",
+            wizardStepResults.step3 ? "Mod Contract submitted successfully" : "Mod Contract failed");
+        setVerifyStep("verifyStep4", wizardStepResults.step4 ? "success" : "error",
+            wizardStepResults.step4 ? "Provider Sentinel updated successfully" : "Provider Sentinel update failed");
+
+        const allSuccess = wizardStepResults.step1 && wizardStepResults.step2 && wizardStepResults.step3 && wizardStepResults.step4;
+        if (allSuccess) {
+            showWizardResult(true, "Provider service updated successfully!");
+        } else {
+            showWizardResult(false, "Some steps failed. Review the results above.");
+        }
+    }
+
+    function resetVerifySteps() {
+        const steps = ["verifySentinelConfig", "verifySentinelRestart", "verifySentinelSync", "verifyStep1", "verifyStep2", "verifyStep3", "verifyStep4"];
+        steps.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.className = "verify-item pending";
+                const icon = el.querySelector(".verify-icon");
+                if (icon) icon.textContent = "○";
+            }
+        });
+
+        const logEl = document.getElementById("wizardVerifyLog");
+        if (logEl) {
+            logEl.classList.add("hidden");
+            logEl.textContent = "";
+        }
+
+        const resultEl = document.getElementById("wizardVerifyResult");
+        if (resultEl) {
+            resultEl.classList.add("hidden");
+            resultEl.className = "wizard-result hidden";
+            resultEl.textContent = "";
+        }
+    }
+
+    function setVerifyStep(stepId, status, label) {
+        const el = document.getElementById(stepId);
+        if (!el) return;
+
+        el.className = `verify-item ${status}`;
+        const icon = el.querySelector(".verify-icon");
+        const labelEl = el.querySelector(".verify-label");
+
+        if (icon) {
+            if (status === "pending") icon.textContent = "○";
+            else if (status === "in-progress") icon.textContent = "◐";
+            else if (status === "success") icon.textContent = "✓";
+            else if (status === "error") icon.textContent = "✗";
+        }
+
+        if (label && labelEl) labelEl.textContent = label;
+    }
+
+    function appendWizardLog(text) {
+        const logEl = document.getElementById("wizardVerifyLog");
+        if (logEl) {
+            logEl.classList.remove("hidden");
+            logEl.textContent += text + "\n";
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+    }
+
+    function showWizardResult(success, message) {
+        const resultEl = document.getElementById("wizardVerifyResult");
+        if (resultEl) {
+            resultEl.classList.remove("hidden");
+            resultEl.className = `wizard-result ${success ? "success" : "error"}`;
+            resultEl.textContent = message;
+        }
+    }
+    // ========== End Edit Service Wizard ==========
 
     async function copyPubkeyFromHeader() {
         const el = document.getElementById("headerPubkey");
@@ -3542,8 +4582,9 @@ function renderProviderServices() {
         await configureWalletRefreshInterval();
         getVersion();
         showSyncingPill();
-        refreshInfo().finally(() => hideSyncingPill());
-        refreshServices();
+        await refreshInfo();
+        hideSyncingPill();
+        await refreshServices();
         refreshContractTotals();
         refreshVitals();
         refreshClaimsHeartbeat();
@@ -3559,14 +4600,16 @@ function renderProviderServices() {
             });
         }, 10000);
     });
-    document.addEventListener('visibilitychange', () => {
+    document.addEventListener('visibilitychange', async () => {
         if (!document.hidden) {
-            refreshInfo();
+            await refreshInfo();
+            await refreshServices();
         }
     });
-    window.addEventListener('pageshow', (event) => {
+    window.addEventListener('pageshow', async (event) => {
         if (event.persisted) {
-            refreshInfo();
+            await refreshInfo();
+            await refreshServices();
         }
     });
 </script>
