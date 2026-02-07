@@ -122,6 +122,19 @@
     .btn-outline:hover {
       background: var(--arkeo-dim);
     }
+    .btn-buy {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #000;
+      font-weight: 600;
+    }
+    .btn-buy:hover {
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+    }
+    .nav-buttons {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
 
     /* Hero Section */
     .hero {
@@ -606,7 +619,10 @@
         <a href="subscribe.html" class="nav-link">Subscribe</a>
         <a href="agents.html" class="nav-link">AI Agents</a>
       </div>
-      <a href="become-provider.html" class="btn btn-primary">Get Started</a>
+      <div class="nav-buttons">
+        <a href="https://app.osmosis.zone/pool/2977" target="_blank" rel="noopener" class="btn btn-buy">💎 Buy ARKEO</a>
+        <a href="become-provider.html" class="btn btn-primary">Get Started</a>
+      </div>
     </div>
   </nav>
 
@@ -733,6 +749,16 @@
     </section>
   </main>
 
+  <!-- Footer CTA -->
+  <section style="background: linear-gradient(135deg, rgba(59, 224, 255, 0.1), rgba(245, 158, 11, 0.1)); padding: 3rem 2rem; text-align: center; border-top: 1px solid var(--border);">
+    <h2 style="font-size: 1.75rem; margin-bottom: 0.5rem;">Ready to join the decentralized data revolution?</h2>
+    <p style="color: var(--text-dim); margin-bottom: 1.5rem;">Get ARKEO tokens to access the marketplace or become a provider.</p>
+    <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+      <a href="https://app.osmosis.zone/pool/2977" target="_blank" rel="noopener" class="btn btn-buy" style="font-size: 1.1rem; padding: 0.875rem 2rem;">💎 Buy ARKEO on Osmosis</a>
+      <a href="become-provider.html" class="btn btn-primary" style="font-size: 1.1rem; padding: 0.875rem 2rem;">🚀 Start Earning</a>
+    </div>
+  </section>
+
   <!-- Footer -->
   <footer class="footer">
     <div class="footer-inner">
@@ -740,6 +766,7 @@
         © 2026 Arkeo Network. Decentralized data infrastructure.
       </div>
       <div class="footer-links">
+        <a href="https://app.osmosis.zone/pool/2977" target="_blank" class="footer-link" style="color: #f59e0b;">💎 Buy ARKEO</a>
         <a href="https://docs.arkeo.network" target="_blank" class="footer-link">Docs</a>
         <a href="https://discord.gg/arkeo" target="_blank" class="footer-link">Discord</a>
         <a href="https://twitter.com/arkaboreal" target="_blank" class="footer-link">Twitter</a>
