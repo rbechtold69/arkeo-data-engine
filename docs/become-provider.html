@@ -5,10 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Become a Provider | Arkeo Marketplace</title>
   <link rel="icon" type="image/png" href="images/arkeo-logo-200px_1.png">
-  <!-- CosmJS for proper transaction signing -->
-  <script src="https://unpkg.com/@cosmjs/proto-signing@0.32.2/build/bundle.js"></script>
-  <script src="https://unpkg.com/@cosmjs/stargate@0.32.2/build/bundle.js"></script>
-  <script src="https://unpkg.com/@cosmjs/encoding@0.32.2/build/bundle.js"></script>
+  <!-- Arkeo transaction helper with protobuf encoding -->
+  <script src="js/arkeo-tx.js"></script>
   <style>
     :root {
       --bg-main: #0C0E14;
@@ -1539,12 +1537,40 @@
     }
     
     async function signAndBroadcastDirect(msg, accountInfo) {
-      // Use Keplr's direct signing with the simulate-then-broadcast approach
+      // Initialize the Arkeo TX helper
+      await window.arkeoTx.init();
+      
       const offlineSigner = window.keplr.getOfflineSigner(CONFIG.CHAIN_ID);
       const accounts = await offlineSigner.getAccounts();
       const account = accounts[0];
       
-      // Create the proto message for simulation/broadcast via REST
+      console.log('Signing message:', msg);
+      
+      // Encode the message using protobuf
+      let msgBytes;
+      if (msg.typeUrl === '/arkeo.arkeo.MsgBondProvider') {
+        msgBytes = window.arkeoTx.encodeBondProvider(
+          msg.value.creator,
+          msg.value.provider,
+          msg.value.service,
+          msg.value.bond
+        );
+      } else if (msg.typeUrl === '/arkeo.arkeo.MsgModProvider') {
+        msgBytes = window.arkeoTx.encodeModProvider(msg.value);
+      } else {
+        throw new Error('Unknown message type: ' + msg.typeUrl);
+      }
+      
+      console.log('Encoded message bytes:', msgBytes);
+      
+      // Wrap as Any
+      const anyBytes = window.arkeoTx.wrapAsAny(msg.typeUrl, msgBytes);
+      console.log('Any-wrapped bytes:', anyBytes);
+      
+      // For signing, we still need to use Keplr's signDirect
+      // But first, let's try the JSON broadcast approach with proper structure
+      
+      // Broadcast via REST with JSON format (Cosmos SDK should convert)
       const txBody = {
         messages: [{
           "@type": msg.typeUrl,
@@ -1556,7 +1582,6 @@
         non_critical_extension_options: []
       };
       
-      // Create auth info
       const authInfo = {
         signer_infos: [{
           public_key: {
@@ -1565,7 +1590,7 @@
           },
           mode_info: {
             single: {
-              mode: "SIGN_MODE_DIRECT"
+              mode: "SIGN_MODE_LEGACY_AMINO_JSON"
             }
           },
           sequence: accountInfo.sequence
@@ -1575,14 +1600,10 @@
           gas_limit: "300000",
           payer: "",
           granter: ""
-        },
-        tip: null
+        }
       };
       
-      console.log('TX Body:', JSON.stringify(txBody, null, 2));
-      console.log('Auth Info:', JSON.stringify(authInfo, null, 2));
-      
-      // Try using Amino signing with proto typeUrl (some chains support this)
+      // Create amino sign doc
       const aminoMsg = {
         type: msg.typeUrl.replace('/arkeo.arkeo.', 'arkeo/'),
         value: msg.value
@@ -1600,61 +1621,51 @@
         memo: "Registered via Arkeo Marketplace"
       };
       
-      console.log('Amino sign doc:', JSON.stringify(signDoc, null, 2));
+      console.log('Sign doc:', JSON.stringify(signDoc, null, 2));
       
-      // Sign with Amino (Keplr converts internally for broadcast)
+      // Sign with Amino
       const signResponse = await window.keplr.signAmino(
         CONFIG.CHAIN_ID,
         account.address,
         signDoc
       );
       
-      console.log('Sign response:', signResponse);
+      console.log('Signature:', signResponse.signature);
       
-      // Use Keplr's sendTx which handles the encoding
-      try {
-        const txHash = await window.keplr.sendTx(
-          CONFIG.CHAIN_ID,
-          signResponse.signed,
-          signResponse.signature,
-          "sync"
-        );
-        
-        return {
-          code: 0,
-          transactionHash: bufferToHex(txHash),
-          rawLog: ''
-        };
-      } catch (sendErr) {
-        console.log('sendTx failed, trying REST broadcast:', sendErr);
-        
-        // Fallback: broadcast via REST API with the amino-json format
-        const broadcastResponse = await fetch(`${CONFIG.REST_API}/cosmos/tx/v1beta1/txs`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tx: {
-              body: txBody,
-              auth_info: authInfo,
-              signatures: [signResponse.signature.signature]
-            },
-            mode: 'BROADCAST_MODE_SYNC',
-          }),
-        });
-        
-        const result = await broadcastResponse.json();
-        console.log('Broadcast result:', result);
-        
-        if (result.tx_response) {
-          return {
-            code: result.tx_response.code || 0,
-            transactionHash: result.tx_response.txhash,
-            rawLog: result.tx_response.raw_log,
-          };
+      // Build the complete signed tx in the format the REST API expects
+      const signedTx = {
+        body: txBody,
+        auth_info: authInfo,
+        signatures: [signResponse.signature.signature]
+      };
+      
+      console.log('Signed TX:', JSON.stringify(signedTx, null, 2));
+      
+      // Broadcast
+      const broadcastResponse = await fetch(`${CONFIG.REST_API}/cosmos/tx/v1beta1/txs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tx: signedTx,
+          mode: 'BROADCAST_MODE_SYNC',
+        }),
+      });
+      
+      const result = await broadcastResponse.json();
+      console.log('Broadcast result:', result);
+      
+      if (result.tx_response) {
+        if (result.tx_response.code !== 0) {
+          throw new Error(`TX failed: ${result.tx_response.raw_log}`);
         }
-        
-        throw new Error(result.message || JSON.stringify(result));
+        return {
+          code: result.tx_response.code || 0,
+          transactionHash: result.tx_response.txhash,
+          rawLog: result.tx_response.raw_log,
+        };
       }
+      
+      throw new Error(result.message || JSON.stringify(result));
     }
     
     function bufferToHex(buffer) {
@@ -1664,36 +1675,6 @@
         .toUpperCase();
     }
 
-    async function signAndBroadcastAmino_OLD(signer, messages, accountInfo) {
-      // Keep old function for reference
-      const accounts = await signer.getAccounts();
-      const account = accounts[0];
-      const fee = {
-        amount: [{ denom: CONFIG.ARKEO_DENOM, amount: '5000' }],
-        gas: '300000',
-      };
-      const signDoc = {
-        chain_id: CONFIG.CHAIN_ID,
-        account_number: accountInfo.accountNumber,
-        sequence: accountInfo.sequence,
-        fee: fee,
-        msgs: messages,
-        memo: 'Registered via Arkeo Marketplace',
-      };
-      const signResponse = await window.keplr.signAmino(CONFIG.CHAIN_ID, account.address, signDoc);
-      const txBytes = makeSignedTxBytes(signResponse);
-      const broadcastResponse = await fetch(`${CONFIG.REST_API}/cosmos/tx/v1beta1/txs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tx_bytes: txBytes, mode: 'BROADCAST_MODE_SYNC' }),
-      });
-      const result = await broadcastResponse.json();
-      if (result.tx_response) {
-        return { code: result.tx_response.code || 0, transactionHash: result.tx_response.txhash, rawLog: result.tx_response.raw_log };
-      }
-      throw new Error(result.message || 'Broadcast failed');
-    }
-    
     function makeSignedTxBytes(signResponse) {
       const combined = JSON.stringify({
         body: signResponse.signed,
