@@ -579,6 +579,68 @@
       font-size: 0.9rem;
     }
 
+    /* Racing Section */
+    .racing-section {
+      background: linear-gradient(135deg, rgba(255, 43, 203, 0.1), rgba(255, 138, 43, 0.1));
+      border: 1px solid rgba(255, 43, 203, 0.3);
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      overflow: hidden;
+    }
+    .racing-content {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 2rem;
+      align-items: center;
+    }
+    @media (max-width: 768px) {
+      .racing-content {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+      .racing-visual { order: -1; }
+    }
+    .racing-text h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+    .racing-text p {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+    .racing-text ul li {
+      margin-bottom: 0.25rem;
+    }
+    .race-track {
+      background: linear-gradient(90deg, #1a1f2a, #252a36);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .race-track::after {
+      content: '🏁';
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1.5rem;
+    }
+    .horse {
+      font-size: 1.5rem;
+      animation: race var(--speed) ease-in-out infinite;
+      animation-delay: var(--delay);
+    }
+    @keyframes race {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(100px); }
+    }
+
     /* Loading */
     .loading {
       text-align: center;
@@ -722,6 +784,7 @@
       </a>
       <div class="nav-links">
         <a href="agents.html" class="nav-link">AI Agents</a>
+        <a href="https://racing.builtonarkeo.com/" target="_blank" class="nav-link">🏇 Racing</a>
         <a href="https://docs.arkeo.network" target="_blank" class="nav-link">Docs</a>
         <a href="https://discord.gg/arkeo" target="_blank" class="nav-link">Community</a>
         <a href="https://github.com/arkeonetwork" target="_blank" class="nav-link">GitHub</a>
@@ -797,6 +860,35 @@
             <canvas id="earningsChart"></canvas>
             <div class="no-data hidden" id="noChartData">No earnings data available for this range.</div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Racing Section -->
+    <section class="racing-section">
+      <div class="racing-content">
+        <div class="racing-visual">
+          <div class="race-track">
+            <div class="horse" style="--delay: 0s; --speed: 2.1s;">🏇</div>
+            <div class="horse" style="--delay: 0.3s; --speed: 2.4s;">🏇</div>
+            <div class="horse" style="--delay: 0.1s; --speed: 2.2s;">🏇</div>
+          </div>
+        </div>
+        <div class="racing-text">
+          <div class="momentum-badge" style="background: linear-gradient(135deg, rgba(255, 43, 203, 0.2), rgba(255, 138, 43, 0.2)); border-color: #ff2bcb;">
+            🏇 Arkeo Racing
+          </div>
+          <h2>Watch Providers Compete in Real-Time</h2>
+          <p>Every provider is a racehorse. Live probes measure latency, uptime, and reliability — turning performance into a competition.</p>
+          <ul style="margin: 1rem 0; padding-left: 1.5rem; color: var(--text-dim);">
+            <li>🔍 Real-time latency tracking</li>
+            <li>🏆 Leaderboards by performance</li>
+            <li>⚡ Pick winners, compete with others</li>
+            <li>📊 See which providers are truly reliable</li>
+          </ul>
+          <a href="https://racing.builtonarkeo.com/" target="_blank" class="btn btn-primary" style="background: linear-gradient(135deg, #ff2bcb, #ff8a2b);">
+            🏇 Enter the Race
+          </a>
         </div>
       </div>
     </section>
