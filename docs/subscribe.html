@@ -909,11 +909,49 @@
       document.getElementById('depositEstimate').innerHTML = `≈ <strong>${requests.toLocaleString()}</strong> requests${bonusText}`;
     }
 
+    // DEMO MODE - No real wallet connections for safety
+    // Real wallet integration will be enabled once testnet is confirmed
+    const DEMO_MODE = true;
+    
     async function connectWallet() {
       const walletSection = document.getElementById('walletSection');
       const openBtn = document.getElementById('openContractBtn');
       
-      // Check if Keplr is installed
+      if (DEMO_MODE) {
+        walletSection.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: center; gap: 0.75rem;">
+            <div class="spinner"></div>
+            <span>Connecting to Keplr...</span>
+          </div>
+        `;
+        
+        // Simulate connection for demo
+        setTimeout(() => {
+          walletAddress = 'arkeo1demo...xyz';
+          walletSection.innerHTML = `
+            <div style="text-align: center;">
+              <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 0.75rem; margin-bottom: 1rem;">
+                <strong style="color: #f59e0b;">🎭 DEMO MODE</strong>
+                <div style="font-size: 0.8rem; color: var(--text-dim); margin-top: 0.25rem;">
+                  No real transactions — this is a UI demonstration
+                </div>
+              </div>
+              <div style="color: var(--success);">
+                <div>✅ Wallet Connected (Demo)</div>
+                <div style="font-weight: 600; margin-top: 0.25rem;">arkeo1x7tp...demo</div>
+                <div style="color: var(--text-dim); font-size: 0.85rem; margin-top: 0.25rem;">
+                  Balance: 1,000.00 ARKEO (Demo)
+                </div>
+              </div>
+            </div>
+          `;
+          openBtn.classList.remove('hidden');
+        }, 1500);
+        return;
+      }
+      
+      // Real wallet connection code (disabled in demo mode)
+      // Will be enabled once testnet is confirmed safe
       if (!window.keplr) {
         walletSection.innerHTML = `
           <div style="color: var(--error); text-align: center;">
@@ -926,71 +964,6 @@
           </div>
         `;
         return;
-      }
-      
-      walletSection.innerHTML = `
-        <div style="display: flex; align-items: center; justify-content: center; gap: 0.75rem;">
-          <div class="spinner"></div>
-          <span>Connecting to Keplr...</span>
-        </div>
-      `;
-      
-      try {
-        // Add Arkeo chain to Keplr if not already added
-        try {
-          await window.keplr.experimentalSuggestChain(ARKEO_CHAIN_CONFIG);
-        } catch (e) {
-          console.log('Chain suggestion failed or already added:', e);
-        }
-        
-        // Enable the chain
-        await window.keplr.enable(ARKEO_CHAIN_CONFIG.chainId);
-        
-        // Get the offline signer
-        const offlineSigner = await window.keplr.getOfflineSigner(ARKEO_CHAIN_CONFIG.chainId);
-        const accounts = await offlineSigner.getAccounts();
-        
-        if (accounts.length > 0) {
-          walletAddress = accounts[0].address;
-          const shortAddr = walletAddress.slice(0, 10) + '...' + walletAddress.slice(-6);
-          
-          // Fetch balance
-          let balance = '0';
-          try {
-            const balRes = await fetch(`${ARKEO_CHAIN_CONFIG.rest}/cosmos/bank/v1beta1/balances/${walletAddress}`);
-            const balData = await balRes.json();
-            const arkeoBalance = balData.balances?.find(b => b.denom === 'uarkeo');
-            if (arkeoBalance) {
-              balance = (parseInt(arkeoBalance.amount) / 100000000).toFixed(2);
-            }
-          } catch (e) {
-            console.log('Balance fetch failed:', e);
-          }
-          
-          walletSection.innerHTML = `
-            <div style="color: var(--success); text-align: center;">
-              <div>✅ Wallet Connected</div>
-              <div style="font-weight: 600; margin-top: 0.25rem;">${shortAddr}</div>
-              <div style="color: var(--text-dim); font-size: 0.85rem; margin-top: 0.25rem;">
-                Balance: ${balance} ARKEO
-              </div>
-            </div>
-          `;
-          openBtn.classList.remove('hidden');
-        }
-      } catch (err) {
-        console.error('Keplr connection failed:', err);
-        walletSection.innerHTML = `
-          <div style="color: var(--error); text-align: center;">
-            <p>❌ Connection failed</p>
-            <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim);">
-              ${err.message || 'Please try again'}
-            </p>
-            <button onclick="connectWallet()" class="btn btn-secondary" style="margin-top: 0.75rem;">
-              Try Again
-            </button>
-          </div>
-        `;
       }
     }
 
