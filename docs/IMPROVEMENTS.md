@@ -88,6 +88,32 @@ This document tracks improvements made to the Arkeo marketplace compared to the 
 
 ---
 
+## 🚨 Issues to Discuss with Phil
+
+### 1. Directory Service Centralization (HIGH PRIORITY)
+**Problem:** The directory service (earnings, transactions, provider stats) is a single point of failure.
+- If Phil's directory goes down, marketplace loses aggregated data
+- Only one operator currently runs the indexer
+- Frontend depends on this for real-time stats
+
+**Proposed Solutions:**
+1. **Public API endpoint** — Expose directory API publicly so others can build on it
+2. **Multiple operators** — Let anyone run a directory instance (already open source)
+3. **Decentralized indexing** — Consider The Graph or similar
+4. **Marketplace failover** — Query multiple directories, use cached data if all fail
+
+**Questions for Phil:**
+- Is there a public directory API endpoint we can use?
+- Can we run our own directory instance for redundancy?
+- What's the plan for decentralizing this?
+
+### 2. Provider Metadata CORS
+**Problem:** Browser can't fetch provider metadata directly (CORS blocks HTTP requests)
+**Current workaround:** Pre-cached known provider metadata
+**Better solution:** Directory should aggregate and serve provider metadata
+
+---
+
 ## 🪙 Tokenomics Roadmap
 
 ### ✅ Implemented Now
