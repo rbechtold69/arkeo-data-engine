@@ -614,6 +614,39 @@
         </div>
       </div>
       
+      <!-- Failover Protection -->
+      <div class="form-group">
+        <label class="form-label">Uptime Protection</label>
+        <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem;">
+          <label style="display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer;">
+            <input type="checkbox" id="enableFailover" checked style="margin-top: 0.25rem; width: 18px; height: 18px; accent-color: var(--arkeo);">
+            <div>
+              <div style="font-weight: 600; margin-bottom: 0.25rem;">🛡️ Enable Auto-Failover</div>
+              <div style="font-size: 0.85rem; color: var(--text-dim); line-height: 1.4;">
+                Automatically creates backup contracts before your active contract expires. 
+                Ensures 100% uptime with seamless provider switching.
+              </div>
+            </div>
+          </label>
+          
+          <div id="failoverDetails" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; font-size: 0.85rem;">
+              <div>
+                <div style="color: var(--text-dim); margin-bottom: 0.25rem;">Overlap Threshold</div>
+                <div style="font-weight: 600;">20% remaining</div>
+              </div>
+              <div>
+                <div style="color: var(--text-dim); margin-bottom: 0.25rem;">Backup Providers</div>
+                <div style="font-weight: 600;">Top 3 by rate</div>
+              </div>
+            </div>
+            <div style="margin-top: 0.75rem; padding: 0.5rem; background: rgba(59, 224, 255, 0.1); border-radius: 0.25rem; font-size: 0.8rem; color: var(--arkeo);">
+              ⚡ When your contract hits 20%, we auto-create an overlapping contract so there's zero downtime.
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <div class="wallet-section" id="walletSection">
         <div class="wallet-label">Connect your wallet to open the contract</div>
         <button class="connect-wallet-btn" onclick="connectWallet()">
@@ -656,6 +689,22 @@
           <div class="summary-row">
             <span class="summary-label">Contract ID</span>
             <span class="summary-value" id="finalContractId">#12345</span>
+          </div>
+          <div class="summary-row" id="failoverStatus">
+            <span class="summary-label">Auto-Failover</span>
+            <span class="summary-value" style="color: #10b981;">🛡️ Enabled</span>
+          </div>
+        </div>
+        
+        <div id="failoverInfo" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; text-align: left;">
+          <div style="font-weight: 600; margin-bottom: 0.5rem;">🛡️ Failover Protection Active</div>
+          <div style="font-size: 0.85rem; color: var(--text-dim); line-height: 1.5;">
+            When your contract reaches 20% remaining, we'll automatically create a backup contract 
+            with the next best provider. Your service will seamlessly switch over with zero downtime.
+          </div>
+          <div style="margin-top: 0.75rem; font-size: 0.85rem;">
+            <strong>Backup providers queued:</strong> 
+            <span id="backupProviders" style="color: var(--arkeo);">Everstake, Liquify</span>
           </div>
         </div>
         
@@ -704,6 +753,7 @@
     let currentStep = 1;
     let paymentMethod = 'arkeo'; // Default to ARKEO for discount
     let walletAddress = null;
+    let failoverEnabled = true; // Default to enabled
     
     // Arkeo chain configuration for Keplr
     const ARKEO_CHAIN_CONFIG = {
@@ -1099,6 +1149,9 @@
         </div>
       `;
       
+      // Check failover setting
+      failoverEnabled = document.getElementById('enableFailover')?.checked ?? true;
+      
       // Simulate transaction
       setTimeout(() => {
         statusDiv.innerHTML = `
@@ -1116,7 +1169,27 @@
         document.getElementById('finalDeposit').textContent = amount + ' ARKEO';
         document.getElementById('finalRequests').textContent = '~' + requests.toLocaleString();
         document.getElementById('finalContractId').textContent = '#' + Math.floor(Math.random() * 90000 + 10000);
-        document.getElementById('finalEndpoint').textContent = `https://sentinel.${selectedProvider.name.toLowerCase().replace(' ', '')}.io/${selectedChain.id.split('-')[0]}?contract=${Math.floor(Math.random() * 90000 + 10000)}`;
+        document.getElementById('finalEndpoint').textContent = `https://sentinel.${selectedProvider.name.toLowerCase().replace(/\s/g, '')}.io/${selectedChain.name.toLowerCase().split(' ')[0]}?contract=${Math.floor(Math.random() * 90000 + 10000)}`;
+        
+        // Update failover status
+        const failoverStatus = document.getElementById('failoverStatus');
+        const failoverInfo = document.getElementById('failoverInfo');
+        if (failoverEnabled) {
+          failoverStatus.querySelector('.summary-value').innerHTML = '🛡️ Enabled';
+          failoverStatus.querySelector('.summary-value').style.color = '#10b981';
+          failoverInfo.style.display = 'block';
+          // Show other providers as backups
+          const otherProviders = Object.values(KNOWN_PROVIDERS)
+            .filter(p => p.name !== selectedProvider.name)
+            .slice(0, 2)
+            .map(p => p.name)
+            .join(', ');
+          document.getElementById('backupProviders').textContent = otherProviders || 'None available';
+        } else {
+          failoverStatus.querySelector('.summary-value').innerHTML = '○ Disabled';
+          failoverStatus.querySelector('.summary-value').style.color = 'var(--text-dim)';
+          failoverInfo.style.display = 'none';
+        }
         
         setTimeout(() => goToStep(4), 1000);
       }, 2000);
