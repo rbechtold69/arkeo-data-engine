@@ -756,7 +756,19 @@
     };
     
     // Service ID to chain name mapping
-    const SERVICE_NAMES = {};
+    const SERVICE_NAMES = {
+      1: 'Arkeo Mainnet RPC',
+      2: 'Arkeo Mainnet Fullnode',
+      'arkeo-mainnet-fullnode': 'Arkeo Mainnet Fullnode',
+      'btc-mainnet-fullnode': 'Bitcoin Mainnet',
+      'eth-mainnet-fullnode': 'Ethereum Mainnet',
+      'gaia-mainnet-rpc': 'Cosmos Hub RPC',
+      'gaia-mainnet-fullnode': 'Cosmos Hub Fullnode',
+      'osmosis-mainnet-fullnode': 'Osmosis Mainnet',
+      'thorchain-mainnet-fullnode': 'THORChain Mainnet',
+      'maya-mainnet-fullnode': 'Maya Protocol',
+      'thorchain-v1-fullnode': 'THORChain V1',
+    };
     
     // Real chain and provider data (loaded from API)
     let chains = [];
@@ -852,7 +864,7 @@
           };
         }).sort((a, b) => a.name.localeCompare(b.name));
         
-        // Group providers by chain - ONLY verified providers
+        // Group ALL ONLINE providers by chain (verified ones get badge)
         providersByChain = {};
         
         // Get list of verified pubkey prefixes
@@ -862,15 +874,12 @@
           const pubkey = p.pub_key;
           
           // Check if this provider is in our verified list (match by prefix)
-          // API returns shorter pubkeys, so check if our verified prefix starts with API pubkey
           const matchedPrefix = verifiedPrefixes.find(prefix => 
             prefix.startsWith(pubkey.slice(0, 40)) || pubkey.startsWith(prefix.slice(0, 40))
           );
           
-          // Skip if not verified
-          if (!matchedPrefix) return;
-          
-          const meta = KNOWN_PROVIDERS[matchedPrefix];
+          const meta = matchedPrefix ? KNOWN_PROVIDERS[matchedPrefix] : null;
+          const providerName = meta?.name || 'Provider ' + pubkey.slice(-8);
           
           if (!providersByChain[p.service]) {
             providersByChain[p.service] = [];
@@ -878,27 +887,27 @@
           
           // Check if we already added this provider for this chain
           const alreadyAdded = providersByChain[p.service].some(
-            existing => existing.name === meta.name
+            existing => existing.name === providerName
           );
           if (alreadyAdded) return;
           
           const rate = parseInt(p.pay_as_you_go_rate?.[0]?.amount || 0) / 100000000;
           providersByChain[p.service].push({
             id: pubkey,
-            name: meta.name,
+            name: providerName,
             rate: rate || 0.001,
             uptime: 99.9,
             requests: formatNumber(Math.floor(parseInt(p.bond || 0) / 100000000 * 100)),
-            description: meta.description,
-            pubkey: pubkey
+            description: meta?.description || 'Arkeo data provider',
+            pubkey: pubkey,
+            verified: !!matchedPrefix
           });
         });
         
-        // Only show chains that have verified providers AND proper names
+        // Show all chains that have ONLINE providers
         chains = chains.filter(chain => {
           const hasProviders = providersByChain[chain.id] && providersByChain[chain.id].length > 0;
-          const hasProperName = !chain.name.startsWith('Service ');
-          return hasProviders && hasProperName;
+          return hasProviders;
         });
         
         renderChains(chains);
