@@ -450,52 +450,146 @@
       </div>
     </div>
 
-    <!-- Step 2: RPC Endpoint -->
+    <!-- Step 2: Infrastructure Setup -->
     <div class="wizard-card hidden" id="step2">
-      <h2 class="wizard-title">Your RPC Endpoint</h2>
-      <p class="wizard-subtitle">Provide the RPC URL of your <span id="selectedChainName">blockchain</span> node.</p>
+      <h2 class="wizard-title">Infrastructure Setup</h2>
+      <p class="wizard-subtitle">Configure your <span id="selectedChainName">blockchain</span> node and sentinel.</p>
       
+      <!-- Node RPC -->
       <div class="form-group">
-        <label class="form-label">RPC URL</label>
+        <label class="form-label">Your Node's RPC URL (internal)</label>
         <input type="url" class="form-input" id="rpcUrl" 
-               placeholder="https://your-node.com:8545" oninput="validateRpcUrl()">
-        <p class="form-hint">Your node must be accessible from the internet for users to query it.</p>
+               placeholder="http://localhost:26657" oninput="validateRpcUrl()">
+        <p class="form-hint">This is your local node's RPC endpoint. The sentinel will proxy requests to it.</p>
       </div>
       
       <div id="rpcStatus"></div>
       
+      <!-- Sentinel Setup -->
+      <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin: 1.5rem 0;">
+        <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+          🛡️ Sentinel Setup
+          <span style="font-size: 0.75rem; background: var(--warning); color: #000; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">Required</span>
+        </h3>
+        <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 1rem;">
+          The sentinel is a proxy that sits in front of your node. It handles authentication, metering, and rate limiting.
+        </p>
+        
+        <div style="background: #1a1f2e; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; font-family: monospace; font-size: 0.85rem; overflow-x: auto;">
+          <div style="color: var(--text-dim); margin-bottom: 0.5rem;"># Run on your node server (separate from validator):</div>
+          <div style="color: #10b981;">docker run -d --name arkeo-sentinel \</div>
+          <div style="color: #10b981; padding-left: 1rem;">-p 3636:3636 \</div>
+          <div style="color: #10b981; padding-left: 1rem;">-e PROXY_HOST=<span id="sentinelRpcPlaceholder" style="color: var(--arkeo);">localhost:26657</span> \</div>
+          <div style="color: #10b981; padding-left: 1rem;">ghcr.io/arkeonetwork/sentinel:latest</div>
+        </div>
+        
+        <button class="btn btn-secondary" style="font-size: 0.8rem;" onclick="copySentinelCommand()">
+          📋 Copy Command
+        </button>
+        
+        <div class="alert alert-warning" style="margin-top: 1rem; font-size: 0.85rem;">
+          ⚠️ <strong>Important:</strong> Port 3636 must be accessible from the internet. This is your sentinel's public endpoint.
+        </div>
+      </div>
+      
+      <!-- Sentinel URL -->
+      <div class="form-group">
+        <label class="form-label">Your Sentinel URL (public)</label>
+        <input type="url" class="form-input" id="sentinelUrl" 
+               placeholder="https://your-server.com:3636" oninput="validateSentinelUrl()">
+        <p class="form-hint">The public URL where users will connect. Must include protocol (https recommended).</p>
+      </div>
+      
+      <div id="sentinelStatus"></div>
+      
       <div class="btn-group">
         <button class="btn btn-secondary" onclick="goToStep(1)">← Back</button>
-        <button class="btn btn-primary" id="nextBtn2" disabled onclick="testRpcEndpoint()">
-          Test Connection →
+        <button class="btn btn-primary" id="nextBtn2" disabled onclick="testEndpoints()">
+          Test Connections →
         </button>
       </div>
     </div>
 
-    <!-- Step 3: Set Rate -->
+    <!-- Step 3: Service Configuration -->
     <div class="wizard-card hidden" id="step3">
-      <h2 class="wizard-title">Set Your Rate</h2>
-      <p class="wizard-subtitle">How much will you charge per request?</p>
+      <h2 class="wizard-title">Service Configuration</h2>
+      <p class="wizard-subtitle">Set your pricing and provider metadata.</p>
       
       <div class="form-group">
-        <label class="form-label">Pay-As-You-Go Rate (per 1000 requests)</label>
+        <label class="form-label">Pay-As-You-Go Rate (uarkeo per request)</label>
         <input type="number" class="form-input" id="paygRate" 
-               value="200" min="1" step="1" oninput="updateSummary()">
-        <p class="form-hint">In uarkeo (1 ARKEO = 100,000,000 uarkeo). Suggested: 200 uarkeo.</p>
+               value="1" min="1" step="1" oninput="updateSummary()">
+        <p class="form-hint">1 ARKEO = 100,000,000 uarkeo. Example: 1 uarkeo = 0.00000001 ARKEO per request.</p>
       </div>
       
+      <!-- Metadata Section -->
+      <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin: 1.5rem 0;">
+        <h3 style="margin-bottom: 1rem;">📄 Provider Metadata</h3>
+        <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 1rem;">
+          Your metadata tells users about your service. Host this JSON file at a public URL.
+        </p>
+        
+        <div class="form-group">
+          <label class="form-label">Provider Name</label>
+          <input type="text" class="form-input" id="providerName" 
+                 placeholder="My Arkeo Provider" oninput="updateMetadataPreview()">
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Description (optional)</label>
+          <input type="text" class="form-input" id="providerDesc" 
+                 placeholder="High-performance RPC node" oninput="updateMetadataPreview()">
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Location (optional)</label>
+          <select class="form-input" id="providerLocation" onchange="updateMetadataPreview()">
+            <option value="">Select region...</option>
+            <option value="NA">North America</option>
+            <option value="EU">Europe</option>
+            <option value="ASIA">Asia Pacific</option>
+            <option value="SA">South America</option>
+            <option value="AF">Africa</option>
+            <option value="OC">Oceania</option>
+          </select>
+        </div>
+        
+        <div style="background: #1a1f2e; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; font-family: monospace; font-size: 0.8rem; overflow-x: auto;">
+          <div style="color: var(--text-dim); margin-bottom: 0.5rem;">// metadata.json - host this at a public URL:</div>
+          <pre id="metadataPreview" style="color: #10b981; margin: 0; white-space: pre-wrap;">{
+  "moniker": "My Arkeo Provider",
+  "description": "",
+  "location": "",
+  "website": "",
+  "sentinel_url": ""
+}</pre>
+        </div>
+        
+        <button class="btn btn-secondary" style="font-size: 0.8rem;" onclick="copyMetadata()">
+          📋 Copy Metadata JSON
+        </button>
+        
+        <div class="form-group" style="margin-top: 1rem;">
+          <label class="form-label">Metadata URL</label>
+          <input type="url" class="form-input" id="metadataUrl" 
+                 placeholder="https://your-server.com/metadata.json" oninput="validateMetadataUrl()">
+          <p class="form-hint">Where you'll host the metadata.json file. Can be GitHub, your server, IPFS, etc.</p>
+        </div>
+      </div>
+      
+      <!-- Summary -->
       <div class="summary-card">
         <div class="summary-row">
           <span class="summary-label">Chain</span>
           <span class="summary-value" id="summaryChain">-</span>
         </div>
         <div class="summary-row">
-          <span class="summary-label">RPC Endpoint</span>
-          <span class="summary-value" id="summaryRpc">-</span>
+          <span class="summary-label">Sentinel URL</span>
+          <span class="summary-value" id="summarySentinel">-</span>
         </div>
         <div class="summary-row">
           <span class="summary-label">Rate</span>
-          <span class="summary-value" id="summaryRate">200 uarkeo / 1000 req</span>
+          <span class="summary-value" id="summaryRate">1 uarkeo/req</span>
         </div>
         <div class="summary-row">
           <span class="summary-label">Bond Required</span>
@@ -504,7 +598,7 @@
       </div>
       
       <div class="alert alert-info">
-        💡 You need at least <strong>1 ARKEO</strong> in your wallet for the provider bond, plus a small amount for transaction fees.
+        💡 You need at least <strong>1 ARKEO</strong> in your wallet for the provider bond, plus gas fees (~0.001 ARKEO).
       </div>
       
       <div class="btn-group">
@@ -518,31 +612,66 @@
     <!-- Step 4: Register On-Chain -->
     <div class="wizard-card hidden" id="step4">
       <h2 class="wizard-title">Register On-Chain</h2>
-      <p class="wizard-subtitle">Sign transactions to bond your provider and register on Arkeo.</p>
+      <p class="wizard-subtitle">Sign two transactions to bond and configure your provider.</p>
       
       <div id="walletRequired" class="alert alert-warning">
         ⚠️ Please connect your Keplr wallet to continue.
       </div>
       
       <div id="registrationSteps" class="hidden">
+        <!-- Transaction Overview -->
+        <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem;">
+          <h3 style="margin-bottom: 1rem;">📋 Two Transactions Required</h3>
+          
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <!-- TX 1: Bond -->
+            <div id="tx1Status" style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: var(--arkeo-dim); border: 1px solid var(--arkeo); border-radius: 0.5rem;">
+              <span style="font-size: 1.5rem;">1️⃣</span>
+              <div style="flex: 1;">
+                <div style="font-weight: 600;">Bond Provider</div>
+                <div style="font-size: 0.85rem; color: var(--text-dim);">Lock 1 ARKEO as provider collateral</div>
+              </div>
+              <span id="tx1Icon" style="font-size: 1.25rem;">⏳</span>
+            </div>
+            
+            <!-- TX 2: ModProvider -->
+            <div id="tx2Status" style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.5rem;">
+              <span style="font-size: 1.5rem;">2️⃣</span>
+              <div style="flex: 1;">
+                <div style="font-weight: 600;">Configure Service</div>
+                <div style="font-size: 0.85rem; color: var(--text-dim);">Set rates, metadata, and activate provider</div>
+              </div>
+              <span id="tx2Icon" style="font-size: 1.25rem;">⏳</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Summary -->
         <div class="summary-card">
-          <h3 style="margin-bottom: 1rem;">Registration Summary</h3>
           <div class="summary-row">
-            <span class="summary-label">Chain Service</span>
+            <span class="summary-label">Service</span>
             <span class="summary-value" id="regChain">-</span>
           </div>
           <div class="summary-row">
-            <span class="summary-label">Your Wallet</span>
-            <span class="summary-value" id="regWallet">-</span>
+            <span class="summary-label">Wallet</span>
+            <span class="summary-value" id="regWallet" style="font-size: 0.8rem;">-</span>
           </div>
           <div class="summary-row">
-            <span class="summary-label">Bond Amount</span>
-            <span class="summary-value">1 ARKEO</span>
+            <span class="summary-label">Sentinel URL</span>
+            <span class="summary-value" id="regSentinel" style="font-size: 0.8rem;">-</span>
           </div>
           <div class="summary-row">
             <span class="summary-label">PAYG Rate</span>
             <span class="summary-value" id="regRate">-</span>
           </div>
+          <div class="summary-row">
+            <span class="summary-label">Total Cost</span>
+            <span class="summary-value">~1.001 ARKEO</span>
+          </div>
+        </div>
+        
+        <div class="alert alert-warning" style="font-size: 0.9rem;">
+          ⚠️ <strong>Before signing:</strong> Make sure your sentinel is running and accessible at the URL you provided. You can update settings later, but the service won't work until sentinel is reachable.
         </div>
         
         <div id="txStatus"></div>
@@ -550,7 +679,7 @@
         <div class="btn-group">
           <button class="btn btn-secondary" onclick="goToStep(3)">← Back</button>
           <button class="btn btn-primary" id="registerBtn" onclick="registerProvider()">
-            Sign & Register →
+            Sign Transactions →
           </button>
         </div>
       </div>
@@ -569,8 +698,8 @@
             <span class="summary-value" id="finalService">-</span>
           </div>
           <div class="summary-row">
-            <span class="summary-label">Provider Pubkey</span>
-            <span class="summary-value" id="finalPubkey" style="font-size: 0.8rem;">-</span>
+            <span class="summary-label">Provider Address</span>
+            <span class="summary-value" id="finalPubkey" style="font-size: 0.75rem; word-break: break-all;">-</span>
           </div>
           <div class="summary-row">
             <span class="summary-label">Bond TX</span>
@@ -579,12 +708,15 @@
         </div>
         
         <div class="alert alert-info" style="text-align: left;">
-          <strong>Next Step:</strong> Run the Arkeo Sentinel on your server to start serving requests. 
-          See the <a href="https://docs.arkeo.network/providers" target="_blank" class="tx-link">Provider Guide</a> for setup instructions.
+          <strong>✅ Your provider should now appear in the marketplace!</strong><br>
+          <span style="color: var(--text-dim);">
+            Make sure your sentinel is running and accessible. Users can now open contracts with you.
+          </span>
         </div>
         
-        <div style="margin-top: 2rem;">
+        <div style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
           <a href="index.html" class="btn btn-primary">View Marketplace</a>
+          <a href="subscribe.html" class="btn btn-secondary">Test Your Provider</a>
         </div>
       </div>
     </div>
@@ -620,10 +752,16 @@
       walletConnected: false,
       walletAddress: null,
       walletPubkey: null,
+      walletPubkeyBytes: null,
       selectedService: null,
       services: [],
       rpcUrl: null,
-      paygRate: 200,
+      sentinelUrl: null,
+      metadataUrl: null,
+      providerName: 'My Arkeo Provider',
+      providerDesc: '',
+      providerLocation: '',
+      paygRate: 1,
       currentStep: 1,
     };
 
@@ -658,8 +796,16 @@
         }
         
         state.walletAddress = accounts[0].address;
-        state.walletPubkey = Buffer.from(accounts[0].pubkey).toString('base64');
+        state.walletPubkeyBytes = accounts[0].pubkey;
+        state.walletPubkey = bufferToBase64(accounts[0].pubkey);
         state.walletConnected = true;
+        
+        // Get the key info from Keplr for bech32 pubkey
+        const keyInfo = await window.keplr.getKey(CONFIG.CHAIN_ID);
+        state.walletPubkeyBech32 = keyInfo.bech32Address;
+        
+        console.log('Wallet pubkey (base64):', state.walletPubkey);
+        console.log('Wallet bech32:', state.walletPubkeyBech32);
         
         // Update UI
         btn.textContent = `${state.walletAddress.slice(0, 10)}...${state.walletAddress.slice(-6)}`;
@@ -825,92 +971,217 @@
     }
 
     // ============================================================
-    // RPC ENDPOINT TESTING
+    // INFRASTRUCTURE VALIDATION
     // ============================================================
     function validateRpcUrl() {
       const url = document.getElementById('rpcUrl').value;
-      const btn = document.getElementById('nextBtn2');
+      checkStep2Ready();
       
+      // Update sentinel command preview
       try {
-        new URL(url);
-        btn.disabled = false;
-      } catch {
-        btn.disabled = true;
-      }
+        const parsed = new URL(url);
+        document.getElementById('sentinelRpcPlaceholder').textContent = parsed.host;
+      } catch {}
     }
     
-    async function testRpcEndpoint() {
-      const url = document.getElementById('rpcUrl').value;
-      const statusDiv = document.getElementById('rpcStatus');
+    function validateSentinelUrl() {
+      checkStep2Ready();
+    }
+    
+    function checkStep2Ready() {
+      const rpcUrl = document.getElementById('rpcUrl').value;
+      const sentinelUrl = document.getElementById('sentinelUrl').value;
+      const btn = document.getElementById('nextBtn2');
+      
+      let rpcValid = false;
+      let sentinelValid = false;
+      
+      try {
+        new URL(rpcUrl);
+        rpcValid = true;
+      } catch {}
+      
+      try {
+        new URL(sentinelUrl);
+        sentinelValid = true;
+      } catch {}
+      
+      btn.disabled = !(rpcValid && sentinelValid);
+    }
+    
+    function copySentinelCommand() {
+      const rpcUrl = document.getElementById('rpcUrl').value || 'localhost:26657';
+      let host = 'localhost:26657';
+      try {
+        const parsed = new URL(rpcUrl);
+        host = parsed.host;
+      } catch {}
+      
+      const cmd = `docker run -d --name arkeo-sentinel \\
+  -p 3636:3636 \\
+  -e PROXY_HOST=${host} \\
+  ghcr.io/arkeonetwork/sentinel:latest`;
+      
+      navigator.clipboard.writeText(cmd);
+      event.target.textContent = '✓ Copied!';
+      setTimeout(() => event.target.textContent = '📋 Copy Command', 2000);
+    }
+    
+    async function testEndpoints() {
+      const rpcUrl = document.getElementById('rpcUrl').value;
+      const sentinelUrl = document.getElementById('sentinelUrl').value;
+      const rpcStatus = document.getElementById('rpcStatus');
+      const sentinelStatus = document.getElementById('sentinelStatus');
       const btn = document.getElementById('nextBtn2');
       
       btn.disabled = true;
-      statusDiv.innerHTML = `
+      
+      // Test RPC
+      rpcStatus.innerHTML = `
         <div class="status-box testing">
           <div class="spinner"></div>
-          <span>Testing RPC endpoint...</span>
+          <span>Testing local RPC...</span>
         </div>
       `;
       
+      let rpcOk = false;
       try {
-        // Try a simple JSON-RPC call
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            method: 'web3_clientVersion',
-            params: [],
-            id: 1
-          }),
-          signal: AbortSignal.timeout(10000), // 10 second timeout
+        // For Cosmos/Tendermint nodes, try /status
+        const response = await fetch(rpcUrl + '/status', {
+          signal: AbortSignal.timeout(10000),
         });
         
         if (response.ok) {
           const data = await response.json();
-          statusDiv.innerHTML = `
+          const nodeInfo = data.result?.node_info?.moniker || 'Node';
+          rpcStatus.innerHTML = `
             <div class="status-box success">
               <span>✅</span>
-              <span>Connection successful! ${data.result ? `(${data.result})` : ''}</span>
+              <span>RPC OK: ${nodeInfo}</span>
             </div>
           `;
-          state.rpcUrl = url;
-          setTimeout(() => goToStep(3), 1500);
+          rpcOk = true;
         } else {
           throw new Error(`HTTP ${response.status}`);
         }
-        
       } catch (err) {
-        // Try a simpler health check
-        try {
-          const healthResponse = await fetch(url, {
-            method: 'GET',
-            signal: AbortSignal.timeout(5000),
-          });
-          
-          if (healthResponse.ok) {
-            statusDiv.innerHTML = `
-              <div class="status-box success">
-                <span>✅</span>
-                <span>Endpoint reachable!</span>
-              </div>
-            `;
-            state.rpcUrl = url;
-            setTimeout(() => goToStep(3), 1500);
-            return;
-          }
-        } catch (e) {
-          // Ignore and show original error
-        }
-        
-        statusDiv.innerHTML = `
-          <div class="status-box error">
-            <span>❌</span>
-            <span>Connection failed: ${err.message}</span>
+        rpcStatus.innerHTML = `
+          <div class="status-box warning">
+            <span>⚠️</span>
+            <span>Can't reach RPC from browser (may work locally): ${err.message}</span>
           </div>
         `;
+        // Allow to proceed - browser may be blocked by CORS but sentinel can reach it
+        rpcOk = true;
+      }
+      
+      // Test Sentinel
+      sentinelStatus.innerHTML = `
+        <div class="status-box testing">
+          <div class="spinner"></div>
+          <span>Testing sentinel endpoint...</span>
+        </div>
+      `;
+      
+      let sentinelOk = false;
+      try {
+        const response = await fetch(sentinelUrl + '/healthz', {
+          signal: AbortSignal.timeout(10000),
+        });
+        
+        if (response.ok) {
+          sentinelStatus.innerHTML = `
+            <div class="status-box success">
+              <span>✅</span>
+              <span>Sentinel is running!</span>
+            </div>
+          `;
+          sentinelOk = true;
+        } else {
+          throw new Error(`HTTP ${response.status}`);
+        }
+      } catch (err) {
+        sentinelStatus.innerHTML = `
+          <div class="status-box warning">
+            <span>⚠️</span>
+            <span>Sentinel not reachable yet: ${err.message}</span>
+          </div>
+        `;
+        // Show continue anyway option
+        sentinelStatus.innerHTML += `
+          <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim);">
+            You can continue if sentinel will be running before registration.
+            <button class="btn btn-secondary" style="margin-left: 0.5rem; padding: 0.25rem 0.75rem; font-size: 0.8rem;" 
+                    onclick="proceedWithoutSentinelTest()">Continue Anyway →</button>
+          </div>
+        `;
+      }
+      
+      if (rpcOk && sentinelOk) {
+        state.rpcUrl = rpcUrl;
+        state.sentinelUrl = sentinelUrl;
+        setTimeout(() => goToStep(3), 1500);
+      } else {
         btn.disabled = false;
       }
+    }
+    
+    function proceedWithoutSentinelTest() {
+      state.rpcUrl = document.getElementById('rpcUrl').value;
+      state.sentinelUrl = document.getElementById('sentinelUrl').value;
+      goToStep(3);
+    }
+    
+    // ============================================================
+    // METADATA & CONFIGURATION
+    // ============================================================
+    function updateMetadataPreview() {
+      state.providerName = document.getElementById('providerName').value || 'My Arkeo Provider';
+      state.providerDesc = document.getElementById('providerDesc').value || '';
+      state.providerLocation = document.getElementById('providerLocation').value || '';
+      
+      const metadata = {
+        moniker: state.providerName,
+        description: state.providerDesc,
+        location: state.providerLocation,
+        website: '',
+        sentinel_url: state.sentinelUrl || ''
+      };
+      
+      document.getElementById('metadataPreview').textContent = JSON.stringify(metadata, null, 2);
+    }
+    
+    function copyMetadata() {
+      const metadata = {
+        moniker: state.providerName,
+        description: state.providerDesc,
+        location: state.providerLocation,
+        website: '',
+        sentinel_url: state.sentinelUrl || ''
+      };
+      
+      navigator.clipboard.writeText(JSON.stringify(metadata, null, 2));
+      event.target.textContent = '✓ Copied!';
+      setTimeout(() => event.target.textContent = '📋 Copy Metadata JSON', 2000);
+    }
+    
+    function validateMetadataUrl() {
+      const url = document.getElementById('metadataUrl').value;
+      try {
+        new URL(url);
+        state.metadataUrl = url;
+      } catch {
+        state.metadataUrl = null;
+      }
+    }
+    
+    function updateSummary() {
+      const rate = document.getElementById('paygRate').value || 1;
+      state.paygRate = parseInt(rate);
+      
+      document.getElementById('summaryChain').textContent = state.selectedService?.name || '-';
+      document.getElementById('summarySentinel').textContent = state.sentinelUrl || '-';
+      document.getElementById('summaryRate').textContent = `${rate} uarkeo/req`;
     }
 
     // ============================================================
@@ -977,11 +1248,22 @@
         
         document.getElementById('regChain').textContent = state.selectedService?.name || '-';
         document.getElementById('regWallet').textContent = state.walletAddress;
-        document.getElementById('regRate').textContent = `${state.paygRate} uarkeo / 1000 req`;
+        document.getElementById('regSentinel').textContent = state.sentinelUrl || '-';
+        document.getElementById('regRate').textContent = `${state.paygRate} uarkeo/req`;
       } else {
         walletRequired.classList.remove('hidden');
         registrationSteps.classList.add('hidden');
       }
+    }
+    
+    // Helper to convert Uint8Array to base64
+    function bufferToBase64(buffer) {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
     }
 
     // ============================================================
@@ -995,35 +1277,103 @@
       
       const btn = document.getElementById('registerBtn');
       const statusDiv = document.getElementById('txStatus');
+      const tx1Status = document.getElementById('tx1Status');
+      const tx2Status = document.getElementById('tx2Status');
+      const tx1Icon = document.getElementById('tx1Icon');
+      const tx2Icon = document.getElementById('tx2Icon');
       
       btn.disabled = true;
-      showLoading('Preparing transaction...', 'Please approve in Keplr');
+      
+      // Get pubkey bytes for transactions
+      const pubkeyBytes = state.walletPubkeyBytes;
+      if (!pubkeyBytes) {
+        statusDiv.innerHTML = `
+          <div class="status-box error">
+            <span>❌</span>
+            <span>Could not get wallet public key. Please reconnect.</span>
+          </div>
+        `;
+        btn.disabled = false;
+        return;
+      }
+      
+      let bondTxHash = null;
+      let modTxHash = null;
       
       try {
-        // Get account info for sequence
-        const accountInfo = await getAccountInfo(state.walletAddress);
+        // ============================================================
+        // TRANSACTION 1: Bond Provider
+        // ============================================================
+        tx1Status.style.background = 'var(--arkeo-dim)';
+        tx1Status.style.borderColor = 'var(--arkeo)';
+        tx1Icon.textContent = '🔄';
         
-        // Build the bond-provider message
-        const msg = {
-          typeUrl: '/arkeo.arkeo.MsgBondProvider',
+        showLoading('Transaction 1 of 2', 'Bond Provider - Approve in Keplr');
+        
+        const accountInfo1 = await getAccountInfo(state.walletAddress);
+        
+        const bondMsg = {
+          type: 'arkeo/MsgBondProvider',
           value: {
             creator: state.walletAddress,
+            provider: state.walletPubkeyBech32 || state.walletAddress,
             service: String(state.selectedService.id),
             bond: CONFIG.MIN_BOND,
           }
         };
         
-        // Sign and broadcast
-        showLoading('Awaiting signature...', 'Approve the transaction in Keplr');
-        
         const offlineSigner = window.keplr.getOfflineSigner(CONFIG.CHAIN_ID);
+        const bondResult = await signAndBroadcastAmino(offlineSigner, [bondMsg], accountInfo1);
         
-        // Use Keplr's signDirect
-        const txResult = await signAndBroadcast(offlineSigner, [msg], accountInfo);
-        
-        if (txResult.code !== 0) {
-          throw new Error(`Transaction failed: ${txResult.rawLog || 'Unknown error'}`);
+        if (bondResult.code !== 0) {
+          throw new Error(`Bond failed: ${bondResult.rawLog || 'Unknown error'}`);
         }
+        
+        bondTxHash = bondResult.transactionHash;
+        tx1Icon.textContent = '✅';
+        tx1Status.style.background = 'var(--success-dim)';
+        tx1Status.style.borderColor = 'var(--success)';
+        
+        // ============================================================
+        // TRANSACTION 2: Mod Provider (configure service)
+        // ============================================================
+        tx2Status.style.background = 'var(--arkeo-dim)';
+        tx2Status.style.borderColor = 'var(--arkeo)';
+        tx2Icon.textContent = '🔄';
+        
+        showLoading('Transaction 2 of 2', 'Configure Service - Approve in Keplr');
+        
+        // Wait a moment for sequence to update
+        await new Promise(r => setTimeout(r, 2000));
+        const accountInfo2 = await getAccountInfo(state.walletAddress);
+        
+        const modMsg = {
+          type: 'arkeo/MsgModProvider',
+          value: {
+            creator: state.walletAddress,
+            provider: state.walletPubkeyBech32 || state.walletAddress,
+            service: String(state.selectedService.id),
+            metadata_uri: state.metadataUrl || '',
+            metadata_nonce: '1',
+            status: 1, // ONLINE
+            min_contract_duration: '10',
+            max_contract_duration: '1000000',
+            subscription_rate: [],
+            pay_as_you_go_rate: [{ denom: CONFIG.ARKEO_DENOM, amount: String(state.paygRate) }],
+            settlement_duration: '10',
+          }
+        };
+        
+        const modResult = await signAndBroadcastAmino(offlineSigner, [modMsg], accountInfo2);
+        
+        if (modResult.code !== 0) {
+          throw new Error(`Configure failed: ${modResult.rawLog || 'Unknown error'}`);
+        }
+        
+        modTxHash = modResult.transactionHash;
+        tx2Icon.textContent = '✅';
+        tx2Status.style.background = 'var(--success-dim)';
+        tx2Status.style.borderColor = 'var(--success)';
         
         hideLoading();
         
@@ -1031,16 +1381,16 @@
         statusDiv.innerHTML = `
           <div class="status-box success">
             <span>✅</span>
-            <span>Provider bonded successfully!</span>
+            <span>Provider registered successfully!</span>
           </div>
         `;
         
         // Update final screen
         document.getElementById('finalService').textContent = state.selectedService.name;
-        document.getElementById('finalPubkey').textContent = state.walletPubkey || state.walletAddress;
+        document.getElementById('finalPubkey').textContent = state.walletPubkeyBech32 || state.walletAddress;
         document.getElementById('finalBondTx').innerHTML = `
-          <a href="${CONFIG.EXPLORER_TX}${txResult.transactionHash}" target="_blank" class="tx-link">
-            ${txResult.transactionHash.slice(0, 16)}...
+          <a href="${CONFIG.EXPLORER_TX}${bondTxHash}" target="_blank" class="tx-link">
+            ${bondTxHash.slice(0, 16)}...
           </a>
         `;
         
@@ -1050,12 +1400,28 @@
         hideLoading();
         console.error('Registration failed:', err);
         
-        statusDiv.innerHTML = `
-          <div class="status-box error">
-            <span>❌</span>
-            <span>Registration failed: ${err.message}</span>
-          </div>
-        `;
+        if (bondTxHash && !modTxHash) {
+          // Bond succeeded but mod failed
+          statusDiv.innerHTML = `
+            <div class="status-box warning">
+              <span>⚠️</span>
+              <span>Bond succeeded but configuration failed. You can retry configuration.</span>
+            </div>
+            <div class="status-box error" style="margin-top: 0.5rem;">
+              <span>❌</span>
+              <span>${err.message}</span>
+            </div>
+          `;
+          tx2Icon.textContent = '❌';
+        } else {
+          statusDiv.innerHTML = `
+            <div class="status-box error">
+              <span>❌</span>
+              <span>Registration failed: ${err.message}</span>
+            </div>
+          `;
+          tx1Icon.textContent = '❌';
+        }
         
         btn.disabled = false;
       }
@@ -1072,33 +1438,28 @@
       };
     }
     
-    async function signAndBroadcast(signer, messages, accountInfo) {
+    async function signAndBroadcastAmino(signer, messages, accountInfo) {
       // Get the signing client
       const accounts = await signer.getAccounts();
       const account = accounts[0];
       
-      // Construct the transaction
+      // Construct the transaction fee
       const fee = {
-        amount: [{ denom: CONFIG.ARKEO_DENOM, amount: '500' }],
-        gas: CONFIG.DEFAULT_GAS,
+        amount: [{ denom: CONFIG.ARKEO_DENOM, amount: '5000' }],
+        gas: '300000',
       };
       
-      // Use amino signing for simplicity with Keplr
+      // Build Amino sign doc
       const signDoc = {
         chain_id: CONFIG.CHAIN_ID,
         account_number: accountInfo.accountNumber,
         sequence: accountInfo.sequence,
         fee: fee,
-        msgs: messages.map(m => ({
-          type: 'arkeo/MsgBondProvider',
-          value: {
-            creator: m.value.creator,
-            service: m.value.service,
-            bond: m.value.bond,
-          }
-        })),
-        memo: '',
+        msgs: messages,
+        memo: 'Registered via Arkeo Marketplace',
       };
+      
+      console.log('Signing doc:', JSON.stringify(signDoc, null, 2));
       
       // Sign with Keplr amino
       const signResponse = await window.keplr.signAmino(
@@ -1106,6 +1467,8 @@
         account.address,
         signDoc
       );
+      
+      console.log('Sign response:', signResponse);
       
       // Broadcast the signed transaction
       const txBytes = makeSignedTxBytes(signResponse);
@@ -1120,6 +1483,7 @@
       });
       
       const result = await broadcastResponse.json();
+      console.log('Broadcast result:', result);
       
       if (result.tx_response) {
         return {
