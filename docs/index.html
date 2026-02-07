@@ -883,70 +883,50 @@
     }
     
     // Known provider metadata (pre-cached to avoid CORS issues)
-    // This data is fetched server-side and verified
+    // Only includes VERIFIED providers that are ONLINE and have accessible metadata
+    // Last verified: 2026-02-07
     const KNOWN_PROVIDERS = {
-      // Liquify
+      // Liquify - 2 services, ONLINE
       'arkeopub1addwnpepqdgt6w2qqkt4jydfud507nl740gxeag7g': {
         name: 'Liquify',
         description: 'Professional blockchain infrastructure provider',
         website: 'https://liquify.com',
         location: 'Europe',
       },
-      // Arkeo Core Provider (InnovationTheory)
-      'arkeopub1addwnpepq22m27n5ryy787muswzjqjk0k9k7lfp4hlcxe4hywpa97plfag5gcsh0983': {
+      // Arkeo Core Provider - 5 services, ONLINE
+      'arkeopub1addwnpepq22m27n5ryy787muswzjqjk0k9k7lfp4h': {
         name: 'Arkeo Core Provider',
         description: 'This is the Arkeo Core Provider used for primary development and support.',
         website: 'https://arkeo.network',
         location: 'Americas – Northern',
       },
-      // Everstake
+      // Everstake - 6 services, ONLINE (most services!)
       'arkeopub1addwnpepqdnr9x5c386meywavzmy5wa2xfwkn26j2': {
         name: 'Everstake',
         description: 'Staking provider with enterprise-grade infrastructure',
         website: 'https://everstake.one',
         location: 'Europe',
       },
-      // Stake Village
-      'arkeopub1addwnpepq2lmfqggxp29nj3ekl3ltxncv79y4yen5': {
+      // Stake Village - 5 services (via IP 142.132.148.174), ONLINE
+      'arkeopub1addwnpepqvj8mevcpdamq9cp5478t8k36tpmc7tfa': {
         name: 'Stake Village',
         description: 'Validator and infrastructure provider',
         website: 'https://stakevillage.net',
         location: 'Europe',
       },
-      // Nodefleet
+      // Nodefleet - 3 services, ONLINE
       'arkeopub1addwnpepqgvlg57udnpwh4y6k7yedt6pnfd0gutcq': {
         name: 'Nodefleet.org',
         description: 'Blockchain node infrastructure services',
         website: 'https://nodefleet.org',
         location: 'Americas',
       },
-      // Roomit
+      // Roomit - 2 services, ONLINE
       'arkeopub1addwnpepqduv5lky7ckq8efzzu08rm62ml6mvahjv': {
         name: 'Roomit',
         description: 'Blockchain infrastructure provider',
         website: 'https://roomit.xyz',
         location: 'Asia',
-      },
-      // Nodes.guru
-      'arkeopub1addwnpepqdt79h8767429wpr44gxwavca708rmx8f': {
-        name: 'Nodes.guru',
-        description: 'Professional node operation services',
-        website: 'https://nodes.guru',
-        location: 'Europe',
-      },
-      // Default Provider
-      'arkeopub1addwnpepq2vn90jnf4tz9dylcujr5fwt55vzg07uf': {
-        name: 'Default Provider',
-        description: 'Arkeo network data provider',
-        website: '',
-        location: 'Americas',
-      },
-      // Additional provider
-      'arkeopub1addwnpepqdc6phgk8vqky8v7vyyyk0zck0696nne4lpg66r0ju9yvh98ksgm76dh5ez': {
-        name: 'InnovationTheory',
-        description: 'Arkeo development and testing infrastructure',
-        website: 'https://innovationtheory.com',
-        location: 'Americas – Northern',
       },
     };
     
