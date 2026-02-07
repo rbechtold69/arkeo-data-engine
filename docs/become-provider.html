@@ -1443,13 +1443,16 @@
         await new Promise(r => setTimeout(r, 2000));
         const accountInfo2 = await getAccountInfo(state.walletAddress);
         
+        // Build metadata URL from sentinel URL
+        const metadataUrl = state.sentinelUrl ? state.sentinelUrl.replace(/\/$/, '') + '/metadata.json' : '';
+        
         const modMsg = {
           typeUrl: '/arkeo.arkeo.MsgModProvider',
           value: {
             creator: state.walletAddress,
             provider: state.walletPubkeyBech32,
             service: state.selectedService.name,
-            metadataUri: state.metadataUrl || '',
+            metadataUri: metadataUrl,
             metadataNonce: '1',
             status: 1, // ONLINE = 1
             minContractDuration: '10',
@@ -1459,6 +1462,8 @@
             settlementDuration: '10',
           }
         };
+        
+        console.log('Metadata URL:', metadataUrl);
         
         console.log('Mod message:', JSON.stringify(modMsg, null, 2));
         
