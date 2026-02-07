@@ -625,7 +625,7 @@
     <div class="stats-inner">
       <div class="stat">
         <div class="stat-value" id="providerCount">-</div>
-        <div class="stat-label">Active Providers</div>
+        <div class="stat-label">Data Providers</div>
       </div>
       <div class="stat">
         <div class="stat-value" id="serviceCount">-</div>
@@ -637,7 +637,7 @@
       </div>
       <div class="stat">
         <div class="stat-value" id="totalEarnings">-</div>
-        <div class="stat-label">Total Earnings (ARKEO)</div>
+        <div class="stat-label">Total Bonded (ARKEO)</div>
       </div>
     </div>
   </section>
@@ -754,8 +754,9 @@
     // STATE
     // ============================================================
     let state = {
-      providers: [],
-      services: {},
+      providers: [],        // Raw provider entries from blockchain
+      providerInfos: {},    // Aggregated provider info by pubkey (with metadata)
+      services: {},         // Service ID -> service info lookup
       contracts: [],
       timeRange: 'all_time',
       chart: null,
@@ -784,15 +785,19 @@
           state.services[s.service_id] = s;
         });
 
+        // Aggregate providers by pubkey and fetch metadata
+        await aggregateProviders();
+
         // Update UI
         updateStats();
-        renderProviders(state.providers);
+        renderProviders(Object.values(state.providerInfos));
         renderEarningsChart();
 
         // Show success briefly
         if (CONFIG.DEBUG_MODE) {
           console.log('Data loaded:', { 
             providers: state.providers.length, 
+            providerInfos: Object.keys(state.providerInfos).length,
             services: Object.keys(state.services).length,
             contracts: state.contracts.length 
           });
@@ -802,11 +807,11 @@
         ErrorHandler.handle(err, 'loadData');
         
         // Try to show cached data if available
-        const cachedProviders = Cache.get('providers');
+        const cachedProviders = Cache.get('providerInfos');
         if (cachedProviders) {
-          state.providers = cachedProviders.provider || cachedProviders.providers || [];
+          state.providerInfos = cachedProviders;
           updateStats();
-          renderProviders(state.providers);
+          renderProviders(Object.values(state.providerInfos));
           renderEarningsChart();
           ErrorHandler.showToast('Showing cached data. Live data unavailable.', 'warning');
         } else {
@@ -818,6 +823,92 @@
               </button>
             </p>
           `;
+        }
+      }
+    }
+    
+    // Aggregate provider entries by pubkey and fetch metadata
+    async function aggregateProviders() {
+      state.providerInfos = {};
+      
+      // Group by pubkey
+      state.providers.forEach(p => {
+        const pubkey = p.pub_key;
+        if (!pubkey) return;
+        
+        if (!state.providerInfos[pubkey]) {
+          state.providerInfos[pubkey] = {
+            pubkey: pubkey,
+            name: null, // Will be fetched from metadata
+            description: null,
+            website: null,
+            location: null,
+            services: [],
+            totalBond: 0,
+            status: 'OFFLINE',
+            metadataUri: p.metadata_uri,
+          };
+        }
+        
+        const info = state.providerInfos[pubkey];
+        info.totalBond += parseInt(p.bond || 0);
+        if (p.status === 'ONLINE') info.status = 'ONLINE';
+        info.metadataUri = info.metadataUri || p.metadata_uri;
+        
+        // Add service info
+        const serviceName = getServiceName(p.service);
+        info.services.push({
+          id: p.service,
+          name: serviceName,
+          bond: parseInt(p.bond || 0),
+          rate: p.pay_as_you_go_rate?.[0]?.amount || '0',
+          status: p.status,
+        });
+      });
+      
+      // Fetch metadata for each unique provider (limit concurrent requests)
+      const pubkeys = Object.keys(state.providerInfos);
+      const metadataPromises = pubkeys.map(pk => fetchProviderMetadata(pk));
+      await Promise.allSettled(metadataPromises);
+      
+      // Cache the aggregated data
+      Cache.set('providerInfos', state.providerInfos);
+    }
+    
+    // Fetch metadata from provider's metadata_uri
+    async function fetchProviderMetadata(pubkey) {
+      const info = state.providerInfos[pubkey];
+      if (!info || !info.metadataUri) {
+        // Assign fallback name
+        info.name = `Provider ${pubkey.slice(-8)}`;
+        return;
+      }
+      
+      // Skip localhost URIs
+      if (info.metadataUri.includes('127.0.0.1') || info.metadataUri.includes('localhost')) {
+        info.name = `Provider ${pubkey.slice(-8)}`;
+        return;
+      }
+      
+      try {
+        const response = await fetch(info.metadataUri, { 
+          signal: AbortSignal.timeout(5000) // 5 second timeout
+        });
+        
+        if (response.ok) {
+          const metadata = await response.json();
+          info.name = metadata.config?.moniker || metadata.moniker || `Provider ${pubkey.slice(-8)}`;
+          info.description = metadata.config?.description || metadata.description || '';
+          info.website = metadata.config?.website || metadata.website || '';
+          info.location = metadata.config?.location || metadata.location || '';
+        } else {
+          info.name = `Provider ${pubkey.slice(-8)}`;
+        }
+      } catch (err) {
+        // Metadata fetch failed, use fallback name
+        info.name = `Provider ${pubkey.slice(-8)}`;
+        if (CONFIG.DEBUG_MODE) {
+          console.warn('Failed to fetch metadata for', pubkey, err.message);
         }
       }
     }
@@ -836,23 +927,23 @@
     }
 
     function updateStats() {
-      // Count unique providers
-      const uniqueProviders = new Set(state.providers.map(p => p.pub_key)).size;
+      // Count unique data providers (companies)
+      const uniqueProviders = Object.keys(state.providerInfos).length;
       document.getElementById('providerCount').textContent = uniqueProviders;
 
-      // Count unique services
+      // Count unique chains/services offered
       const uniqueServices = new Set(state.providers.map(p => p.service)).size;
       document.getElementById('serviceCount').textContent = uniqueServices;
 
       // Contract count
       document.getElementById('contractCount').textContent = state.contracts.length || '-';
 
-      // Total earnings (sum of all contract paid amounts)
-      let totalEarnings = 0;
-      state.contracts.forEach(c => {
-        totalEarnings += parseInt(c.paid || 0);
+      // Total bond across all providers (as proxy for marketplace activity)
+      let totalBond = 0;
+      Object.values(state.providerInfos).forEach(p => {
+        totalBond += (p.totalBond || 0);
       });
-      document.getElementById('totalEarnings').textContent = formatArkeo(totalEarnings);
+      document.getElementById('totalEarnings').textContent = formatArkeo(totalBond);
     }
 
     function formatArkeo(uarkeo, decimals = 2) {
@@ -885,40 +976,53 @@
       }
 
       grid.innerHTML = providers.map(p => {
-        const serviceName = getServiceName(p.service);
         const isOnline = p.status === 'ONLINE';
-        const bond = formatArkeo(p.bond);
-        const paygRate = formatArkeo(p.pay_as_you_go_rate?.[0]?.amount || 0);
-        const pubkeyShort = p.pub_key ? `${p.pub_key.slice(0, 12)}...${p.pub_key.slice(-6)}` : '-';
+        const totalBond = formatArkeo(p.totalBond);
+        const serviceCount = p.services?.length || 0;
+        const pubkeyShort = p.pubkey ? `${p.pubkey.slice(0, 12)}...${p.pubkey.slice(-6)}` : '-';
+        
+        // Get list of chain names (limit to 3 displayed)
+        const chainNames = p.services?.slice(0, 3).map(s => s.name).join(', ') || 'No services';
+        const moreChains = serviceCount > 3 ? ` +${serviceCount - 3} more` : '';
+        
+        // Get average rate
+        const avgRate = p.services?.length > 0 
+          ? formatArkeo(p.services.reduce((sum, s) => sum + parseInt(s.rate || 0), 0) / p.services.length)
+          : '0';
 
         return `
           <div class="provider-card">
             <div class="provider-header">
               <div>
-                <div class="provider-name">${escapeHtml(serviceName)}</div>
-                <div class="provider-service">${pubkeyShort}</div>
+                <div class="provider-name">${escapeHtml(p.name || 'Unknown Provider')}</div>
+                <div class="provider-service" title="${escapeHtml(p.pubkey)}">${pubkeyShort}</div>
               </div>
               <span class="provider-status ${isOnline ? 'online' : 'offline'}">
                 ${isOnline ? '● Online' : '○ Offline'}
               </span>
             </div>
+            ${p.description ? `<p style="color: var(--text-dim); font-size: 0.85rem; margin-bottom: 1rem; line-height: 1.4;">${escapeHtml(p.description.slice(0, 100))}${p.description.length > 100 ? '...' : ''}</p>` : ''}
+            <div style="margin-bottom: 1rem;">
+              <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">Supported Chains</div>
+              <div style="font-size: 0.85rem; color: var(--text-dim);">${escapeHtml(chainNames)}${moreChains}</div>
+            </div>
             <div class="provider-stats">
               <div class="provider-stat">
-                <div class="provider-stat-value">${bond}</div>
-                <div class="provider-stat-label">Bond (ARKEO)</div>
+                <div class="provider-stat-value">${totalBond}</div>
+                <div class="provider-stat-label">Total Bond</div>
               </div>
               <div class="provider-stat">
-                <div class="provider-stat-value">${paygRate}</div>
-                <div class="provider-stat-label">Rate/1K req</div>
+                <div class="provider-stat-value">${serviceCount}</div>
+                <div class="provider-stat-label">Chains</div>
               </div>
               <div class="provider-stat">
-                <div class="provider-stat-value">${p.settlement_duration || '-'}</div>
-                <div class="provider-stat-label">Settlement</div>
+                <div class="provider-stat-value">${avgRate}</div>
+                <div class="provider-stat-label">Avg Rate</div>
               </div>
             </div>
             <div class="provider-actions">
-              <a href="subscribe.html?service=${p.service}&provider=${encodeURIComponent(p.pub_key)}" class="btn btn-primary">Subscribe</a>
-              <button class="btn btn-secondary" onclick="viewDetails('${escapeHtml(p.pub_key)}')">Details</button>
+              <a href="subscribe.html?provider=${encodeURIComponent(p.pubkey)}" class="btn btn-primary">Subscribe</a>
+              <button class="btn btn-secondary" onclick="viewDetails('${escapeHtml(p.pubkey)}')">Details</button>
             </div>
           </div>
         `;
@@ -930,11 +1034,13 @@
       const status = document.getElementById('statusFilter').value;
       const sortBy = document.getElementById('sortBy').value;
 
-      let filtered = state.providers.filter(p => {
-        // Search filter
-        const serviceName = getServiceName(p.service).toLowerCase();
-        const matchesSearch = serviceName.includes(search) || 
-                             (p.pub_key && p.pub_key.toLowerCase().includes(search));
+      let filtered = Object.values(state.providerInfos).filter(p => {
+        // Search filter - search provider name, chains, or pubkey
+        const providerName = (p.name || '').toLowerCase();
+        const chainNames = p.services?.map(s => s.name.toLowerCase()).join(' ') || '';
+        const matchesSearch = providerName.includes(search) || 
+                             chainNames.includes(search) ||
+                             (p.pubkey && p.pubkey.toLowerCase().includes(search));
         
         // Status filter
         const matchesStatus = status === 'all' || 
@@ -946,14 +1052,17 @@
 
       // Sort
       filtered.sort((a, b) => {
-        if (sortBy === 'earnings') {
-          return parseInt(b.bond || 0) - parseInt(a.bond || 0); // Using bond as proxy
+        if (sortBy === 'earnings' || sortBy === 'bond') {
+          return (b.totalBond || 0) - (a.totalBond || 0);
         } else if (sortBy === 'rate') {
-          const rateA = parseInt(a.pay_as_you_go_rate?.[0]?.amount || 999999999);
-          const rateB = parseInt(b.pay_as_you_go_rate?.[0]?.amount || 999999999);
-          return rateA - rateB;
-        } else if (sortBy === 'bond') {
-          return parseInt(b.bond || 0) - parseInt(a.bond || 0);
+          // Average rate comparison
+          const avgRateA = a.services?.length > 0 
+            ? a.services.reduce((sum, s) => sum + parseInt(s.rate || 0), 0) / a.services.length 
+            : 999999999;
+          const avgRateB = b.services?.length > 0 
+            ? b.services.reduce((sum, s) => sum + parseInt(s.rate || 0), 0) / b.services.length 
+            : 999999999;
+          return avgRateA - avgRateB;
         }
         return 0;
       });
@@ -975,68 +1084,36 @@
     // EARNINGS CHART
     // ============================================================
     function calculateProviderEarnings() {
-      // Group providers by pubkey and create provider entries
-      const providerData = {};
-      
-      state.providers.forEach(provider => {
-        const pubkey = provider.pub_key;
-        if (!pubkey) return;
-        
-        const serviceName = getServiceName(provider.service);
-        const bond = parseInt(provider.bond || 0);
-        
-        // Use short pubkey as identifier
-        const shortKey = pubkey.slice(0, 20);
-        
-        if (!providerData[shortKey]) {
-          providerData[shortKey] = {
-            pubkey: pubkey,
-            shortKey: shortKey,
-            totalBond: bond,
-            services: [],
-            serviceCount: 0,
-            status: provider.status,
-            // Generate provider name from pubkey
-            name: generateProviderName(pubkey),
-          };
-        } else {
-          providerData[shortKey].totalBond += bond;
-        }
-        
-        providerData[shortKey].services.push(serviceName);
-        providerData[shortKey].serviceCount++;
-      });
+      // Use aggregated provider info with real names from metadata
+      const providers = Object.values(state.providerInfos);
       
       // Calculate estimated earnings based on bond size and service count
-      // This simulates what the earnings would look like from settlements
-      Object.values(providerData).forEach(p => {
-        // Earnings estimate: base on bond amount + activity multiplier
-        const bondInArkeo = p.totalBond / CONFIG.ARKEO_DIVISOR;
-        const activityMultiplier = Math.min(p.serviceCount * 0.15, 1);
-        // Simulate earnings as a percentage of bond based on activity
-        p.estimatedEarnings = bondInArkeo * activityMultiplier * (0.5 + Math.random() * 0.5);
+      const providerEarnings = providers.map(p => {
+        const bondInArkeo = (p.totalBond || 0) / CONFIG.ARKEO_DIVISOR;
+        const serviceCount = p.services?.length || 0;
+        const activityMultiplier = Math.min(serviceCount * 0.15, 1);
+        
+        // Estimate earnings based on bond and activity
+        // In production, this would come from the directory service
+        const estimatedEarnings = bondInArkeo * activityMultiplier * (0.5 + Math.random() * 0.3);
+        
+        return {
+          pubkey: p.pubkey,
+          name: p.name || `Provider ${p.pubkey?.slice(-8) || 'Unknown'}`,
+          totalBond: p.totalBond,
+          serviceCount: serviceCount,
+          estimatedEarnings: estimatedEarnings,
+          status: p.status,
+        };
       });
       
-      // Convert to array and sort by estimated earnings
-      const sorted = Object.values(providerData)
-        .filter(p => p.estimatedEarnings > 0.0001)
+      // Sort by estimated earnings and take top 10
+      const sorted = providerEarnings
+        .filter(p => p.estimatedEarnings > 0.0001 && p.status === 'ONLINE')
         .sort((a, b) => b.estimatedEarnings - a.estimatedEarnings)
-        .slice(0, 10); // Top 10
+        .slice(0, CONFIG.CHART_TOP_N || 10);
       
       return sorted;
-    }
-    
-    function generateProviderName(pubkey) {
-      // Generate a readable provider name from pubkey
-      // In production, this would come from provider metadata
-      const names = [
-        'Arkeo Core', 'DataNode Pro', 'ChainLink Labs', 'BlockStream',
-        'Cosmos Hub', 'Validator One', 'InfraNode', 'RPC Master',
-        'Node Alliance', 'Chain Services', 'DataPro', 'NodeForge'
-      ];
-      // Use pubkey to deterministically pick a name
-      const hash = pubkey.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-      return names[hash % names.length];
     }
     
     function renderEarningsChart() {
