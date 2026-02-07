@@ -501,6 +501,8 @@
       .provider-stats { flex-wrap: wrap; gap: 0.75rem; }
     }
   </style>
+  <!-- Arkeo transaction helper -->
+  <script src="js/arkeo-tx.js"></script>
 </head>
 <body>
   <!-- Navigation -->
@@ -1269,6 +1271,9 @@
       `;
       
       try {
+        // Initialize arkeo tx helper
+        await window.arkeoTx.init();
+        
         const depositAmount = document.getElementById('depositAmount').value;
         const depositUarkeo = String(Math.floor(parseFloat(depositAmount) * CONFIG.ARKEO_DIVISOR));
         
@@ -1276,25 +1281,39 @@
         const accountResp = await fetch(`${CONFIG.REST_API}/cosmos/auth/v1beta1/accounts/${walletAddress}`);
         const accountData = await accountResp.json();
         const account = accountData.account?.base_account || accountData.account || {};
+        const accountInfo = {
+          accountNumber: account.account_number || '0',
+          sequence: account.sequence || '0'
+        };
         
-        // Build MsgOpenContract
+        // Get wallet pubkey for signing
+        const offlineSigner = window.keplr.getOfflineSigner(CONFIG.CHAIN_ID);
+        const accounts = await offlineSigner.getAccounts();
+        const walletPubkeyBytes = accounts[0].pubkey;
+        
+        // Calculate rate in uarkeo (provider rate is in ARKEO, convert to uarkeo)
+        const rateUarkeo = Math.max(1, Math.floor((selectedProvider.rate || 0.00000001) * CONFIG.ARKEO_DIVISOR));
+        
+        // Build MsgOpenContract with proper format
         const msg = {
-          type: 'arkeo/MsgOpenContract',
+          typeUrl: '/arkeo.arkeo.MsgOpenContract',
           value: {
             creator: walletAddress,
             provider: selectedProvider.pubkey,
             service: String(selectedProvider.serviceId || selectedChain.id),
             client: walletAddress,
             delegate: '',
-            contract_type: 1, // PAY_AS_YOU_GO = 1
-            duration: '1000000', // Long duration
-            rate: { denom: CONFIG.ARKEO_DENOM, amount: String(selectedProvider.rate || 1) },
+            contractType: 1, // PAY_AS_YOU_GO = 1
+            duration: '1000000',
+            rate: { denom: CONFIG.ARKEO_DENOM, amount: String(rateUarkeo) },
             deposit: depositUarkeo,
-            settlement_duration: '10',
+            settlementDuration: '10',
             authorization: 0, // STRICT = 0
-            queries_per_minute: '100',
+            queriesPerMinute: '100',
           }
         };
+        
+        console.log('Opening contract:', msg);
         
         statusDiv.innerHTML = `
           <div class="status-box" style="background: var(--arkeo-dim); border: 1px solid var(--arkeo);">
@@ -1303,25 +1322,18 @@
           </div>
         `;
         
-        // Sign and broadcast
-        const offlineSigner = window.keplr.getOfflineSigner(CONFIG.CHAIN_ID);
-        const accounts = await offlineSigner.getAccounts();
-        
-        const fee = {
-          amount: [{ denom: CONFIG.ARKEO_DENOM, amount: '5000' }],
-          gas: '300000',
-        };
+        // Build and sign transaction with proper protobuf encoding
+        const bodyBytes = window.arkeoTx.buildTxBody([msg], 'Contract opened via Arkeo Marketplace');
+        const authInfoBytes = window.arkeoTx.buildAuthInfo(walletPubkeyBytes, parseInt(accountInfo.sequence), '10000', 300000);
         
         const signDoc = {
-          chain_id: CONFIG.CHAIN_ID,
-          account_number: account.account_number || '0',
-          sequence: account.sequence || '0',
-          fee: fee,
-          msgs: [msg],
-          memo: 'Contract opened via Arkeo Marketplace',
+          bodyBytes: bodyBytes,
+          authInfoBytes: authInfoBytes,
+          chainId: CONFIG.CHAIN_ID,
+          accountNumber: accountInfo.accountNumber
         };
         
-        const signResponse = await window.keplr.signAmino(CONFIG.CHAIN_ID, walletAddress, signDoc);
+        const signResponse = await window.keplr.signDirect(CONFIG.CHAIN_ID, walletAddress, signDoc);
         
         statusDiv.innerHTML = `
           <div class="status-box" style="background: var(--arkeo-dim); border: 1px solid var(--arkeo);">
@@ -1330,17 +1342,37 @@
           </div>
         `;
         
-        // For now, we'll show success with the sign response
-        // Full broadcast requires more complex tx encoding
-        console.log('Signed:', signResponse);
+        // Build TxRaw and broadcast
+        const signatureBytes = window.arkeoTx.base64ToBytes(signResponse.signature.signature);
+        const txRawBytes = window.arkeoTx.buildTxRaw(
+          signResponse.signed.bodyBytes,
+          signResponse.signed.authInfoBytes,
+          [signatureBytes]
+        );
+        const txBytesBase64 = window.arkeoTx.bytesToBase64(txRawBytes);
         
-        // Simulate broadcast delay
-        await new Promise(r => setTimeout(r, 2000));
+        const broadcastResponse = await fetch(`${CONFIG.REST_API}/cosmos/tx/v1beta1/txs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tx_bytes: txBytesBase64,
+            mode: 'BROADCAST_MODE_SYNC',
+          }),
+        });
+        
+        const result = await broadcastResponse.json();
+        console.log('Broadcast result:', result);
+        
+        if (result.tx_response?.code !== 0) {
+          throw new Error(result.tx_response?.raw_log || 'Transaction failed');
+        }
+        
+        const txHash = result.tx_response.txhash;
         
         statusDiv.innerHTML = `
           <div class="status-box success">
             <span>✅</span>
-            <span>Contract opened successfully!</span>
+            <span>Contract opened! TX: ${txHash.slice(0, 12)}...</span>
           </div>
         `;
         

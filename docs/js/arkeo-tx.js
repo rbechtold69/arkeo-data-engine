@@ -26,6 +26,21 @@ message MsgModProvider {
   int64 settlementDuration = 11;
 }
 
+message MsgOpenContract {
+  string creator = 1;
+  string provider = 2;
+  string service = 3;
+  string client = 4;
+  string delegate = 5;
+  int32 contractType = 6;
+  int64 duration = 7;
+  Coin rate = 8;
+  string deposit = 9;
+  int64 settlementDuration = 10;
+  int32 authorization = 11;
+  int64 queriesPerMinute = 12;
+}
+
 message Coin {
   string denom = 1;
   string amount = 2;
@@ -131,6 +146,7 @@ class ArkeoTxHelper {
     // Arkeo messages
     this.MsgBondProvider = this.root.lookupType('arkeo.arkeo.MsgBondProvider');
     this.MsgModProvider = this.root.lookupType('arkeo.arkeo.MsgModProvider');
+    this.MsgOpenContract = this.root.lookupType('arkeo.arkeo.MsgOpenContract');
     this.ArkeoCoin = this.root.lookupType('arkeo.arkeo.Coin');
     
     // Cosmos tx types
@@ -209,6 +225,37 @@ class ArkeoTxHelper {
     return this.MsgModProvider.encode(message).finish();
   }
 
+  encodeOpenContract(params) {
+    const Long = window.Long;
+    
+    const rate = this.ArkeoCoin.create({
+      denom: params.rate.denom,
+      amount: String(params.rate.amount)
+    });
+    
+    const duration = Long ? Long.fromNumber(parseInt(params.duration) || 1000000) : (parseInt(params.duration) || 1000000);
+    const settlementDuration = Long ? Long.fromNumber(parseInt(params.settlementDuration) || 10) : (parseInt(params.settlementDuration) || 10);
+    const queriesPerMinute = Long ? Long.fromNumber(parseInt(params.queriesPerMinute) || 100) : (parseInt(params.queriesPerMinute) || 100);
+    
+    const message = this.MsgOpenContract.create({
+      creator: params.creator,
+      provider: params.provider,
+      service: params.service,
+      client: params.client,
+      delegate: params.delegate || '',
+      contractType: parseInt(params.contractType) || 1, // PAY_AS_YOU_GO = 1
+      duration: duration,
+      rate: rate,
+      deposit: String(params.deposit),
+      settlementDuration: settlementDuration,
+      authorization: parseInt(params.authorization) || 0, // STRICT = 0
+      queriesPerMinute: queriesPerMinute
+    });
+    
+    console.log('MsgOpenContract message:', message);
+    return this.MsgOpenContract.encode(message).finish();
+  }
+
   // Create a proper Any-wrapped message
   wrapAsAny(typeUrl, value) {
     // Manually create the Any message
@@ -271,6 +318,8 @@ class ArkeoTxHelper {
         );
       } else if (msg.typeUrl === '/arkeo.arkeo.MsgModProvider') {
         msgBytes = this.encodeModProvider(msg.value);
+      } else if (msg.typeUrl === '/arkeo.arkeo.MsgOpenContract') {
+        msgBytes = this.encodeOpenContract(msg.value);
       }
       
       return this.Any.create({
