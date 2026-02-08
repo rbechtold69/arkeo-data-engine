@@ -64,9 +64,11 @@
 
     /* Charts */
     .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem; }
-    .chart-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem; }
+    .chart-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem; position: relative; }
+    .chart-box canvas { max-height: 300px !important; }
     .chart-box h3 { font-size: 1rem; margin-bottom: 1rem; color: var(--text-dim); }
     .chart-full { grid-column: 1 / -1; }
+    .chart-full canvas { max-height: 250px !important; }
 
     /* Leaderboard table */
     .lb-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
@@ -318,7 +320,7 @@ async function fetchServices() {
         }]
       },
       options: {
-        responsive: true,
+        responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
           x: { ticks: { color: '#8b92a5' }, grid: { color: '#252a36' } },
@@ -397,7 +399,7 @@ async function fetchServices() {
       },
       options: {
         indexAxis: 'y',
-        responsive: true,
+        responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
           x: { ticks: { color: '#8b92a5' }, grid: { color: '#252a36' }, beginAtZero: true },
@@ -419,7 +421,7 @@ async function fetchServices() {
         }]
       },
       options: {
-        responsive: true,
+        responsive: true, maintainAspectRatio: false,
         plugins: { legend: { position: 'bottom', labels: { color: '#8b92a5' } } }
       }
     });
@@ -451,7 +453,7 @@ async function fetchServices() {
         }]
       },
       options: {
-        responsive: true,
+        responsive: true, maintainAspectRatio: false,
         plugins: { legend: { position: 'bottom', labels: { color: '#8b92a5' } } }
       }
     });
