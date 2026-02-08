@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Provider Details — Arkeo Marketplace</title>
+  <link rel="icon" type="image/png" href="images/arkeo-logo-200px_1.png">
+  <meta name="description" content="View provider details, services, contracts, and reputation on the Arkeo Data Marketplace.">
+  <meta name="theme-color" content="#0a0c10">
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <style>
+    :root {
+      --bg-main: #0a0c10;
+      --bg-card: #12151c;
+      --bg-card-hover: #181c25;
+      --bg-input: #1a1f2a;
+      --border: #252a36;
+      --border-hover: #3BE0FF;
+      --arkeo: #3BE0FF;
+      --arkeo-dim: rgba(59, 224, 255, 0.1);
+      --arkeo-glow: rgba(59, 224, 255, 0.3);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --text: #ffffff;
+      --text-dim: #8b92a5;
+      --text-muted: #5a6278;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-main);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    .nav {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .logo img { height: 40px; }
+    .logo-text span { color: var(--arkeo); }
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+    }
+    .btn-primary { background: var(--arkeo); color: #000; }
+    .btn-primary:hover { box-shadow: 0 0 20px var(--arkeo-glow); }
+    .btn-secondary { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--arkeo); color: var(--arkeo); }
+    .btn-outline { background: transparent; color: var(--arkeo); border: 1px solid var(--arkeo); }
+    .btn-outline:hover { background: var(--arkeo-dim); }
+
+    .main { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+    .loading { text-align: center; padding: 3rem; color: var(--text-dim); }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--arkeo); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 1rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Provider Header */
+    .provider-hero {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .provider-hero-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .provider-hero-info { flex: 1; min-width: 250px; }
+    .provider-hero-name {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+    .provider-hero-pubkey {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      background: var(--bg-input);
+      padding: 0.35rem 0.75rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      margin-bottom: 0.75rem;
+    }
+    .provider-hero-pubkey:hover { color: var(--arkeo); }
+    .provider-hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 0.75rem;
+      font-size: 0.9rem;
+      color: var(--text-dim);
+    }
+    .provider-hero-meta a { color: var(--arkeo); text-decoration: none; }
+    .provider-hero-meta a:hover { text-decoration: underline; }
+    .provider-hero-desc {
+      margin-top: 1rem;
+      color: var(--text-dim);
+      font-size: 0.95rem;
+      max-width: 700px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 1rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .badge-online { background: rgba(16,185,129,0.15); color: var(--success); }
+    .badge-offline { background: rgba(239,68,68,0.15); color: var(--error); }
+
+    .rep-hero {
+      text-align: center;
+      min-width: 140px;
+    }
+    .rep-hero-score {
+      font-size: 3rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .rep-hero-label {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .rep-gold { color: #fbbf24; }
+    .rep-silver { color: #cbd5e1; }
+    .rep-bronze { color: #d97706; }
+    .rep-none { color: var(--text-dim); }
+
+    /* Section Cards */
+    .section-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .section-card h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Tables */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .data-table th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      background: var(--bg-input);
+      color: var(--text-dim);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover { background: var(--bg-card-hover); }
+
+    /* Reputation Bars */
+    .rep-breakdown { display: flex; flex-direction: column; gap: 1rem; }
+    .rep-row { display: flex; align-items: center; gap: 1rem; }
+    .rep-row-label { min-width: 160px; font-size: 0.9rem; color: var(--text-dim); }
+    .rep-row-bar {
+      flex: 1;
+      height: 10px;
+      background: var(--bg-input);
+      border-radius: 5px;
+      overflow: hidden;
+      position: relative;
+    }
+    .rep-row-fill {
+      height: 100%;
+      border-radius: 5px;
+      transition: width 0.6s ease;
+    }
+    .rep-row-value { min-width: 70px; text-align: right; font-weight: 600; font-size: 0.9rem; }
+
+    /* Stats grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .stat-box {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1rem;
+      text-align: center;
+    }
+    .stat-box-value { font-size: 1.5rem; font-weight: 700; color: var(--arkeo); }
+    .stat-box-label { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem; }
+
+    /* Chain icons */
+    .chain-icon { font-size: 1.1rem; margin-right: 0.25rem; }
+
+    /* Action bar */
+    .action-bar {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-top: 1.5rem;
+    }
+
+    /* Footer */
+    .footer {
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+      padding: 2rem;
+      margin-top: 4rem;
+    }
+    .footer-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .footer-link { color: var(--text-dim); text-decoration: none; font-size: 0.875rem; }
+    .footer-link:hover { color: var(--arkeo); }
+
+    @media (max-width: 768px) {
+      .nav { padding: 0.75rem 1rem; }
+      .main { padding: 1rem; }
+      .provider-hero { padding: 1.25rem; }
+      .provider-hero-name { font-size: 1.5rem; }
+      .provider-hero-top { flex-direction: column; }
+      .rep-hero { text-align: left; display: flex; align-items: center; gap: 1rem; }
+      .rep-hero-score { font-size: 2rem; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .rep-row { flex-direction: column; align-items: stretch; gap: 0.25rem; }
+      .rep-row-label { min-width: unset; }
+      .rep-row-value { text-align: left; }
+      .action-bar { flex-direction: column; }
+      .action-bar .btn { width: 100%; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="index.html" class="logo">
+        <img src="images/arkeo-logo-200px_1.png" alt="Arkeo">
+        <span class="logo-text">Arkeo <span>Marketplace</span></span>
+      </a>
+      <a href="index.html" class="btn btn-secondary">← Back to Marketplace</a>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <p>Loading provider details...</p>
+    </div>
+    <div id="content" style="display:none;"></div>
+    <div id="error" style="display:none; text-align:center; padding:3rem;">
+      <p style="color: var(--error); font-size: 1.2rem; margin-bottom: 1rem;">Provider not found</p>
+      <a href="index.html" class="btn btn-primary">← Back to Marketplace</a>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div style="color: var(--text-dim); font-size: 0.875rem;">© 2026 Arkeo Network. Decentralized data infrastructure.</div>
+      <div style="display: flex; gap: 2rem;">
+        <a href="https://docs.arkeo.network" target="_blank" class="footer-link">Docs</a>
+        <a href="https://discord.gg/arkeo" target="_blank" class="footer-link">Discord</a>
+        <a href="https://twitter.com/arkaboreal" target="_blank" class="footer-link">Twitter</a>
+        <a href="https://github.com/arkeonetwork" target="_blank" class="footer-link">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Known providers cache
+    const KNOWN_PROVIDERS = {
+      'arkeopub1addwnpepqdgt6w2qqkt4jydfud507nl740gxeag7g': {
+        name: 'Liquify', description: 'Professional blockchain infrastructure provider',
+        website: 'https://liquify.com', location: 'Europe',
+      },
+      'arkeopub1addwnpepq22m27n5ryy787muswzjqjk0k9k7lfp4h': {
+        name: 'Arkeo Core Provider', description: 'This is the Arkeo Core Provider used for primary development and support.',
+        website: 'https://arkeo.network', location: 'Americas – Northern',
+      },
+      'arkeopub1addwnpepqdnr9x5c386meywavzmy5wa2xfwkn26j2': {
+        name: 'Everstake', description: 'Staking provider with enterprise-grade infrastructure',
+        website: 'https://everstake.one', location: 'Europe',
+      },
+      'arkeopub1addwnpepqvj8mevcpdamq9cp5478t8k36tpmc7tfa': {
+        name: 'Stake Village', description: 'Validator and infrastructure provider',
+        website: 'https://stakevillage.net', location: 'Europe',
+      },
+      'arkeopub1addwnpepqgvlg57udnpwh4y6k7yedt6pnfd0gutcq': {
+        name: 'Nodefleet.org', description: 'Blockchain node infrastructure services',
+        website: 'https://nodefleet.org', location: 'Americas',
+      },
+      'arkeopub1addwnpepqduv5lky7ckq8efzzu08rm62ml6mvahjv': {
+        name: 'Roomit', description: 'Blockchain infrastructure provider',
+        website: 'https://roomit.xyz', location: 'Asia',
+      },
+      'arkeopub1addwnpepqdvlra44yykhmmpwtfavs35a5w6h8xqtuceedkuxur6v0gs8yfxa59h7wnm': {
+        name: '0xFury', description: 'Enterprise-grade blockchain infrastructure solutions',
+        website: 'https://0xfury.com', location: 'Europe',
+      },
+      'arkeopub1addwnpepqfuk5cy2ey6h3pfpwerkhfps0d4vqt6men4j2wx56zfn5nrfk8n9ymnj327': {
+        name: 'Red_5', description: 'Arkeo validator and data provider - First wizard-registered provider!',
+        website: 'https://arkeo.network', location: 'Americas',
+      },
+    };
+
+    const CHAIN_ICONS = {
+      'eth': '⟠', 'ethereum': '⟠', 'btc': '₿', 'bitcoin': '₿',
+      'cosmos': '⚛', 'atom': '⚛', 'gaia': '⚛',
+      'thorchain': '⚡', 'osmosis': '🧪', 'arkeo': '🔷',
+      'base': '🔵', 'avax': '🔺', 'avalanche': '🔺',
+      'bsc': '💛', 'binance': '💛', 'polygon': '💜',
+    };
+
+    function getChainIcon(serviceName) {
+      const lower = (serviceName || '').toLowerCase();
+      for (const [key, icon] of Object.entries(CHAIN_ICONS)) {
+        if (lower.includes(key)) return icon;
+      }
+      return '🔗';
+    }
+
+    function getChainDisplayName(serviceName) {
+      if (!serviceName) return 'Unknown';
+      return serviceName.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    }
+
+    function formatArkeo(uarkeo, decimals = 2) {
+      if (typeof Format !== 'undefined') return Format.arkeo(uarkeo, decimals);
+      const val = parseInt(uarkeo || 0) / CONFIG.ARKEO_DIVISOR;
+      if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
+      if (val >= 1000) return (val / 1000).toFixed(1) + 'K';
+      return val.toFixed(decimals);
+    }
+
+    function getRepClass(score) {
+      if (score >= 80) return 'rep-gold';
+      if (score >= 60) return 'rep-silver';
+      if (score >= 40) return 'rep-bronze';
+      return 'rep-none';
+    }
+    function getRepBadge(score) {
+      if (score >= 80) return '🏆';
+      if (score >= 60) return '🥈';
+      if (score >= 40) return '🥉';
+      return '';
+    }
+
+    function copyPubkey(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const el = document.getElementById('copyBtn');
+        if (el) { el.textContent = '✓ Copied!'; setTimeout(() => el.textContent = '📋 Copy', 1500); }
+      });
+    }
+
+    // Main loader
+    async function loadProvider() {
+      const params = new URLSearchParams(window.location.search);
+      const pubkey = params.get('pubkey');
+      if (!pubkey) { showError(); return; }
+
+      try {
+        const [providers, contracts] = await Promise.all([
+          API.getProviders(),
+          API.getContracts().catch(() => []),
+        ]);
+
+        // Find all entries for this provider
+        const providerEntries = providers.filter(p => p.pub_key === pubkey);
+        if (providerEntries.length === 0) { showError(); return; }
+
+        // Aggregate info
+        const info = {
+          pubkey,
+          name: null, description: null, website: null, location: null,
+          services: [], totalBond: 0, status: 'OFFLINE', metadataUri: null,
+        };
+
+        providerEntries.forEach(p => {
+          info.totalBond += parseInt(p.bond || 0);
+          if (p.status === 'ONLINE') info.status = 'ONLINE';
+          info.metadataUri = info.metadataUri || p.metadata_uri;
+          const svcName = p.service || 'Unknown';
+          info.services.push({
+            id: p.service,
+            name: svcName,
+            displayName: getChainDisplayName(svcName),
+            icon: getChainIcon(svcName),
+            bond: parseInt(p.bond || 0),
+            rate: p.pay_as_you_go_rate?.[0]?.amount || '0',
+            rateDenom: p.pay_as_you_go_rate?.[0]?.denom || 'uarkeo',
+            status: p.status,
+          });
+        });
+
+        // Apply known metadata
+        const knownKey = Object.keys(KNOWN_PROVIDERS).find(k =>
+          k === pubkey || pubkey.startsWith(k) || k.startsWith(pubkey.slice(0, 40))
+        );
+        if (knownKey) {
+          const meta = KNOWN_PROVIDERS[knownKey];
+          info.name = meta.name;
+          info.description = meta.description;
+          info.website = meta.website;
+          info.location = meta.location;
+        }
+
+        // Try fetching metadata_uri
+        if (info.metadataUri && !info.metadataUri.includes('127.0.0.1') && !info.metadataUri.includes('localhost')) {
+          try {
+            const resp = await fetch(info.metadataUri, { signal: AbortSignal.timeout(5000) });
+            if (resp.ok) {
+              const md = await resp.json();
+              const moniker = md.config?.moniker || md.moniker;
+              if (moniker) {
+                info.name = info.name || moniker;
+                info.description = info.description || md.config?.description || md.description || '';
+                info.website = info.website || md.config?.website || md.website || '';
+                info.location = info.location || md.config?.location || md.location || '';
+              }
+            }
+          } catch (e) { /* ignore */ }
+        }
+
+        if (!info.name) info.name = 'Provider ' + pubkey.slice(-8);
+
+        // Process contracts for this provider
+        const provContracts = contracts.filter(c => c.provider === pubkey);
+        let totalPaid = 0, totalNonce = 0, activeContracts = 0;
+        provContracts.forEach(c => {
+          totalPaid += parseInt(c.paid || 0);
+          totalNonce += parseInt(c.nonce || 0);
+          const deposit = parseInt(c.deposit || 0);
+          const paid = parseInt(c.paid || 0);
+          if (deposit > paid) activeContracts++;
+        });
+
+        // Calculate reputation (relative to all providers)
+        const allProviderInfos = {};
+        providers.forEach(p => {
+          const pk = p.pub_key;
+          if (!pk) return;
+          if (!allProviderInfos[pk]) allProviderInfos[pk] = { totalBond: 0, serviceCount: 0 };
+          allProviderInfos[pk].totalBond += parseInt(p.bond || 0);
+          allProviderInfos[pk].serviceCount++;
+        });
+        const allMetrics = {};
+        Object.keys(allProviderInfos).forEach(pk => {
+          allMetrics[pk] = { totalNonce: 0, totalPaid: 0, bond: allProviderInfos[pk].totalBond, activeContracts: 0, serviceCount: allProviderInfos[pk].serviceCount };
+        });
+        contracts.forEach(c => {
+          const pk = c.provider;
+          if (!allMetrics[pk]) return;
+          allMetrics[pk].totalNonce += parseInt(c.nonce || 0);
+          allMetrics[pk].totalPaid += parseInt(c.paid || 0);
+          const dep = parseInt(c.deposit || 0), pd = parseInt(c.paid || 0);
+          if (dep > pd) allMetrics[pk].activeContracts++;
+        });
+        const maxN = Math.max(1, ...Object.values(allMetrics).map(m => m.totalNonce));
+        const maxP = Math.max(1, ...Object.values(allMetrics).map(m => m.totalPaid));
+        const maxB = Math.max(1, ...Object.values(allMetrics).map(m => m.bond));
+        const maxC = Math.max(1, ...Object.values(allMetrics).map(m => m.activeContracts));
+        const maxS = Math.max(1, ...Object.values(allMetrics).map(m => m.serviceCount));
+
+        const m = allMetrics[pubkey] || { totalNonce: 0, totalPaid: 0, bond: 0, activeContracts: 0, serviceCount: 0 };
+        const repBreakdown = {
+          requests: Math.round((m.totalNonce / maxN) * 100),
+          revenue: Math.round((m.totalPaid / maxP) * 100),
+          bond: Math.round((m.bond / maxB) * 100),
+          contracts: Math.round((m.activeContracts / maxC) * 100),
+          services: Math.round((m.serviceCount / maxS) * 100),
+        };
+        const repTotal = Math.round(
+          repBreakdown.requests * 0.35 + repBreakdown.revenue * 0.25 +
+          repBreakdown.bond * 0.20 + repBreakdown.contracts * 0.10 + repBreakdown.services * 0.10
+        );
+
+        // Render
+        renderProvider(info, provContracts, { totalPaid, totalNonce, activeContracts, total: provContracts.length }, repTotal, repBreakdown);
+
+      } catch (err) {
+        console.error(err);
+        showError();
+      }
+    }
+
+    function showError() {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error').style.display = 'block';
+    }
+
+    function renderProvider(info, contracts, contractStats, repTotal, repBreakdown) {
+      document.getElementById('loading').style.display = 'none';
+      const content = document.getElementById('content');
+      content.style.display = 'block';
+      document.title = `${info.name} — Arkeo Marketplace`;
+
+      const isOnline = info.status === 'ONLINE';
+      const repClass = getRepClass(repTotal);
+      const repBadge = getRepBadge(repTotal);
+      const pubkeyShort = info.pubkey.slice(0, 14) + '...' + info.pubkey.slice(-6);
+
+      // Sort contracts by ID desc
+      const sortedContracts = [...contracts].sort((a, b) => parseInt(b.id || 0) - parseInt(a.id || 0));
+      const recentContracts = sortedContracts.slice(0, 20);
+
+      const barColor = repTotal >= 80 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' :
+                        repTotal >= 60 ? 'linear-gradient(90deg, #94a3b8, #cbd5e1)' :
+                        repTotal >= 40 ? 'linear-gradient(90deg, #b45309, #d97706)' : 'var(--text-muted)';
+
+      content.innerHTML = `
+        <!-- Provider Header -->
+        <div class="provider-hero">
+          <div class="provider-hero-top">
+            <div class="provider-hero-info">
+              <h1 class="provider-hero-name">${escapeHtml(info.name)}</h1>
+              <div class="provider-hero-pubkey" onclick="copyPubkey('${escapeHtml(info.pubkey)}')" title="Click to copy full pubkey">
+                <span>${pubkeyShort}</span>
+                <span id="copyBtn" style="font-size:0.8rem;">📋 Copy</span>
+              </div>
+              <div style="margin-bottom:0.5rem;">
+                <span class="badge ${isOnline ? 'badge-online' : 'badge-offline'}">${isOnline ? '● Online' : '○ Offline'}</span>
+              </div>
+              <div class="provider-hero-meta">
+                ${info.location ? `<span>📍 ${escapeHtml(info.location)}</span>` : ''}
+                ${info.website ? `<a href="${escapeHtml(info.website)}" target="_blank" rel="noopener">🌐 ${escapeHtml(info.website)}</a>` : ''}
+              </div>
+              ${info.description ? `<p class="provider-hero-desc">${escapeHtml(info.description)}</p>` : ''}
+            </div>
+            <div class="rep-hero">
+              <div class="rep-hero-score ${repClass}">${repBadge} ${repTotal}</div>
+              <div class="rep-hero-label">Reputation Score</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Services Offered -->
+        <div class="section-card">
+          <h3>🔗 Services Offered (${info.services.length})</h3>
+          <div style="overflow-x:auto; border-radius:0.75rem; border:1px solid var(--border);">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Chain</th>
+                  <th>Service ID</th>
+                  <th>Rate (per request)</th>
+                  <th>Bond</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${info.services.map(s => `
+                  <tr>
+                    <td><span class="chain-icon">${s.icon}</span> ${escapeHtml(s.displayName)}</td>
+                    <td style="color:var(--text-dim); font-size:0.8rem;">${escapeHtml(s.name)}</td>
+                    <td style="color:var(--arkeo); font-weight:600;">${formatArkeo(s.rate)} ARKEO</td>
+                    <td>${formatArkeo(s.bond)} ARKEO</td>
+                    <td><span class="badge ${s.status === 'ONLINE' ? 'badge-online' : 'badge-offline'}">${s.status === 'ONLINE' ? '● Online' : '○ Offline'}</span></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Contract History -->
+        <div class="section-card">
+          <h3>📜 Contract History</h3>
+          <div class="stats-grid">
+            <div class="stat-box">
+              <div class="stat-box-value">${contractStats.total}</div>
+              <div class="stat-box-label">Total Contracts</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-box-value" style="color:var(--success);">${contractStats.activeContracts}</div>
+              <div class="stat-box-label">Active Contracts</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-box-value">${formatArkeo(contractStats.totalPaid)}</div>
+              <div class="stat-box-label">ARKEO Earned</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-box-value">${contractStats.totalNonce.toLocaleString()}</div>
+              <div class="stat-box-label">Requests Served</div>
+            </div>
+          </div>
+          ${recentContracts.length > 0 ? `
+          <div style="overflow-x:auto; border-radius:0.75rem; border:1px solid var(--border);">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Service</th>
+                  <th>Deposit</th>
+                  <th>Paid</th>
+                  <th>Nonce</th>
+                  <th>Status</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${recentContracts.map(c => {
+                  const deposit = parseInt(c.deposit || 0);
+                  const paid = parseInt(c.paid || 0);
+                  const isActive = deposit > paid;
+                  const duration = parseInt(c.duration || 0);
+                  const durationStr = duration > 0 ? (duration >= 86400 ? Math.floor(duration/86400) + 'd' : duration >= 3600 ? Math.floor(duration/3600) + 'h' : duration + 's') : '—';
+                  return `<tr>
+                    <td style="font-weight:600;">#${c.id || '?'}</td>
+                    <td><span class="chain-icon">${getChainIcon(c.service)}</span> ${getChainDisplayName(c.service)}</td>
+                    <td>${formatArkeo(deposit)}</td>
+                    <td style="color:var(--success); font-weight:600;">${formatArkeo(paid)}</td>
+                    <td>${parseInt(c.nonce || 0).toLocaleString()}</td>
+                    <td><span class="badge ${isActive ? 'badge-online' : 'badge-offline'}">${isActive ? 'Active' : 'Expired'}</span></td>
+                    <td>${durationStr}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+          ` : '<p style="color:var(--text-dim); text-align:center; padding:1rem;">No contracts found for this provider.</p>'}
+        </div>
+
+        <!-- Reputation Breakdown -->
+        <div class="section-card">
+          <h3>⭐ Reputation Breakdown</h3>
+          <div style="text-align:center; margin-bottom:1.5rem;">
+            <div style="font-size:3.5rem; font-weight:800;" class="${repClass}">${repBadge} ${repTotal}<span style="font-size:1.5rem; color:var(--text-dim);">/100</span></div>
+          </div>
+          <div class="rep-breakdown">
+            ${[
+              { label: 'Requests Served', value: repBreakdown.requests, weight: '35%' },
+              { label: 'Revenue Earned', value: repBreakdown.revenue, weight: '25%' },
+              { label: 'Bond Committed', value: repBreakdown.bond, weight: '20%' },
+              { label: 'Active Contracts', value: repBreakdown.contracts, weight: '10%' },
+              { label: 'Service Breadth', value: repBreakdown.services, weight: '10%' },
+            ].map(r => `
+              <div class="rep-row">
+                <div class="rep-row-label">${r.label} <span style="color:var(--text-muted); font-size:0.75rem;">(${r.weight})</span></div>
+                <div class="rep-row-bar"><div class="rep-row-fill" style="width:${r.value}%; background:${barColor};"></div></div>
+                <div class="rep-row-value">${r.value}/100</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Bond Information -->
+        <div class="section-card">
+          <h3>🔒 Bond Information</h3>
+          <div class="stats-grid" style="margin-bottom:1.5rem;">
+            <div class="stat-box">
+              <div class="stat-box-value">${formatArkeo(info.totalBond)}</div>
+              <div class="stat-box-label">Total ARKEO Bonded</div>
+            </div>
+          </div>
+          <div style="overflow-x:auto; border-radius:0.75rem; border:1px solid var(--border);">
+            <table class="data-table">
+              <thead><tr><th>Service</th><th>Bond</th><th>% of Total</th></tr></thead>
+              <tbody>
+                ${info.services.map(s => {
+                  const pct = info.totalBond > 0 ? ((s.bond / info.totalBond) * 100).toFixed(1) : '0.0';
+                  return `<tr>
+                    <td><span class="chain-icon">${s.icon}</span> ${escapeHtml(s.displayName)}</td>
+                    <td style="font-weight:600;">${formatArkeo(s.bond)} ARKEO</td>
+                    <td>
+                      <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <div style="width:80px; height:6px; background:var(--bg-input); border-radius:3px; overflow:hidden;">
+                          <div style="width:${pct}%; height:100%; background:var(--arkeo); border-radius:3px;"></div>
+                        </div>
+                        <span style="font-size:0.85rem; color:var(--text-dim);">${pct}%</span>
+                      </div>
+                    </td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-bar">
+          <a href="subscribe.html?provider=${encodeURIComponent(info.pubkey)}" class="btn btn-primary" style="font-size:1rem; padding:0.875rem 2rem;">🔗 Subscribe to this Provider</a>
+          <a href="index.html" class="btn btn-secondary" style="font-size:1rem; padding:0.875rem 2rem;">← Back to Marketplace</a>
+        </div>
+      `;
+    }
+
+    document.addEventListener('DOMContentLoaded', loadProvider);
+  </script>
+</body>
+</html>
