@@ -1855,7 +1855,8 @@
             </td>
             <td>${healthHtml(p, false)}</td>
             <td>${totalBond}</td>
-            <td>
+            <td style="display: flex; gap: 0.5rem;">
+              <a href="provider.html?pubkey=${encodeURIComponent(p.pubkey || '')}" class="btn btn-secondary btn-sm">Details</a>
               <a href="subscribe.html?provider=${encodeURIComponent(p.pubkey || '')}" class="btn btn-primary btn-sm">Subscribe</a>
             </td>
           </tr>
