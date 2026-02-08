@@ -1126,13 +1126,13 @@
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; text-align: center;">
               <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Price per Request</div>
-              <div style="font-size: 1.5rem; font-weight: 700; color: var(--arkeo); margin-top: 0.25rem;">100 units</div>
-              <div style="font-size: 0.7rem; color: var(--text-dim);">USDC on Base Sepolia</div>
+              <div style="font-size: 1.5rem; font-weight: 700; color: var(--arkeo); margin-top: 0.25rem;">$0.0001</div>
+              <div style="font-size: 0.7rem; color: var(--text-dim);">USDC on Base</div>
             </div>
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; text-align: center;">
               <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Network</div>
-              <div style="font-size: 1.5rem; font-weight: 700; color: var(--arkeo); margin-top: 0.25rem;">eip155:84532</div>
-              <div style="font-size: 0.7rem; color: var(--text-dim);">Base Sepolia</div>
+              <div style="font-size: 1.5rem; font-weight: 700; color: var(--arkeo); margin-top: 0.25rem;">eip155:8453</div>
+              <div style="font-size: 0.7rem; color: var(--text-dim);">Base Mainnet</div>
             </div>
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; text-align: center;">
               <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Pay To</div>
@@ -1177,7 +1177,7 @@
       btn.disabled = true;
       btn.innerHTML = '<div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0 auto;"></div> Sending...';
       
-      const hardcodedB64 = 'eyJ4NDAyVmVyc2lvbiI6MiwiZXJyb3IiOiJQYXltZW50IHJlcXVpcmVkIiwicmVzb3VyY2UiOnsidXJsIjoiaHR0cDovLzE2MS4zNS45Ny4yMTU6MzYzNy8iLCJkZXNjcmlwdGlvbiI6IkFya2VvIFJlZF81IFJQQyBEYXRhIFByb3ZpZGVyIC0gcGF5LXBlci1yZXF1ZXN0IGFjY2VzcyIsIm1pbWVUeXBlIjoiYXBwbGljYXRpb24vanNvbiJ9LCJhY2NlcHRzIjpbeyJzY2hlbWUiOiJleGFjdCIsIm5ldHdvcmsiOiJlaXAxNTU6ODQ1MzIiLCJhbW91bnQiOiIxMDAiLCJhc3NldCI6IjB4MDM2Q2JENTM4NDJjNTQyNjYzNGU3OTI5NTQxZUMyMzE4ZjNkQ0Y3ZSIsInBheVRvIjoiMHhkNWUwZkFBOTkwNWI5MUI5Yjg5ZjE3MDNDMUMyMjgxMjBCYzU0RTYxIiwibWF4VGltZW91dFNlY29uZHMiOjMwMCwiZXh0cmEiOnsibmFtZSI6IlVTREMiLCJ2ZXJzaW9uIjoiMiJ9fV19';
+      const hardcodedB64 = 'eyJ4NDAyVmVyc2lvbiI6MiwiZXJyb3IiOiJQYXltZW50IHJlcXVpcmVkIiwicmVzb3VyY2UiOnsidXJsIjoiaHR0cDovLzE2MS4zNS45Ny4yMTU6MzYzNy8iLCJkZXNjcmlwdGlvbiI6IkFya2VvIFJQQyBEYXRhIFByb3ZpZGVyIC0gcGF5LXBlci1yZXF1ZXN0IGFjY2VzcyIsIm1pbWVUeXBlIjoiYXBwbGljYXRpb24vanNvbiJ9LCJhY2NlcHRzIjpbeyJzY2hlbWUiOiJleGFjdCIsIm5ldHdvcmsiOiJlaXAxNTU6ODQ1MyIsImFtb3VudCI6IjEwMCIsImFzc2V0IjoiMHg4MzM1ODlmQ0Q2ZURiNkUwOGY0YzdDMzJENGY3MWI1NGJkQTAyOTEzIiwicGF5VG8iOiIweGQ1ZTBmQUE5OTA1YjkxQjliODlmMTcwM0MxQzIyODEyMEJjNTRFNjEiLCJtYXhUaW1lb3V0U2Vjb25kcyI6MzAwLCJleHRyYSI6eyJuYW1lIjoiVVNEIENvaW4iLCJ2ZXJzaW9uIjoiMiJ9fV19';
       
       function showResponse(usedCors) {
         const decoded = JSON.parse(atob(hardcodedB64));
