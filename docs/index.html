@@ -938,24 +938,6 @@
         </select>
       </div>
 
-      <!-- How Reputation Works -->
-      <div class="rep-info-section">
-        <button class="rep-info-toggle" onclick="this.parentElement.querySelector('.rep-info-body').classList.toggle('hidden'); this.querySelector('.rep-arrow').textContent = this.querySelector('.rep-arrow').textContent === '▸' ? '▾' : '▸';">
-          <span class="rep-arrow">▸</span> ℹ️ How Reputation Works
-        </button>
-        <div class="rep-info-body hidden">
-          <p><strong>Arkeo Reputation Scores are calculated entirely from on-chain data. No manual curation, no gatekeeping — just math.</strong></p>
-          <ul>
-            <li><strong>35%</strong> — Requests Served (total nonce across all contracts)</li>
-            <li><strong>25%</strong> — Revenue Earned (total paid across all contracts)</li>
-            <li><strong>20%</strong> — Bond Committed (provider's total bond)</li>
-            <li><strong>10%</strong> — Active Contracts (contracts with remaining deposit)</li>
-            <li><strong>10%</strong> — Service Breadth (unique services offered)</li>
-          </ul>
-          <p>Each metric is scored 0-100 relative to the best provider, then weighted and summed. Every provider starts at 0 and earns their score through real usage.</p>
-        </div>
-      </div>
-
       <div id="providersLoading" class="loading">
         <div class="spinner"></div>
         <p>Loading providers from Arkeo network...</p>
@@ -987,6 +969,20 @@
 
       <!-- Grid View (hidden by default) -->
       <div class="provider-grid hidden" id="providerGrid"></div>
+      
+      <!-- Reputation info — subtle collapsible at bottom of provider section -->
+      <details style="margin-top: 0.75rem; padding: 0.5rem 0;">
+        <summary style="cursor: pointer; color: var(--text-muted); font-size: 0.8rem; list-style: none;">
+          ℹ️ How are reputation scores calculated?
+        </summary>
+        <div style="padding: 0.75rem 1rem; margin-top: 0.5rem; background: rgba(59, 224, 255, 0.05); border-radius: 0.5rem; font-size: 0.85rem; color: var(--text-dim);">
+          <p style="margin-bottom: 0.5rem;"><strong>Calculated entirely from on-chain data — no manual curation.</strong></p>
+          <p style="margin: 0; line-height: 1.6;">
+            35% Requests Served · 25% Revenue Earned · 20% Bond Committed · 10% Active Contracts · 10% Service Breadth. 
+            Each metric scored 0-100 relative to the top provider, then weighted and summed.
+          </p>
+        </div>
+      </details>
     </section>
 
     <!-- Market Rate Comparison -->
