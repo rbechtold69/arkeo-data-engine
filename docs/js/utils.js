@@ -200,8 +200,27 @@ const API = {
   },
   
   async getContracts() {
-    const data = await this.fetch('/arkeo/contracts', { cacheKey: 'contracts' });
-    return data.contract || data.contracts || [];
+    // Paginate through ALL contracts (API returns 100 at a time)
+    let allContracts = [];
+    let nextKey = null;
+    let page = 0;
+    const maxPages = 20; // Safety limit
+    
+    do {
+      const params = nextKey ? `?pagination.key=${encodeURIComponent(nextKey)}` : '';
+      const data = await this.fetch(`/arkeo/contracts${params}`, { 
+        cacheKey: nextKey ? null : 'contracts' // Only cache first page
+      });
+      const contracts = data.contract || data.contracts || [];
+      allContracts = allContracts.concat(contracts);
+      nextKey = data.pagination?.next_key || null;
+      page++;
+    } while (nextKey && page < maxPages);
+    
+    if (CONFIG.DEBUG_MODE) {
+      console.log(`Loaded ${allContracts.length} contracts across ${page} pages`);
+    }
+    return allContracts;
   }
 };
 
