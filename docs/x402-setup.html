@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>x402 Payment Setup | Arkeo Marketplace</title>
+  <link rel="icon" type="image/png" href="images/arkeo-logo-200px_1.png">
+  <style>
+    :root {
+      --bg-main: #0C0E14;
+      --bg-card: #151820;
+      --bg-input: #1a1f2e;
+      --border: #2a2f3c;
+      --border-focus: #3BE0FF;
+      --arkeo: #3BE0FF;
+      --arkeo-dim: rgba(59, 224, 255, 0.1);
+      --success: #10b981;
+      --success-dim: rgba(16, 185, 129, 0.1);
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --text: #ffffff;
+      --text-dim: #9ca3af;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-main);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    .nav {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .logo img { height: 36px; }
+    .logo span { color: var(--arkeo); }
+    .back-btn {
+      background: var(--arkeo);
+      color: #000;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      transition: all 0.2s;
+    }
+    .back-btn:hover { opacity: 0.9; }
+
+    .container { max-width: 760px; margin: 0 auto; padding: 2rem; }
+
+    /* Hero */
+    .hero { text-align: center; margin-bottom: 2.5rem; }
+    .hero h1 { font-size: 2.25rem; margin-bottom: 0.5rem; }
+    .hero h1 .accent { color: var(--arkeo); }
+    .hero p { color: var(--text-dim); font-size: 1.1rem; max-width: 540px; margin: 0 auto; }
+
+    /* Progress */
+    .progress-container { margin-bottom: 2rem; }
+    .progress-steps {
+      display: flex;
+      justify-content: space-between;
+      position: relative;
+      margin-bottom: 0.5rem;
+    }
+    .progress-steps::before {
+      content: '';
+      position: absolute;
+      top: 50%; left: 0; right: 0;
+      height: 2px;
+      background: var(--border);
+      transform: translateY(-50%);
+      z-index: 0;
+    }
+    .progress-line {
+      position: absolute;
+      top: 50%; left: 0;
+      height: 2px;
+      background: var(--arkeo);
+      transform: translateY(-50%);
+      z-index: 1;
+      transition: width 0.3s ease;
+    }
+    .step-dot {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.875rem;
+      font-weight: 600;
+      position: relative;
+      z-index: 2;
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+    .step-dot.active { border-color: var(--arkeo); background: var(--arkeo-dim); color: var(--arkeo); }
+    .step-dot.complete { border-color: var(--success); background: var(--success); color: white; }
+    .step-labels { display: flex; justify-content: space-between; }
+    .step-label { font-size: 0.75rem; color: var(--text-dim); text-align: center; width: 90px; }
+    .step-label.active { color: var(--arkeo); }
+
+    /* Wizard Card */
+    .wizard-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 2rem;
+    }
+    .wizard-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
+    .wizard-subtitle { color: var(--text-dim); margin-bottom: 1.5rem; }
+    .hidden { display: none !important; }
+
+    /* Framework cards */
+    .framework-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .fw-card {
+      background: var(--bg-input);
+      border: 2px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .fw-card:hover { border-color: var(--arkeo); background: var(--arkeo-dim); }
+    .fw-card.selected { border-color: var(--arkeo); background: var(--arkeo-dim); }
+    .fw-card .fw-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .fw-card .fw-name { font-weight: 600; font-size: 1rem; }
+    .fw-card .fw-desc { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.25rem; }
+
+    /* Form */
+    .form-group { margin-bottom: 1.25rem; }
+    .form-label { display: block; font-weight: 500; margin-bottom: 0.5rem; }
+    .form-input {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      background: var(--bg-input);
+      color: var(--text);
+      font-size: 1rem;
+      font-family: inherit;
+    }
+    .form-input:focus { outline: none; border-color: var(--arkeo); }
+    .form-hint { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.25rem; }
+
+    /* Network toggle */
+    .network-toggle {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .network-opt {
+      flex: 1;
+      padding: 0.75rem;
+      border: 2px solid var(--border);
+      border-radius: 0.5rem;
+      background: var(--bg-input);
+      color: var(--text-dim);
+      text-align: center;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .network-opt.selected { border-color: var(--arkeo); color: var(--arkeo); background: var(--arkeo-dim); }
+    .network-opt:hover { border-color: var(--arkeo); }
+
+    /* Pricing presets */
+    .pricing-presets {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .preset-btn {
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      background: var(--bg-input);
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    .preset-btn:hover { border-color: var(--arkeo); color: var(--arkeo); }
+    .preset-btn.selected { border-color: var(--arkeo); color: var(--arkeo); background: var(--arkeo-dim); }
+
+    .price-calc {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      font-size: 0.9rem;
+      color: var(--text-dim);
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .price-calc strong { color: var(--arkeo); }
+
+    /* Buttons */
+    .btn {
+      padding: 0.875rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      font-size: 1rem;
+    }
+    .btn-primary { background: var(--arkeo); color: #000; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-secondary { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--arkeo); }
+    .btn-group { display: flex; gap: 1rem; margin-top: 1.5rem; }
+
+    /* Code blocks */
+    .code-section { margin-bottom: 1.5rem; }
+    .code-section h4 { margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-dim); }
+    .code-block {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      font-family: 'SF Mono', Monaco, 'Fira Code', monospace;
+      font-size: 0.8rem;
+      overflow-x: auto;
+      position: relative;
+      line-height: 1.5;
+    }
+    .code-block pre { margin: 0; color: #e6edf3; white-space: pre-wrap; word-break: break-word; }
+    .copy-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+    .copy-btn:hover { color: var(--arkeo); border-color: var(--arkeo); }
+    .kw { color: #ff7b72; }
+    .str { color: #a5d6ff; }
+    .cmt { color: #8b949e; }
+    .fn { color: #d2a8ff; }
+    .num { color: #79c0ff; }
+
+    /* Checklist */
+    .checklist { list-style: none; padding: 0; }
+    .checklist li {
+      padding: 0.5rem 0;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      color: var(--text-dim);
+    }
+    .checklist li::before {
+      content: '☐';
+      font-size: 1.2rem;
+      color: var(--border);
+    }
+
+    /* Extra sections */
+    .extra-sections { margin-top: 2.5rem; }
+    .collapsible {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    .collapsible-header {
+      width: 100%;
+      padding: 1.25rem 1.5rem;
+      background: none;
+      border: none;
+      color: var(--arkeo);
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-align: left;
+    }
+    .collapsible-body { padding: 0 1.5rem 1.5rem; color: var(--text-dim); font-size: 0.9rem; line-height: 1.7; }
+
+    .flow-diagram {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+      font-size: 1rem;
+    }
+    .flow-step {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      text-align: center;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .flow-arrow { color: var(--arkeo); font-size: 1.25rem; }
+
+    .benefit-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem;
+      margin: 1.5rem 0;
+    }
+    .benefit-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+    }
+    .benefit-card h4 { margin-bottom: 0.25rem; color: var(--text); }
+    .benefit-card p { font-size: 0.85rem; color: var(--text-dim); }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+      margin-top: 3rem;
+    }
+    .footer a { color: var(--arkeo); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 600px) {
+      .container { padding: 1rem; }
+      .framework-grid { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 1.5rem; }
+      .benefit-grid { grid-template-columns: 1fr; }
+      .flow-diagram { flex-direction: column; }
+      .flow-arrow { transform: rotate(90deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <a href="index.html" class="logo">
+      <img src="images/arkeo-logo-200px_1.png" alt="Arkeo">
+      <span>Arkeo</span> Marketplace
+    </a>
+    <a href="index.html" class="back-btn">← Return to Marketplace</a>
+  </nav>
+
+  <div class="container">
+
+    <div class="hero">
+      <h1>⚡ <span class="accent">x402</span> Payment Setup</h1>
+      <p>Add HTTP-native micropayments to your RPC endpoint in minutes</p>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-container">
+      <div class="progress-steps">
+        <div class="progress-line" id="progressLine" style="width: 0%"></div>
+        <div class="step-dot active" id="dot1" onclick="goToStep(1)">1</div>
+        <div class="step-dot" id="dot2" onclick="goToStep(2)">2</div>
+        <div class="step-dot" id="dot3" onclick="goToStep(3)">3</div>
+        <div class="step-dot" id="dot4" onclick="goToStep(4)">4</div>
+      </div>
+      <div class="step-labels">
+        <span class="step-label active" id="label1">Framework</span>
+        <span class="step-label" id="label2">Wallet</span>
+        <span class="step-label" id="label3">Pricing</span>
+        <span class="step-label" id="label4">Code</span>
+      </div>
+    </div>
+
+    <!-- Step 1: Choose Framework -->
+    <div class="wizard-card" id="step1">
+      <h2 class="wizard-title">Choose Your Framework</h2>
+      <p class="wizard-subtitle">Select the server framework for your RPC endpoint.</p>
+
+      <div class="framework-grid">
+        <div class="fw-card selected" data-fw="express" onclick="selectFramework('express')">
+          <div class="fw-icon">🟢</div>
+          <div class="fw-name">Express.js</div>
+          <div class="fw-desc">The most popular Node.js framework</div>
+        </div>
+        <div class="fw-card" data-fw="hono" onclick="selectFramework('hono')">
+          <div class="fw-icon">🔥</div>
+          <div class="fw-name">Hono</div>
+          <div class="fw-desc">Ultrafast, works on edge & Node</div>
+        </div>
+        <div class="fw-card" data-fw="go" onclick="selectFramework('go')">
+          <div class="fw-icon">🐹</div>
+          <div class="fw-name">Go (Gin)</div>
+          <div class="fw-desc">High-performance compiled server</div>
+        </div>
+        <div class="fw-card" data-fw="python" onclick="selectFramework('python')">
+          <div class="fw-icon">🐍</div>
+          <div class="fw-name">Python (FastAPI)</div>
+          <div class="fw-desc">Async Python with type hints</div>
+        </div>
+      </div>
+
+      <div class="btn-group" style="justify-content: flex-end;">
+        <button class="btn btn-primary" onclick="goToStep(2)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Wallet Address -->
+    <div class="wizard-card hidden" id="step2">
+      <h2 class="wizard-title">Enter Your Wallet Address</h2>
+      <p class="wizard-subtitle">Where you'll receive USDC payments. No private keys needed on your server.</p>
+
+      <div class="form-group">
+        <label class="form-label">EVM Wallet Address</label>
+        <input type="text" class="form-input" id="walletInput" placeholder="0x..." oninput="validateWallet()">
+        <p class="form-hint" id="walletHint">Paste your EVM address (starts with 0x, 42 characters)</p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Network</label>
+        <div class="network-toggle">
+          <div class="network-opt" data-net="base-sepolia" onclick="selectNetwork('base-sepolia')">
+            🧪 Base Sepolia (Testnet)
+          </div>
+          <div class="network-opt selected" data-net="base" onclick="selectNetwork('base')">
+            🔵 Base (Mainnet)
+          </div>
+        </div>
+        <p class="form-hint">Use testnet for development, mainnet for production.</p>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary" onclick="goToStep(1)">← Back</button>
+        <button class="btn btn-primary" id="nextBtn2" onclick="goToStep(3)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Pricing -->
+    <div class="wizard-card hidden" id="step3">
+      <h2 class="wizard-title">Set Your Pricing</h2>
+      <p class="wizard-subtitle">How much to charge per RPC request in USD (paid in USDC).</p>
+
+      <div class="form-group">
+        <label class="form-label">Pricing Tier</label>
+        <div class="pricing-presets">
+          <button class="preset-btn" data-price="0" onclick="selectPreset('0')">🆓 Free Tier</button>
+          <button class="preset-btn selected" data-price="0.0001" onclick="selectPreset('0.0001')">⚡ Micro $0.0001</button>
+          <button class="preset-btn" data-price="0.001" onclick="selectPreset('0.001')">📊 Standard $0.001</button>
+          <button class="preset-btn" data-price="0.01" onclick="selectPreset('0.01')">💎 Premium $0.01</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Price per Request (USD)</label>
+        <input type="text" class="form-input" id="priceInput" value="0.0001" oninput="updatePriceCalc()">
+      </div>
+
+      <div class="price-calc" id="priceCalc">
+        At this rate: <strong>1,000 requests = $0.10</strong> &nbsp;|&nbsp; <strong>1M requests = $100.00</strong>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary" onclick="goToStep(2)">← Back</button>
+        <button class="btn btn-primary" onclick="goToStep(4)">Generate Code →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Get Your Code -->
+    <div class="wizard-card hidden" id="step4">
+      <h2 class="wizard-title">Get Your Code</h2>
+      <p class="wizard-subtitle" id="codeSubtitle">Your setup code for Express.js on Base</p>
+
+      <div id="codeOutput"></div>
+
+      <div style="margin-top: 2rem;">
+        <h3 style="margin-bottom: 0.75rem;">✅ Deploy & Test Checklist</h3>
+        <ul class="checklist">
+          <li>Install dependencies with the command above</li>
+          <li>Add your RPC proxy logic to forward requests to your node</li>
+          <li>Start the server and verify it runs on port 3637</li>
+          <li>Test with the curl command — expect a 402 response</li>
+          <li>Set up systemd service for production</li>
+          <li>Register your endpoint on the Arkeo Marketplace</li>
+        </ul>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary" onclick="goToStep(3)">← Back</button>
+        <a href="become-provider.html" class="btn btn-primary" style="text-decoration:none;">Register as Provider →</a>
+      </div>
+    </div>
+
+    <!-- Extra Sections -->
+    <div class="extra-sections">
+
+      <!-- How x402 Works -->
+      <div class="collapsible">
+        <button class="collapsible-header" onclick="toggleCollapsible(this)">
+          <span class="arrow">▸</span> 🔄 How x402 Works
+        </button>
+        <div class="collapsible-body hidden">
+          <p style="margin-bottom: 1rem;">x402 uses the HTTP 402 "Payment Required" status code to enable native web payments:</p>
+          <div class="flow-diagram">
+            <div class="flow-step">🖥️ Client<br><small>sends request</small></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">⚡ Server<br><small>returns 402</small></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">💳 Client<br><small>sends payment</small></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">✅ Server<br><small>returns data</small></div>
+          </div>
+          <p>The facilitator at <code style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:0.25rem;">x402.org</code> verifies USDC payments on Base. No accounts, no API keys — just HTTP headers.</p>
+        </div>
+      </div>
+
+      <!-- Why x402 + Arkeo -->
+      <div style="margin-bottom: 1.5rem;">
+        <h2 style="font-size: 1.25rem; margin-bottom: 1rem; text-align: center;">Why x402 + Arkeo?</h2>
+        <div class="benefit-grid">
+          <div class="benefit-card">
+            <h4>🤖 AI Agent Revenue</h4>
+            <p>AI agents can't sign up for accounts or use credit cards. x402 lets them pay per-request automatically with crypto.</p>
+          </div>
+          <div class="benefit-card">
+            <h4>💸 Instant Settlement</h4>
+            <p>USDC payments settle on Base in seconds. No waiting for on-chain contract claims or withdrawal periods.</p>
+          </div>
+          <div class="benefit-card">
+            <h4>🌐 No KYC Required</h4>
+            <p>Pure HTTP standard. No signup, no accounts, no identity verification. Just pay and get data.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align: center; margin: 2rem 0;">
+        <a href="https://x402.org/docs/sellers" target="_blank" style="color: var(--arkeo); font-weight: 600; font-size: 1rem;">📚 Full x402 Documentation at x402.org →</a>
+      </div>
+
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>Built on <a href="https://arkeo.network" target="_blank">Arkeo Network</a> · <a href="https://x402.org" target="_blank">x402 Protocol</a> by Coinbase</p>
+  </footer>
+
+  <script>
+    // ============================================================
+    // STATE
+    // ============================================================
+    let currentStep = 1;
+    let selectedFramework = 'express';
+    let selectedNetwork = 'base';
+    let price = '0.0001';
+
+    // ============================================================
+    // FRAMEWORK SELECTION
+    // ============================================================
+    function selectFramework(fw) {
+      selectedFramework = fw;
+      document.querySelectorAll('.fw-card').forEach(c => c.classList.remove('selected'));
+      document.querySelector(`.fw-card[data-fw="${fw}"]`).classList.add('selected');
+    }
+
+    // ============================================================
+    // NETWORK SELECTION
+    // ============================================================
+    function selectNetwork(net) {
+      selectedNetwork = net;
+      document.querySelectorAll('.network-opt').forEach(c => c.classList.remove('selected'));
+      document.querySelector(`.network-opt[data-net="${net}"]`).classList.add('selected');
+    }
+
+    // ============================================================
+    // WALLET VALIDATION
+    // ============================================================
+    function validateWallet() {
+      const input = document.getElementById('walletInput');
+      const hint = document.getElementById('walletHint');
+      const val = input.value.trim();
+      if (val && /^0x[a-fA-F0-9]{40}$/.test(val)) {
+        hint.textContent = '✅ Valid EVM address';
+        hint.style.color = 'var(--success)';
+      } else if (val) {
+        hint.textContent = '⚠️ Enter a valid 0x address (42 characters)';
+        hint.style.color = 'var(--warning)';
+      } else {
+        hint.textContent = 'Paste your EVM address (starts with 0x, 42 characters)';
+        hint.style.color = '';
+      }
+    }
+
+    // ============================================================
+    // PRICING
+    // ============================================================
+    function selectPreset(p) {
+      price = p;
+      document.getElementById('priceInput').value = p;
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('selected'));
+      document.querySelector(`.preset-btn[data-price="${p}"]`).classList.add('selected');
+      updatePriceCalc();
+    }
+
+    function updatePriceCalc() {
+      const val = parseFloat(document.getElementById('priceInput').value) || 0;
+      price = String(val);
+      const calc = document.getElementById('priceCalc');
+      if (val === 0) {
+        calc.innerHTML = 'Free tier — no charge per request';
+      } else {
+        const k = (val * 1000).toFixed(4).replace(/\.?0+$/, '');
+        const m = (val * 1000000).toFixed(2);
+        calc.innerHTML = `At this rate: <strong>1,000 requests = $${k}</strong> &nbsp;|&nbsp; <strong>1M requests = $${m}</strong>`;
+      }
+      // Update preset highlight
+      document.querySelectorAll('.preset-btn').forEach(b => {
+        b.classList.toggle('selected', b.dataset.price === price);
+      });
+    }
+
+    // ============================================================
+    // STEP NAVIGATION
+    // ============================================================
+    function goToStep(step) {
+      if (step < 1 || step > 4) return;
+      currentStep = step;
+
+      // Show/hide panels
+      for (let i = 1; i <= 4; i++) {
+        document.getElementById(`step${i}`).classList.toggle('hidden', i !== step);
+      }
+
+      // Update dots
+      const pcts = [0, 0, 33, 66, 100];
+      document.getElementById('progressLine').style.width = pcts[step] + '%';
+      for (let i = 1; i <= 4; i++) {
+        const dot = document.getElementById(`dot${i}`);
+        const lbl = document.getElementById(`label${i}`);
+        dot.className = 'step-dot' + (i < step ? ' complete' : i === step ? ' active' : '');
+        lbl.className = 'step-label' + (i === step ? ' active' : '');
+        if (i < step) dot.textContent = '✓';
+        else dot.textContent = i;
+      }
+
+      // Generate code when reaching step 4
+      if (step === 4) generateCode();
+    }
+
+    // ============================================================
+    // CODE GENERATION
+    // ============================================================
+    function generateCode() {
+      const wallet = document.getElementById('walletInput').value.trim() || '0xYOUR_WALLET_ADDRESS';
+      const net = selectedNetwork;
+      const netLabel = net === 'base-sepolia' ? 'base-sepolia' : 'base';
+      const p = price || '0.0001';
+      const fw = selectedFramework;
+
+      document.getElementById('codeSubtitle').textContent =
+        `Your setup code for ${fwName(fw)} on ${net === 'base-sepolia' ? 'Base Sepolia (Testnet)' : 'Base (Mainnet)'}`;
+
+      const templates = getTemplates(fw, wallet, netLabel, p);
+      const container = document.getElementById('codeOutput');
+      container.innerHTML = '';
+
+      templates.forEach(t => {
+        const section = document.createElement('div');
+        section.className = 'code-section';
+        section.innerHTML = `
+          <h4>${t.title}</h4>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+            <pre>${t.code}</pre>
+          </div>`;
+        container.appendChild(section);
+      });
+    }
+
+    function fwName(fw) {
+      return { express: 'Express.js', hono: 'Hono', go: 'Go (Gin)', python: 'Python (FastAPI)' }[fw];
+    }
+
+    function esc(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function getTemplates(fw, wallet, network, price) {
+      if (fw === 'express') return [
+        { title: '📦 Install', code: esc('npm install express @x402/express @x402/core @x402/evm') },
+        { title: '📝 server.js', code: esc(`import express from "express";
+import { paymentMiddleware } from "@x402/express";
+import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
+import { registerExactEvmScheme } from "@x402/evm/exact/server";
+
+const app = express();
+const facilitatorClient = new HTTPFacilitatorClient({
+  url: "https://x402.org/facilitator"
+});
+const server = new x402ResourceServer(facilitatorClient);
+registerExactEvmScheme(server);
+
+app.use(paymentMiddleware({
+  "GET /": {
+    accepts: [{
+      scheme: "exact",
+      price: "${price}",
+      network: "${network}",
+      payTo: "${wallet}"
+    }],
+    description: "Arkeo RPC Data Provider",
+    mimeType: "application/json",
+  },
+}, server));
+
+// Add your RPC proxy logic here
+app.get("/", async (req, res) => {
+  const response = await fetch("http://localhost:26657");
+  res.json(await response.json());
+});
+
+app.listen(3637, () => console.log("x402 server running on :3637"));`) },
+        { title: '🔧 Systemd Service (/etc/systemd/system/x402-rpc.service)', code: esc(`[Unit]
+Description=x402 RPC Payment Proxy
+After=network.target
+
+[Service]
+Type=simple
+User=rpc
+WorkingDirectory=/opt/x402-rpc
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target`) },
+        { title: '🧪 Test', code: esc(`curl -i http://localhost:3637/
+# Expect: HTTP 402 Payment Required with x402 payment details`) },
+      ];
+
+      if (fw === 'hono') return [
+        { title: '📦 Install', code: esc('npm install hono @x402/hono @x402/core @x402/evm') },
+        { title: '📝 server.js', code: esc(`import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { paymentMiddleware } from "@x402/hono";
+import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
+import { registerExactEvmScheme } from "@x402/evm/exact/server";
+
+const app = new Hono();
+const facilitatorClient = new HTTPFacilitatorClient({
+  url: "https://x402.org/facilitator"
+});
+const server = new x402ResourceServer(facilitatorClient);
+registerExactEvmScheme(server);
+
+app.use("/*", paymentMiddleware({
+  "GET /": {
+    accepts: [{
+      scheme: "exact",
+      price: "${price}",
+      network: "${network}",
+      payTo: "${wallet}"
+    }],
+    description: "Arkeo RPC Data Provider",
+    mimeType: "application/json",
+  },
+}, server));
+
+app.get("/", async (c) => {
+  const res = await fetch("http://localhost:26657");
+  return c.json(await res.json());
+});
+
+serve({ fetch: app.fetch, port: 3637 });
+console.log("x402 Hono server running on :3637");`) },
+        { title: '🧪 Test', code: esc(`curl -i http://localhost:3637/
+# Expect: HTTP 402 Payment Required`) },
+      ];
+
+      if (fw === 'go') return [
+        { title: '📦 Install', code: esc(`go mod init x402-rpc
+go get github.com/gin-gonic/gin
+go get github.com/coinbase/x402/go`) },
+        { title: '📝 main.go', code: esc(`package main
+
+import (
+    "net/http"
+    "net/http/httputil"
+    "net/url"
+
+    "github.com/gin-gonic/gin"
+    x402 "github.com/coinbase/x402/go"
+)
+
+func main() {
+    r := gin.Default()
+
+    // x402 payment middleware
+    r.Use(x402.PaymentMiddleware(x402.Config{
+        FacilitatorURL: "https://x402.org/facilitator",
+        RouteConfig: map[string]x402.RoutePayment{
+            "GET /": {
+                Price:   "${price}",
+                Network: "${network}",
+                PayTo:   "${wallet}",
+            },
+        },
+    }))
+
+    // Reverse proxy to your RPC node
+    target, _ := url.Parse("http://localhost:26657")
+    proxy := httputil.NewSingleHostReverseProxy(target)
+    r.Any("/", gin.WrapH(proxy))
+
+    r.Run(":3637")
+}`) },
+        { title: '🧪 Test', code: esc(`go run main.go
+curl -i http://localhost:3637/`) },
+      ];
+
+      if (fw === 'python') return [
+        { title: '📦 Install', code: esc('pip install fastapi uvicorn x402') },
+        { title: '📝 server.py', code: esc(`from fastapi import FastAPI
+import httpx
+# x402 Python support — check x402.org/docs for latest SDK
+# from x402 import PaymentMiddleware
+
+app = FastAPI()
+
+FACILITATOR_URL = "https://x402.org/facilitator"
+WALLET = "${wallet}"
+NETWORK = "${network}"
+PRICE = "${price}"
+
+# Add x402 payment middleware
+# app.add_middleware(PaymentMiddleware,
+#     facilitator_url=FACILITATOR_URL,
+#     routes={
+#         "GET /": {"price": PRICE, "network": NETWORK, "pay_to": WALLET}
+#     }
+# )
+
+@app.get("/")
+async def rpc_proxy():
+    async with httpx.AsyncClient() as client:
+        resp = await client.get("http://localhost:26657")
+        return resp.json()
+
+# Run: uvicorn server:app --port 3637`) },
+        { title: '🧪 Test', code: esc(`uvicorn server:app --port 3637
+curl -i http://localhost:3637/`) },
+      ];
+
+      return [];
+    }
+
+    // ============================================================
+    // COPY CODE
+    // ============================================================
+    function copyCode(btn) {
+      const pre = btn.parentElement.querySelector('pre');
+      navigator.clipboard.writeText(pre.textContent).then(() => {
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => btn.textContent = '📋 Copy', 2000);
+      });
+    }
+
+    // ============================================================
+    // COLLAPSIBLE
+    // ============================================================
+    function toggleCollapsible(header) {
+      const body = header.nextElementSibling;
+      body.classList.toggle('hidden');
+      const arrow = header.querySelector('.arrow');
+      arrow.textContent = body.classList.contains('hidden') ? '▸' : '▾';
+    }
+  </script>
+
+</body>
+</html>
