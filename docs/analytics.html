@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics Dashboard — Arkeo Marketplace</title>
+  <link rel="icon" type="image/png" href="images/arkeo-logo-200px_1.png">
+  <meta name="description" content="Live analytics dashboard for the Arkeo Data Marketplace — providers, contracts, network health.">
+  <meta name="theme-color" content="#0a0c10">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg-main: #0a0c10;
+      --bg-card: #12151c;
+      --bg-card-hover: #181c25;
+      --bg-input: #1a1f2a;
+      --border: #252a36;
+      --border-hover: #3BE0FF;
+      --arkeo: #3BE0FF;
+      --arkeo-dim: rgba(59, 224, 255, 0.1);
+      --arkeo-glow: rgba(59, 224, 255, 0.3);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --text: #ffffff;
+      --text-dim: #8b92a5;
+      --text-muted: #5a6278;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-main);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    /* Nav */
+    .nav { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 1rem 2rem; position: sticky; top: 0; z-index: 100; }
+    .nav-inner { max-width: 1400px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+    .logo { display: flex; align-items: center; gap: 0.75rem; font-size: 1.25rem; font-weight: 700; text-decoration: none; color: var(--text); }
+    .logo img { height: 40px; }
+    .logo-text span { color: var(--arkeo); }
+    .nav-links { display: flex; align-items: center; gap: 2rem; }
+    .nav-link { color: var(--text-dim); text-decoration: none; font-weight: 500; transition: color 0.2s; }
+    .nav-link:hover { color: var(--arkeo); }
+    .nav-link.active { color: var(--arkeo); }
+    .nav-buttons { display: flex; gap: 0.75rem; align-items: center; }
+    .btn { padding: 0.6rem 1.2rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
+    .btn-provide, .btn-use { background: linear-gradient(90deg, #ff2bcb 0%, #ff4fd2 50%, #ff8a2b 100%); color: #fff; font-weight: 600; border: none; }
+    .btn-provide:hover, .btn-use:hover { filter: brightness(1.05); box-shadow: 0 10px 30px rgba(255, 79, 210, 0.25); }
+
+    /* Dashboard layout */
+    .dashboard { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+    .dashboard-title { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .dashboard-subtitle { color: var(--text-dim); margin-bottom: 2rem; font-size: 0.95rem; }
+    .section-title { font-size: 1.25rem; font-weight: 700; margin: 2.5rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+
+    /* Stat cards */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+    .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem; }
+    .stat-card .label { color: var(--text-dim); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+    .stat-card .value { font-size: 1.75rem; font-weight: 700; color: var(--arkeo); }
+    .stat-card .sub { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.25rem; }
+
+    /* Charts */
+    .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem; }
+    .chart-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem; }
+    .chart-box h3 { font-size: 1rem; margin-bottom: 1rem; color: var(--text-dim); }
+    .chart-full { grid-column: 1 / -1; }
+
+    /* Leaderboard table */
+    .lb-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .lb-table th { text-align: left; color: var(--text-dim); font-weight: 600; padding: 0.75rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .lb-table td { padding: 0.75rem; border-bottom: 1px solid var(--border); }
+    .lb-table tr:hover { background: var(--bg-card-hover); }
+    .lb-table .gold { background: rgba(245, 158, 11, 0.1); }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .badge-gold { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+    .badge-silver { background: rgba(192, 192, 192, 0.2); color: #c0c0c0; }
+    .badge-bronze { background: rgba(205, 127, 50, 0.2); color: #cd7f32; }
+    .badge-default { background: var(--arkeo-dim); color: var(--arkeo); }
+
+    /* Contract table */
+    .contract-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .contract-table th { text-align: left; color: var(--text-dim); font-weight: 600; padding: 0.6rem; border-bottom: 1px solid var(--border); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .contract-table td { padding: 0.6rem; border-bottom: 1px solid var(--border); }
+    .type-payg { color: var(--arkeo); }
+    .type-sub { color: var(--success); }
+
+    /* Loading */
+    .loading { text-align: center; padding: 3rem; color: var(--text-dim); }
+    .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--arkeo); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 0.5rem; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Health stats */
+    .health-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+    .health-stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem; text-align: center; }
+    .health-stat .hs-value { font-size: 1.5rem; font-weight: 700; color: var(--arkeo); }
+    .health-stat .hs-label { color: var(--text-dim); font-size: 0.8rem; margin-top: 0.25rem; }
+
+    @media (max-width: 900px) {
+      .chart-row { grid-template-columns: 1fr; }
+      .health-grid { grid-template-columns: 1fr; }
+      .nav-links, .nav-buttons { display: none; }
+    }
+    @media (max-width: 600px) {
+      .stat-grid { grid-template-columns: 1fr 1fr; }
+      .dashboard { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="index.html" class="logo">
+        <img src="images/arkeo-logo-200px_1.png" alt="Arkeo">
+        <span class="logo-text">Arkeo <span>Marketplace</span></span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html" class="nav-link">Marketplace</a>
+        <a href="analytics.html" class="nav-link active">📊 Analytics</a>
+        <a href="become-provider.html" class="nav-link">Provide Data</a>
+        <a href="subscribe.html" class="nav-link">Subscribe</a>
+        <a href="https://docs.arkeo.network" target="_blank" class="nav-link">Docs</a>
+      </div>
+      <div class="nav-buttons">
+        <a href="become-provider.html" class="btn btn-provide">Provide Data</a>
+        <a href="subscribe.html" class="btn btn-use">Use Data</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="dashboard">
+    <h1 class="dashboard-title">📊 Network Analytics</h1>
+    <p class="dashboard-subtitle">Live data from the Arkeo blockchain · Auto-refreshes on load</p>
+
+    <!-- Overview Stats -->
+    <div class="stat-grid" id="statsGrid">
+      <div class="stat-card"><div class="label">Online Providers</div><div class="value" id="s-providers">—</div></div>
+      <div class="stat-card"><div class="label">Unique Services</div><div class="value" id="s-services">—</div></div>
+      <div class="stat-card"><div class="label">Total Contracts</div><div class="value" id="s-contracts">—</div></div>
+      <div class="stat-card"><div class="label">Active Contracts</div><div class="value" id="s-active">—</div><div class="sub" id="s-active-sub"></div></div>
+      <div class="stat-card"><div class="label">Total ARKEO Bonded</div><div class="value" id="s-bonded">—</div></div>
+      <div class="stat-card"><div class="label">Total ARKEO Earned</div><div class="value" id="s-earned">—</div></div>
+    </div>
+
+    <!-- Contracts Over Time -->
+    <h2 class="section-title">📈 Contracts Over Time</h2>
+    <div class="chart-row">
+      <div class="chart-box chart-full"><canvas id="contractsTimeChart"></canvas></div>
+    </div>
+
+    <!-- Provider Leaderboard -->
+    <h2 class="section-title">🏆 Provider Leaderboard</h2>
+    <div class="chart-box" style="overflow-x:auto">
+      <div id="leaderboardLoading" class="loading"><span class="spinner"></span> Loading providers…</div>
+      <table class="lb-table" id="leaderboardTable" style="display:none">
+        <thead><tr><th>#</th><th>Provider</th><th>Score</th><th>Badge</th><th>Services</th><th>Active Contracts</th><th>Earned (ARKEO)</th></tr></thead>
+        <tbody id="leaderboardBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Service Popularity + Contract Activity -->
+    <h2 class="section-title">🔗 Service Popularity &amp; Contract Activity</h2>
+    <div class="chart-row">
+      <div class="chart-box"><h3>Providers per Chain</h3><canvas id="serviceChart"></canvas></div>
+      <div class="chart-box"><h3>Contract Status</h3><canvas id="contractStatusChart"></canvas></div>
+    </div>
+
+    <!-- Recent Contracts -->
+    <h2 class="section-title">📋 Recent Contracts</h2>
+    <div class="chart-box" style="overflow-x:auto">
+      <div id="contractsLoading" class="loading"><span class="spinner"></span> Loading contracts…</div>
+      <table class="contract-table" id="contractsTable" style="display:none">
+        <thead><tr><th>ID</th><th>Provider</th><th>Service</th><th>Deposit</th><th>Paid</th><th>Type</th></tr></thead>
+        <tbody id="contractsBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Network Health -->
+    <h2 class="section-title">💚 Network Health</h2>
+    <div class="chart-row">
+      <div class="chart-box"><h3>Provider Status</h3><canvas id="healthChart"></canvas></div>
+      <div class="chart-box" style="display:flex; flex-direction:column; justify-content:center;">
+        <div class="health-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="health-stat"><div class="hs-value" id="h-avgbond">—</div><div class="hs-label">Avg Bond / Provider</div></div>
+          <div class="health-stat"><div class="hs-value" id="h-avgcontracts">—</div><div class="hs-label">Avg Contracts / Provider</div></div>
+          <div class="health-stat"><div class="hs-value" id="h-subscribers">—</div><div class="hs-label">Unique Subscribers</div></div>
+          <div class="health-stat"><div class="hs-value" id="h-online">—</div><div class="hs-label">Online Rate</div></div>
+        </div>
+      </div>
+    </div>
+
+    <p style="text-align:center; color:var(--text-muted); margin-top:3rem; font-size:0.8rem;">Data sourced from Arkeo blockchain API · rest-seed.arkeo.network</p>
+  </div>
+
+<script>
+const API = 'https://rest-seed.arkeo.network';
+
+const KNOWN_PROVIDERS = {
+  'arkeopub1addwnpepqdgt6w2qqkt4jydfud507nl740gxeag7g': { name: 'Liquify' },
+  'arkeopub1addwnpepq22m27n5ryy787muswzjqjk0k9k7lfp4h': { name: 'Arkeo Core Provider' },
+  'arkeopub1addwnpepqdnr9x5c386meywavzmy5wa2xfwkn26j2': { name: 'Everstake' },
+  'arkeopub1addwnpepqvj8mevcpdamq9cp5478t8k36tpmc7tfa': { name: 'Stake Village' },
+  'arkeopub1addwnpepqgvlg57udnpwh4y6k7yedt6pnfd0gutcq': { name: 'Nodefleet.org' },
+  'arkeopub1addwnpepqduv5lky7ckq8efzzu08rm62ml6mvahjv': { name: 'Roomit' },
+  'arkeopub1addwnpepqdvlra44yykhmmpwtfavs35a5w6h8xqtuceedkuxur6v0gs8yfxa59h7wnm': { name: '0xFury' },
+  'arkeopub1addwnpepqfuk5cy2ey6h3pfpwerkhfps0d4vqt6men4j2wx56zfn5nrfk8n9ymnj327': { name: 'Red_5' },
+};
+
+const CHAIN_DISPLAY_NAMES = {
+  'gaia-mainnet-rpc': 'Cosmos Hub (RPC)',
+  'gaia-mainnet-fullnode': 'Cosmos Hub',
+  'eth-mainnet-fullnode': 'Ethereum',
+  'eth-mainnet-archive': 'Ethereum (Archive)',
+  'btc-mainnet-fullnode': 'Bitcoin',
+  'arkeo-mainnet-fullnode': 'Arkeo',
+  'arkeo-mainnet-rest': 'Arkeo (REST)',
+  'osmosis-mainnet-fullnode': 'Osmosis',
+  'thorchain-mainnet-fullnode': 'THORChain',
+  'maya-mainnet-fullnode': 'Maya Protocol',
+  'base-mainnet-fullnode': 'Base',
+  'cosmos-mainnet-fullnode': 'Cosmos Hub',
+};
+
+function chainName(raw) {
+  if (CHAIN_DISPLAY_NAMES[raw]) return CHAIN_DISPLAY_NAMES[raw];
+  return raw.replace(/-mainnet-(fullnode|archive|rest|rpc)/g, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function providerName(pubkey) {
+  return KNOWN_PROVIDERS[pubkey]?.name || pubkey.slice(0, 12) + '…';
+}
+
+function uarkeo(amount) {
+  return (parseInt(amount || '0') / 1e8);
+}
+
+function fmt(n, d = 2) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toFixed(d);
+}
+
+const COLORS = ['#3BE0FF', '#ff4fd2', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316'];
+
+// Fetch helpers
+async function fetchProviders() {
+  const res = await fetch(`${API}/arkeo/providers`);
+  const data = await res.json();
+  return data.provider || [];
+}
+
+async function fetchAllContracts() {
+  let all = [];
+  let nextKey = null;
+  for (let i = 0; i < 20; i++) {
+    const params = nextKey ? `?pagination.key=${encodeURIComponent(nextKey)}&pagination.limit=100` : '?pagination.limit=100';
+    const res = await fetch(`${API}/arkeo/contracts${params}`);
+    const data = await res.json();
+    if (data.contract) all.push(...data.contract);
+    nextKey = data.pagination?.next_key || null;
+    if (!nextKey) break;
+  }
+  return all;
+}
+
+async function fetchServices() {
+  const res = await fetch(`${API}/arkeo/services`);
+  const data = await res.json();
+  return data.service || [];
+}
+
+// Main
+(async function() {
+  try {
+    const [providers, contracts, services] = await Promise.all([fetchProviders(), fetchAllContracts(), fetchServices()]);
+
+    // -- Overview Stats --
+    const onlineProviders = providers.filter(p => p.status === 'ONLINE' || p.status === 'ProviderStatus_ONLINE');
+    const uniqueChains = new Set(services.map(s => s.service?.service || s.service));
+    const activeContracts = contracts.filter(c => parseInt(c.deposit || 0) > parseInt(c.paid || 0));
+    const totalBonded = providers.reduce((s, p) => s + parseInt(p.bond || 0), 0);
+    const totalEarned = contracts.reduce((s, c) => s + parseInt(c.paid || 0), 0);
+
+    document.getElementById('s-providers').textContent = onlineProviders.length;
+    document.getElementById('s-services').textContent = uniqueChains.size;
+    document.getElementById('s-contracts').textContent = contracts.length;
+    document.getElementById('s-active').textContent = activeContracts.length;
+    document.getElementById('s-active-sub').textContent = `${((activeContracts.length / Math.max(contracts.length, 1)) * 100).toFixed(0)}% of total`;
+    document.getElementById('s-bonded').textContent = fmt(uarkeo(totalBonded));
+    document.getElementById('s-earned').textContent = fmt(uarkeo(totalEarned));
+
+    // -- Contracts Over Time Chart --
+    const bucketSize = 100;
+    const maxId = Math.max(...contracts.map(c => parseInt(c.id || 0)), 0);
+    const buckets = {};
+    for (let i = 0; i <= maxId; i += bucketSize) {
+      buckets[`${i + 1}-${i + bucketSize}`] = 0;
+    }
+    contracts.forEach(c => {
+      const id = parseInt(c.id || 0);
+      const bStart = Math.floor((id - 1) / bucketSize) * bucketSize;
+      const key = `${bStart + 1}-${bStart + bucketSize}`;
+      if (buckets[key] !== undefined) buckets[key]++;
+    });
+    new Chart(document.getElementById('contractsTimeChart'), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(buckets),
+        datasets: [{
+          label: 'Contracts',
+          data: Object.values(buckets),
+          backgroundColor: 'rgba(59, 224, 255, 0.6)',
+          borderColor: '#3BE0FF',
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#8b92a5' }, grid: { color: '#252a36' } },
+          y: { ticks: { color: '#8b92a5' }, grid: { color: '#252a36' }, beginAtZero: true }
+        }
+      }
+    });
+
+    // -- Provider Leaderboard --
+    // Build provider stats
+    const providerStats = {};
+    providers.forEach(p => {
+      const pk = p.pub_key || p.pubkey;
+      if (!providerStats[pk]) providerStats[pk] = { pubkey: pk, bond: 0, services: 0, status: p.status, activeContracts: 0, earned: 0 };
+      providerStats[pk].bond = parseInt(p.bond || 0);
+    });
+    // Count services per provider
+    services.forEach(s => {
+      const pk = s.provider || s.pub_key;
+      if (providerStats[pk]) providerStats[pk].services++;
+      else providerStats[pk] = { pubkey: pk, bond: 0, services: 1, status: 'UNKNOWN', activeContracts: 0, earned: 0 };
+    });
+    // Count contracts per provider
+    contracts.forEach(c => {
+      const pk = c.provider;
+      if (!providerStats[pk]) providerStats[pk] = { pubkey: pk, bond: 0, services: 0, status: 'UNKNOWN', activeContracts: 0, earned: 0 };
+      providerStats[pk].earned += parseInt(c.paid || 0);
+      if (parseInt(c.deposit || 0) > parseInt(c.paid || 0)) providerStats[pk].activeContracts++;
+    });
+    // Score: bond weight 0.3, services 0.2, active contracts 0.3, earned 0.2 (normalized)
+    const pList = Object.values(providerStats);
+    const maxBond = Math.max(...pList.map(p => p.bond), 1);
+    const maxSvc = Math.max(...pList.map(p => p.services), 1);
+    const maxAC = Math.max(...pList.map(p => p.activeContracts), 1);
+    const maxEarn = Math.max(...pList.map(p => p.earned), 1);
+    pList.forEach(p => {
+      p.score = Math.round(
+        (p.bond / maxBond * 30) +
+        (p.services / maxSvc * 20) +
+        (p.activeContracts / maxAC * 30) +
+        (p.earned / maxEarn * 20)
+      );
+    });
+    pList.sort((a, b) => b.score - a.score);
+    const top10 = pList.slice(0, 10);
+    const badges = ['🥇', '🥈', '🥉'];
+    const badgeClasses = ['badge-gold', 'badge-silver', 'badge-bronze'];
+    const tbody = document.getElementById('leaderboardBody');
+    top10.forEach((p, i) => {
+      const tr = document.createElement('tr');
+      if (i === 0) tr.className = 'gold';
+      const badge = i < 3 ? `<span class="badge ${badgeClasses[i]}">${badges[i]}</span>` : `<span class="badge badge-default">#${i + 1}</span>`;
+      tr.innerHTML = `<td>${i + 1}</td><td><strong>${providerName(p.pubkey)}</strong></td><td>${p.score}</td><td>${badge}</td><td>${p.services}</td><td>${p.activeContracts}</td><td>${fmt(uarkeo(p.earned))}</td>`;
+      tbody.appendChild(tr);
+    });
+    document.getElementById('leaderboardLoading').style.display = 'none';
+    document.getElementById('leaderboardTable').style.display = 'table';
+
+    // -- Service Popularity Chart --
+    const chainCounts = {};
+    services.forEach(s => {
+      const name = chainName(s.service?.service || s.service || 'unknown');
+      chainCounts[name] = (chainCounts[name] || 0) + 1;
+    });
+    const sortedChains = Object.entries(chainCounts).sort((a, b) => b[1] - a[1]);
+    new Chart(document.getElementById('serviceChart'), {
+      type: 'bar',
+      data: {
+        labels: sortedChains.map(c => c[0]),
+        datasets: [{
+          label: 'Providers',
+          data: sortedChains.map(c => c[1]),
+          backgroundColor: COLORS.slice(0, sortedChains.length),
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#8b92a5' }, grid: { color: '#252a36' }, beginAtZero: true },
+          y: { ticks: { color: '#8b92a5' }, grid: { display: false } }
+        }
+      }
+    });
+
+    // -- Contract Status Donut --
+    const expiredCount = contracts.length - activeContracts.length;
+    new Chart(document.getElementById('contractStatusChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Active', 'Expired'],
+        datasets: [{
+          data: [activeContracts.length, expiredCount],
+          backgroundColor: ['#10b981', '#ef4444'],
+          borderWidth: 0,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { color: '#8b92a5' } } }
+      }
+    });
+
+    // -- Recent Contracts Table --
+    const recent = [...contracts].sort((a, b) => parseInt(b.id || 0) - parseInt(a.id || 0)).slice(0, 10);
+    const ctbody = document.getElementById('contractsBody');
+    recent.forEach(c => {
+      const tr = document.createElement('tr');
+      const type = c.type === 'ContractType_PAY_AS_YOU_GO' || c.type === 'PAY_AS_YOU_GO' ? 'PAYG' : 'Sub';
+      const typeClass = type === 'PAYG' ? 'type-payg' : 'type-sub';
+      const svcName = chainName(c.service || 'unknown');
+      tr.innerHTML = `<td>#${c.id}</td><td>${providerName(c.provider)}</td><td>${svcName}</td><td>${fmt(uarkeo(c.deposit))}</td><td>${fmt(uarkeo(c.paid))}</td><td><span class="${typeClass}">${type}</span></td>`;
+      ctbody.appendChild(tr);
+    });
+    document.getElementById('contractsLoading').style.display = 'none';
+    document.getElementById('contractsTable').style.display = 'table';
+
+    // -- Network Health --
+    const offlineProviders = providers.length - onlineProviders.length;
+    new Chart(document.getElementById('healthChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Online', 'Offline'],
+        datasets: [{
+          data: [onlineProviders.length, offlineProviders],
+          backgroundColor: ['#10b981', '#ef4444'],
+          borderWidth: 0,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { color: '#8b92a5' } } }
+      }
+    });
+
+    const avgBond = providers.length ? uarkeo(totalBonded / providers.length) : 0;
+    const avgContracts = providers.length ? (contracts.length / providers.length).toFixed(1) : 0;
+    const uniqueSubs = new Set(contracts.map(c => c.client || c.delegate).filter(Boolean));
+
+    document.getElementById('h-avgbond').textContent = fmt(avgBond);
+    document.getElementById('h-avgcontracts').textContent = avgContracts;
+    document.getElementById('h-subscribers').textContent = uniqueSubs.size;
+    document.getElementById('h-online').textContent = `${providers.length ? ((onlineProviders.length / providers.length) * 100).toFixed(0) : 0}%`;
+
+  } catch (err) {
+    console.error('Dashboard error:', err);
+    document.getElementById('leaderboardLoading').innerHTML = '❌ Failed to load data. Check console.';
+    document.getElementById('contractsLoading').innerHTML = '❌ Failed to load data.';
+  }
+})();
+</script>
+</body>
+</html>
