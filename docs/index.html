@@ -991,6 +991,7 @@
               <th>Region</th>
               <th>Transactions</th>
               <th>ARKEO Earned</th>
+              <th title="Queries Per Minute — from on-chain contract settings">QPM</th>
               <th>Status</th>
               <th title="Health checks use on-chain contract data. Active contracts prove a provider is serving data.">Health ℹ️</th>
               <th>Bond</th>
@@ -1188,7 +1189,9 @@
         state.contracts = contracts;
         
         // Count ACTIVE contracts per provider (must have remaining deposit)
+        // Also track QPM (queries_per_minute) per provider from contracts
         state.contractsByProvider = {};
+        state.qpmByProvider = {};
         contracts.forEach(c => {
           const pk = c.provider;
           const deposit = parseInt(c.deposit || 0);
@@ -1196,6 +1199,12 @@
           const hasBalance = deposit > paid;
           if (pk && hasBalance) {
             state.contractsByProvider[pk] = (state.contractsByProvider[pk] || 0) + 1;
+          }
+          // Track QPM from contract data
+          const qpm = parseInt(c.queries_per_minute || c.queriesPerMinute || 0);
+          if (pk && qpm > 0) {
+            if (!state.qpmByProvider[pk]) state.qpmByProvider[pk] = [];
+            state.qpmByProvider[pk].push(qpm);
           }
         });
         
@@ -1587,6 +1596,15 @@
       document.getElementById('providerGrid').classList.toggle('hidden', view !== 'grid');
     }
     
+    function getProviderQpm(pubkey) {
+      const qpmValues = state.qpmByProvider?.[pubkey];
+      if (!qpmValues || qpmValues.length === 0) return '—';
+      // Show the typical (median) QPM across their contracts
+      const sorted = [...qpmValues].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      return median.toLocaleString();
+    }
+
     let showAllProviders = false;
     
     function toggleShowAll() {
@@ -1605,7 +1623,7 @@
       if (providers.length === 0) {
         const emptyMsg = '<p style="color: var(--text-dim); text-align: center; padding: 2rem;">No providers found.</p>';
         grid.innerHTML = emptyMsg;
-        tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-dim); padding: 2rem;">No providers found.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--text-dim); padding: 2rem;">No providers found.</td></tr>`;
         document.getElementById('viewAllContainer')?.remove();
         return;
       }
@@ -1655,6 +1673,7 @@
             <td>${escapeHtml(p.location || 'Unknown')}</td>
             <td class="transactions">${transactions.toLocaleString()}</td>
             <td class="earnings">${earnings}</td>
+            <td style="color: var(--arkeo); font-weight: 600;">${getProviderQpm(p.pubkey)}</td>
             <td>
               <span class="provider-status ${isOnline ? 'online' : 'offline'}">
                 ${isOnline ? '● Online' : '○ Offline'}
