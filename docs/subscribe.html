@@ -184,9 +184,11 @@
       grid-template-columns: repeat(2, 1fr);
       gap: 0.75rem;
       margin-bottom: 1rem;
+      max-height: 520px;
+      overflow-y: auto;
     }
     .chain-option {
-      padding: 1rem;
+      padding: 1rem 1.25rem;
       background: var(--bg-input);
       border: 2px solid var(--border);
       border-radius: 0.75rem;
@@ -203,9 +205,32 @@
       border-color: var(--arkeo);
       background: var(--arkeo-dim);
     }
-    .chain-option .chain-name {
-      font-weight: 500;
+    .chain-option .chain-info {
+      flex: 1;
+      min-width: 0;
     }
+    .chain-option .chain-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .chain-option .chain-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.25rem;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+    .chain-demand {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.8rem;
+    }
+    .demand-high { color: #f97316; }
+    .demand-growing { color: var(--arkeo); }
+    .demand-some { color: var(--text-dim); }
+    .demand-none { color: #4b5563; }
     
     /* Provider Cards */
     .provider-list {
@@ -758,22 +783,49 @@
       'arkeopub1addwnpepqfuk5cy2ey6h3pfpwerkhfps0d4vqt6men4j2wx56zfn5nrfk8n9ymnj327': {
         name: 'Red_5', description: 'Arkeo validator and data provider - First wizard-registered provider!', location: 'Americas'
       },
+      'arkeopub1addwnpepqdvlra44yykhmmpwtfavs35a5w6h8xqtuceedkuxur6v0gs8yfxa59h7wnm': {
+        name: '0xFury', description: 'Arkeo data provider', location: 'Europe'
+      },
     };
     
-    // Service ID to chain name mapping
-    // Display names for UI
-    const SERVICE_NAMES = {
-      1: 'Arkeo Mainnet RPC',
-      2: 'Arkeo Mainnet Fullnode',
-      'arkeo-mainnet-fullnode': 'Arkeo Mainnet Fullnode',
-      'btc-mainnet-fullnode': 'Bitcoin Mainnet',
-      'eth-mainnet-fullnode': 'Ethereum Mainnet',
-      'gaia-mainnet-rpc': 'Cosmos Hub RPC',
-      'gaia-mainnet-fullnode': 'Cosmos Hub Fullnode',
-      'osmosis-mainnet-fullnode': 'Osmosis Mainnet',
-      'thorchain-mainnet-fullnode': 'THORChain Mainnet',
-      'maya-mainnet-fullnode': 'Maya Protocol',
+    // Display name mapping for services
+    const CHAIN_DISPLAY_NAMES = {
+      'arkeo-mainnet-rpc': 'Arkeo (RPC)',
+      'arkeo-mainnet-fullnode': 'Arkeo',
+      'btc-mainnet-fullnode': 'Bitcoin',
+      'eth-mainnet-fullnode': 'Ethereum',
+      'gaia-mainnet-rpc': 'Cosmos Hub (RPC)',
+      'gaia-mainnet-fullnode': 'Cosmos Hub',
+      'osmosis-mainnet-fullnode': 'Osmosis',
+      'thorchain-mainnet-fullnode': 'THORChain',
       'thorchain-v1-fullnode': 'THORChain V1',
+      'maya-mainnet-fullnode': 'Maya Protocol',
+      'base-mainnet-fullnode': 'Base',
+      'avax-mainnet-fullnode': 'Avalanche',
+      'bsc-mainnet-fullnode': 'BNB Chain',
+      'sol-mainnet-fullnode': 'Solana',
+      'dot-mainnet-fullnode': 'Polkadot',
+      'matic-mainnet-fullnode': 'Polygon',
+      'arb-mainnet-fullnode': 'Arbitrum',
+      'op-mainnet-fullnode': 'Optimism',
+    };
+    
+    // Search aliases — maps common search terms to service name fragments
+    const SEARCH_ALIASES = {
+      'cosmos': 'gaia', 'atom': 'gaia', 'cosmoshub': 'gaia',
+      'thor': 'thorchain', 'rune': 'thorchain',
+      'btc': 'btc', 'bitcoin': 'btc',
+      'eth': 'eth', 'ethereum': 'eth',
+      'maya': 'maya', 'cacao': 'maya',
+      'osmo': 'osmosis',
+      'bnb': 'bsc', 'binance': 'bsc',
+      'sol': 'sol', 'solana': 'sol',
+      'dot': 'dot', 'polkadot': 'dot',
+      'avax': 'avax', 'avalanche': 'avax',
+      'matic': 'matic', 'polygon': 'matic',
+      'arb': 'arb', 'arbitrum': 'arb',
+      'op': 'op-', 'optimism': 'op-',
+      'base': 'base',
     };
     
     // Service ID to actual service name (for API calls)
@@ -781,6 +833,9 @@
       1: 'arkeo-mainnet-rpc',
       2: 'arkeo-mainnet-fullnode',
     };
+    
+    // Demand data from contracts
+    let serviceDemand = {};
     
     // Real chain and provider data (loaded from API)
     let chains = [];
@@ -921,46 +976,95 @@
       checkKeplr();
     }
     
+    // Fetch all contracts with pagination
+    async function fetchAllContracts() {
+      let allContracts = [];
+      let nextKey = null;
+      let page = 0;
+      do {
+        page++;
+        const params = nextKey ? `?pagination.key=${encodeURIComponent(nextKey)}&pagination.limit=100` : '?pagination.limit=100';
+        try {
+          const response = await fetch(`${API_BASE}/arkeo/contracts${params}`);
+          const data = await response.json();
+          const contracts = data.contract || data.contracts || [];
+          allContracts = allContracts.concat(contracts);
+          nextKey = data.pagination?.next_key || null;
+        } catch (e) {
+          console.warn('Contract fetch page', page, 'failed:', e);
+          break;
+        }
+      } while (nextKey && page < 20);
+      console.log(`Loaded ${allContracts.length} contracts across ${page} pages`);
+      return allContracts;
+    }
+    
+    function computeServiceDemand(contracts) {
+      const demand = {};
+      for (const c of contracts) {
+        const svc = c.service || c.service_name;
+        if (!svc) continue;
+        if (!demand[svc]) demand[svc] = { active: 0, total: 0 };
+        demand[svc].total++;
+        const deposit = parseInt(c.deposit || '0');
+        const paid = parseInt(c.paid || '0');
+        if (deposit > paid) demand[svc].active++;
+      }
+      return demand;
+    }
+    
+    function getDemandIndicator(active) {
+      if (active >= 5) return { icon: '🔥', label: 'High demand', cls: 'demand-high' };
+      if (active >= 2) return { icon: '⚡', label: 'Growing', cls: 'demand-growing' };
+      if (active >= 1) return { icon: '📊', label: 'Some activity', cls: 'demand-some' };
+      return { icon: '—', label: 'No contracts yet', cls: 'demand-none' };
+    }
+    
     async function loadRealData() {
       try {
-        // Load services (chains)
-        const servicesRes = await fetch(`${API_BASE}/arkeo/services`);
-        const servicesData = await servicesRes.json();
-        const services = servicesData.services || [];
+        // Load services, providers, and contracts in parallel
+        const [servicesRes, providersRes, allContracts] = await Promise.all([
+          fetch(`${API_BASE}/arkeo/services`).then(r => r.json()),
+          fetch(`${API_BASE}/arkeo/providers`).then(r => r.json()),
+          fetchAllContracts()
+        ]);
         
-        // Build service name lookup
-        services.forEach(s => {
-          SERVICE_NAMES[s.service_id] = s.name || s.service;
-        });
+        const services = servicesRes.services || [];
+        rawProviders = (providersRes.provider || []).filter(p => p.status === 'ONLINE');
+        serviceDemand = computeServiceDemand(allContracts);
         
-        // Load providers
-        const providersRes = await fetch(`${API_BASE}/arkeo/providers`);
-        const providersData = await providersRes.json();
-        rawProviders = (providersData.provider || []).filter(p => p.status === 'ONLINE');
+        // Build set of all known service IDs (from services API + providers)
+        const allServiceIds = new Set();
+        services.forEach(s => { allServiceIds.add(s.service || s.service_id); });
+        rawProviders.forEach(p => { allServiceIds.add(p.service); });
         
-        // Build chains list from active services
+        // Build chains list from ALL services that have ONLINE providers
         const activeServices = new Set();
         rawProviders.forEach(p => activeServices.add(p.service));
         
+        // Also add services from the API that might not have online providers yet
+        // (so users can see what's available even without providers)
+        services.forEach(s => {
+          const sid = s.service || s.service_id;
+          if (sid) activeServices.add(sid);
+        });
+        
         chains = Array.from(activeServices).map(serviceId => {
-          const name = SERVICE_NAMES[serviceId] || `Service ${serviceId}`;
+          const displayName = getDisplayName(serviceId);
           return {
             id: serviceId,
-            name: formatChainName(name),
-            icon: getChainIcon(name)
+            name: displayName,
+            icon: getChainIcon(serviceId),
+            searchTerms: (serviceId + ' ' + displayName).toLowerCase()
           };
-        }).sort((a, b) => a.name.localeCompare(b.name));
+        });
         
-        // Group ALL ONLINE providers by chain (verified ones get badge)
+        // Group ALL ONLINE providers by chain
         providersByChain = {};
-        
-        // Get list of verified pubkey prefixes
         const verifiedPrefixes = Object.keys(KNOWN_PROVIDERS);
         
         rawProviders.forEach(p => {
           const pubkey = p.pub_key;
-          
-          // Check if this provider is in our verified list (match by prefix)
           const matchedPrefix = verifiedPrefixes.find(prefix => 
             prefix.startsWith(pubkey.slice(0, 40)) || pubkey.startsWith(prefix.slice(0, 40))
           );
@@ -968,11 +1072,8 @@
           const meta = matchedPrefix ? KNOWN_PROVIDERS[matchedPrefix] : null;
           const providerName = meta?.name || 'Provider ' + pubkey.slice(-8);
           
-          if (!providersByChain[p.service]) {
-            providersByChain[p.service] = [];
-          }
+          if (!providersByChain[p.service]) providersByChain[p.service] = [];
           
-          // Check if we already added this provider for this chain
           const alreadyAdded = providersByChain[p.service].some(
             existing => existing.name === providerName
           );
@@ -991,10 +1092,15 @@
           });
         });
         
-        // Show all chains that have ONLINE providers
-        chains = chains.filter(chain => {
-          const hasProviders = providersByChain[chain.id] && providersByChain[chain.id].length > 0;
-          return hasProviders;
+        // Sort chains by demand (active contracts desc), then provider count, then name
+        chains.sort((a, b) => {
+          const da = (serviceDemand[a.id]?.active || 0);
+          const db = (serviceDemand[b.id]?.active || 0);
+          if (db !== da) return db - da;
+          const pa = (providersByChain[a.id]?.length || 0);
+          const pb = (providersByChain[b.id]?.length || 0);
+          if (pb !== pa) return pb - pa;
+          return a.name.localeCompare(b.name);
         });
         
         renderChains(chains);
@@ -1039,20 +1145,24 @@
       }
     }
     
-    function formatChainName(name) {
-      return name.replace(/-/g, ' ').replace(/fullnode|mainnet/gi, '').trim()
-        .split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    function getDisplayName(serviceId) {
+      if (CHAIN_DISPLAY_NAMES[serviceId]) return CHAIN_DISPLAY_NAMES[serviceId];
+      // Auto-format: strip -mainnet-fullnode/-mainnet-rpc, capitalize
+      let name = String(serviceId).replace(/-mainnet-(fullnode|rpc)/gi, (_, type) => type === 'rpc' ? ' (RPC)' : '');
+      name = name.replace(/-/g, ' ').trim();
+      return name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     }
     
-    function getChainIcon(name) {
+    function getChainIcon(serviceId) {
+      const id = String(serviceId).toLowerCase();
       const icons = {
-        'eth': '⟠', 'ethereum': '⟠', 'btc': '₿', 'bitcoin': '₿',
-        'cosmos': '⚛', 'atom': '⚛', 'osmosis': '🌊', 'thorchain': '⚡',
-        'arkeo': '🔷', 'gaia': '⚛', 'avalanche': '🔺', 'avax': '🔺'
+        'eth': '⟠', 'btc': '₿', 'gaia': '⚛', 'osmosis': '🌊',
+        'thorchain': '⚡', 'arkeo': '🔷', 'avax': '🔺', 'maya': '🌙',
+        'base': '🔵', 'bsc': '💛', 'sol': '☀️', 'dot': '⭕',
+        'matic': '💜', 'arb': '🔷', 'op': '🔴',
       };
-      const lower = name.toLowerCase();
       for (const [key, icon] of Object.entries(icons)) {
-        if (lower.includes(key)) return icon;
+        if (id.includes(key)) return icon;
       }
       return '🔗';
     }
@@ -1073,17 +1183,40 @@
 
     function renderChains(chainList) {
       const grid = document.getElementById('chainGrid');
-      grid.innerHTML = chainList.map(chain => `
+      grid.innerHTML = chainList.map(chain => {
+        const provCount = (providersByChain[chain.id] || []).length;
+        const demand = serviceDemand[chain.id] || { active: 0, total: 0 };
+        const d = getDemandIndicator(demand.active);
+        const countText = demand.active > 0 ? `${demand.active} active` : (demand.total > 0 ? `${demand.total} total` : d.label);
+        return `
         <div class="chain-option" onclick="selectChain('${escapeHtml(chain.id)}', '${escapeHtml(chain.name)}')">
-          <span style="font-size: 1.5rem;">${chain.icon}</span>
-          <span class="chain-name">${escapeHtml(chain.name)}</span>
-        </div>
-      `).join('');
+          <span style="font-size: 1.75rem;">${chain.icon}</span>
+          <div class="chain-info">
+            <div class="chain-name">${escapeHtml(chain.name)}</div>
+            <div class="chain-meta">
+              <span>${provCount} provider${provCount !== 1 ? 's' : ''}</span>
+              <span class="chain-demand ${d.cls}">${d.icon} ${countText}</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
     }
 
     function filterChains() {
-      const search = document.getElementById('chainSearch').value.toLowerCase();
-      const filtered = chains.filter(c => c.name.toLowerCase().includes(search));
+      const search = document.getElementById('chainSearch').value.toLowerCase().trim();
+      if (!search) { renderChains(chains); return; }
+      // Check aliases
+      const aliasMatch = SEARCH_ALIASES[search];
+      const filtered = chains.filter(c => {
+        if (c.name.toLowerCase().includes(search)) return true;
+        if (c.searchTerms.includes(search)) return true;
+        if (aliasMatch && c.searchTerms.includes(aliasMatch)) return true;
+        // Also check partial alias matches
+        for (const [alias, target] of Object.entries(SEARCH_ALIASES)) {
+          if (alias.startsWith(search) && c.searchTerms.includes(target)) return true;
+        }
+        return false;
+      });
       renderChains(filtered);
     }
 
