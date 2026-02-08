@@ -1261,10 +1261,18 @@
       const info = state.providerInfos[pubkey];
       if (!info) return;
       
-      // All ONLINE providers are now shown (not just verified ones)
-      // Set default name from pubkey if none exists
+      // All ONLINE providers are shown — no gatekeeping
+      // Generate a useful display name from available data
       if (!info.name) {
-        info.name = 'Provider ' + pubkey.slice(-8);
+        // Try to use their top service as a name hint
+        const topService = info.services?.[0]?.name;
+        if (topService && topService !== 'Service 0') {
+          // Capitalize and clean up service name for display
+          const cleanName = topService.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          info.name = cleanName + ' Provider';
+        } else {
+          info.name = 'Provider ' + pubkey.slice(-8);
+        }
       }
       
       // Mark as verified if in KNOWN_PROVIDERS or has valid metadata
@@ -1516,7 +1524,7 @@
       const status = document.getElementById('statusFilter').value;
       const sortBy = document.getElementById('sortBy').value;
 
-      let filtered = Object.values(state.providerInfos).filter(p => p.verified).filter(p => {
+      let filtered = Object.values(state.providerInfos).filter(p => {
         // Search filter - search provider name, chains, or pubkey
         const providerName = (p.name || '').toLowerCase();
         const chainNames = p.services?.map(s => s.name.toLowerCase()).join(' ') || '';
@@ -1580,7 +1588,7 @@
     // ============================================================
     function calculateProviderEarnings() {
       // Use only verified providers with real names from metadata
-      const providers = Object.values(state.providerInfos).filter(p => p.verified);
+      const providers = Object.values(state.providerInfos);
       
       // Calculate estimated earnings based on bond size and service count
       const providerEarnings = providers.map(p => {
