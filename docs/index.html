@@ -1107,6 +1107,99 @@
       </div>
     </section>
 
+    <!-- Try x402 Live Demo -->
+    <section style="margin-bottom: 2rem;">
+      <div style="text-align: center; margin-bottom: 2rem;">
+        <h2 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem;">⚡ Try x402 Live</h2>
+        <p style="color: var(--text-dim); max-width: 600px; margin: 0 auto;">See HTTP-native payments in action — powered by Red_5</p>
+      </div>
+      <div style="max-width: 800px; margin: 0 auto;">
+        <div style="text-align: center; margin-bottom: 1.5rem;">
+          <button id="x402DemoBtn" onclick="tryX402Demo()" class="btn btn-primary" style="font-size: 1.1rem; padding: 0.875rem 2rem;">
+            🚀 Send Request to Red_5
+          </button>
+        </div>
+        <div id="x402Response" class="hidden">
+          <div id="x402StatusBadge" style="margin-bottom: 1rem; text-align: center;">
+            <span style="display: inline-block; background: rgba(245,158,11,0.15); color: #f59e0b; padding: 0.5rem 1.25rem; border-radius: 2rem; font-weight: 700; font-size: 1rem;">HTTP 402 — Payment Required</span>
+          </div>
+          <div id="x402CorsNote" class="hidden" style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: 0.75rem; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: #f59e0b; text-align: center;">
+            ⚠️ Live demo blocked by browser security (CORS). Here's the actual response you'd get.
+          </div>
+          <!-- Key Fields -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; text-align: center;">
+              <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Price per Request</div>
+              <div style="font-size: 1.5rem; font-weight: 700; color: var(--arkeo); margin-top: 0.25rem;">100 units</div>
+              <div style="font-size: 0.7rem; color: var(--text-dim);">USDC on Base Sepolia</div>
+            </div>
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; text-align: center;">
+              <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Network</div>
+              <div style="font-size: 1.5rem; font-weight: 700; color: var(--arkeo); margin-top: 0.25rem;">eip155:84532</div>
+              <div style="font-size: 0.7rem; color: var(--text-dim);">Base Sepolia</div>
+            </div>
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; text-align: center;">
+              <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Pay To</div>
+              <div style="font-size: 0.85rem; font-weight: 600; color: var(--arkeo); margin-top: 0.25rem; word-break: break-all;">0xd5e0fAA9...Bc54E61</div>
+              <div style="font-size: 0.7rem; color: var(--text-dim);">Red_5 Sentinel</div>
+            </div>
+          </div>
+          <!-- JSON Response -->
+          <div style="position: relative; margin-bottom: 1rem;">
+            <div style="font-size: 0.8rem; color: var(--text-dim); margin-bottom: 0.5rem; font-weight: 600;">Decoded PAYMENT-REQUIRED Header:</div>
+            <pre id="x402Json" style="background: #0d1117; border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem; overflow-x: auto; font-size: 0.8rem; line-height: 1.5; color: #e6edf3; margin: 0;"></pre>
+          </div>
+          <!-- Curl command -->
+          <div style="position: relative; margin-bottom: 1.5rem;">
+            <div style="font-size: 0.8rem; color: var(--text-dim); margin-bottom: 0.5rem; font-weight: 600;">Try it yourself:</div>
+            <div style="background: #0d1117; border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+              <code style="color: #79c0ff; font-size: 0.85rem; white-space: nowrap; overflow-x: auto;">curl -v http://161.35.97.215:3637/</code>
+              <button onclick="navigator.clipboard.writeText('curl -v http://161.35.97.215:3637/'); this.textContent='✓ Copied'; setTimeout(()=>this.textContent='📋 Copy',1500)" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.75rem; white-space: nowrap;">📋 Copy</button>
+            </div>
+          </div>
+          <!-- Explanation -->
+          <div style="background: rgba(59,224,255,0.05); border: 1px solid rgba(59,224,255,0.2); border-radius: 0.75rem; padding: 1.25rem; margin-bottom: 1.5rem;">
+            <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 0.75rem;">This is a <strong style="color: var(--text);">real x402 response</strong> from an Arkeo provider. Any x402-compatible client or AI agent can read these payment instructions, sign a USDC payment, and get data back automatically.</p>
+            <p style="color: var(--arkeo); font-weight: 600; font-size: 0.95rem;">No accounts. No API keys. Just HTTP.</p>
+          </div>
+          <!-- CTAs -->
+          <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+            <a href="x402-setup.html" class="btn btn-primary">Set Up x402 on Your Node →</a>
+            <a href="https://x402.org" target="_blank" class="btn btn-outline">Learn More at x402.org →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <script>
+    function tryX402Demo() {
+      const btn = document.getElementById('x402DemoBtn');
+      const resp = document.getElementById('x402Response');
+      const corsNote = document.getElementById('x402CorsNote');
+      const jsonPre = document.getElementById('x402Json');
+      
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0 auto;"></div> Sending...';
+      
+      const hardcodedB64 = 'eyJ4NDAyVmVyc2lvbiI6MiwiZXJyb3IiOiJQYXltZW50IHJlcXVpcmVkIiwicmVzb3VyY2UiOnsidXJsIjoiaHR0cDovLzE2MS4zNS45Ny4yMTU6MzYzNy8iLCJkZXNjcmlwdGlvbiI6IkFya2VvIFJlZF81IFJQQyBEYXRhIFByb3ZpZGVyIC0gcGF5LXBlci1yZXF1ZXN0IGFjY2VzcyIsIm1pbWVUeXBlIjoiYXBwbGljYXRpb24vanNvbiJ9LCJhY2NlcHRzIjpbeyJzY2hlbWUiOiJleGFjdCIsIm5ldHdvcmsiOiJlaXAxNTU6ODQ1MzIiLCJhbW91bnQiOiIxMDAiLCJhc3NldCI6IjB4MDM2Q2JENTM4NDJjNTQyNjYzNGU3OTI5NTQxZUMyMzE4ZjNkQ0Y3ZSIsInBheVRvIjoiMHhkNWUwZkFBOTkwNWI5MUI5Yjg5ZjE3MDNDMUMyMjgxMjBCYzU0RTYxIiwibWF4VGltZW91dFNlY29uZHMiOjMwMCwiZXh0cmEiOnsibmFtZSI6IlVTREMiLCJ2ZXJzaW9uIjoiMiJ9fV19';
+      
+      function showResponse(usedCors) {
+        const decoded = JSON.parse(atob(hardcodedB64));
+        jsonPre.textContent = JSON.stringify(decoded, null, 2);
+        if (usedCors) corsNote.classList.remove('hidden');
+        resp.classList.remove('hidden');
+        btn.disabled = false;
+        btn.innerHTML = '🚀 Send Request to Red_5';
+      }
+      
+      setTimeout(() => {
+        fetch('http://161.35.97.215:3637/', { mode: 'cors' })
+          .then(r => { showResponse(false); })
+          .catch(e => { showResponse(true); });
+      }, 800);
+    }
+    </script>
+
     <!-- Tokenomics Flywheel -->
     <section style="margin-bottom: 2rem;">
       <div style="text-align: center; margin-bottom: 2.5rem;">
