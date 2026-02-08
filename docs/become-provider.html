@@ -209,6 +209,19 @@
       font-size: 0.7rem;
       color: var(--text-dim);
     }
+    .chain-demand {
+      font-size: 0.7rem;
+      margin-top: 0.35rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+    }
+    .demand-text { opacity: 0.85; }
+    .demand-high { color: #f97316; }
+    .demand-growing { color: var(--arkeo); }
+    .demand-some { color: var(--text-dim); }
+    .demand-none { color: #4b5563; }
     
     /* Search */
     .search-box {
@@ -870,52 +883,100 @@
     }
 
     // ============================================================
-    // LOAD SERVICES FROM BLOCKCHAIN
+    // LOAD SERVICES FROM BLOCKCHAIN (sorted by marketplace demand)
     // ============================================================
+    async function fetchAllContracts() {
+      let allContracts = [];
+      let nextKey = null;
+      let page = 0;
+      const maxPages = 20;
+      
+      do {
+        const params = nextKey ? `?pagination.key=${encodeURIComponent(nextKey)}` : '';
+        const response = await fetch(`${CONFIG.REST_API}/arkeo/contracts${params}`);
+        if (!response.ok) throw new Error(`Contracts API returned ${response.status}`);
+        const data = await response.json();
+        const contracts = data.contract || data.contracts || [];
+        allContracts = allContracts.concat(contracts);
+        nextKey = data.pagination?.next_key || null;
+        page++;
+      } while (nextKey && page < maxPages);
+      
+      console.log(`Loaded ${allContracts.length} contracts across ${page} pages`);
+      return allContracts;
+    }
+    
+    function computeServiceDemand(contracts) {
+      // Count active (deposit > paid) and total contracts per service
+      const demand = {};
+      for (const c of contracts) {
+        const svc = c.service || c.service_id || '';
+        if (!svc) continue;
+        if (!demand[svc]) demand[svc] = { active: 0, total: 0 };
+        demand[svc].total++;
+        const deposit = parseInt(c.deposit || '0');
+        const paid = parseInt(c.paid || '0');
+        if (deposit > paid) demand[svc].active++;
+      }
+      return demand;
+    }
+    
+    function getDemandIndicator(active) {
+      if (active >= 5) return { icon: '🔥', label: 'High demand', cls: 'demand-high' };
+      if (active >= 2) return { icon: '⚡', label: 'Growing', cls: 'demand-growing' };
+      if (active >= 1) return { icon: '📊', label: 'Some activity', cls: 'demand-some' };
+      return { icon: '—', label: 'No contracts yet', cls: 'demand-none' };
+    }
+    
     async function loadServices() {
       const loadingDiv = document.getElementById('loadingChains');
-      const gridDiv = document.getElementById('chainGrid');
       
       try {
-        // Fetch all services from Arkeo REST API
-        const response = await fetch(`${CONFIG.REST_API}/arkeo/services`);
+        // Fetch services and contracts in parallel
+        const [servicesRes, contracts] = await Promise.all([
+          fetch(`${CONFIG.REST_API}/arkeo/services`).then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
+          fetchAllContracts().catch(err => { console.warn('Contract fetch failed:', err); return []; }),
+        ]);
         
-        if (!response.ok) {
-          throw new Error(`API returned ${response.status}`);
-        }
+        // Parse services
+        let services = servicesRes.services || servicesRes.service || [];
+        if (Array.isArray(servicesRes)) services = servicesRes;
         
-        const data = await response.json();
-        
-        // Parse services - handle different response formats
-        let services = [];
-        if (data.services) {
-          services = data.services;
-        } else if (data.service) {
-          services = data.service;
-        } else if (Array.isArray(data)) {
-          services = data;
-        }
-        
-        // Map to our format
         state.services = services.map(s => ({
           id: s.service_id || s.id || s.service,
           name: s.name || `Service ${s.service_id || s.id}`,
           description: s.description || '',
         }));
         
-        // If no services found, use some defaults
         if (state.services.length === 0) {
           state.services = getDefaultServices();
         }
+        
+        // Compute demand from contracts
+        state.serviceDemand = computeServiceDemand(contracts);
+        
+        // Enrich services with demand data
+        for (const svc of state.services) {
+          const d = state.serviceDemand[svc.name] || state.serviceDemand[svc.id] || { active: 0, total: 0 };
+          svc.activeContracts = d.active;
+          svc.totalContracts = d.total;
+        }
+        
+        // Sort by active contracts (desc), then total contracts (desc), then name (asc)
+        state.services.sort((a, b) => {
+          if (b.activeContracts !== a.activeContracts) return b.activeContracts - a.activeContracts;
+          if (b.totalContracts !== a.totalContracts) return b.totalContracts - a.totalContracts;
+          return a.name.localeCompare(b.name);
+        });
         
         loadingDiv.classList.add('hidden');
         renderServices(state.services);
         
       } catch (err) {
         console.error('Failed to load services:', err);
-        
-        // Fallback to default services
         state.services = getDefaultServices();
+        state.serviceDemand = {};
+        for (const svc of state.services) { svc.activeContracts = 0; svc.totalContracts = 0; }
         loadingDiv.innerHTML = `
           <span style="color: var(--warning);">⚠️ Using cached chain list (API unavailable)</span>
         `;
@@ -943,13 +1004,23 @@
     function renderServices(services) {
       const grid = document.getElementById('chainGrid');
       
-      grid.innerHTML = services.map(s => `
+      grid.innerHTML = services.map(s => {
+        const active = s.activeContracts || 0;
+        const total = s.totalContracts || 0;
+        const d = getDemandIndicator(active);
+        const countText = active > 0 ? `${active} active contract${active !== 1 ? 's' : ''}` : (total > 0 ? `${total} total` : '');
+        
+        return `
         <div class="chain-option" onclick="selectService(${s.id}, '${escapeHtml(s.name)}')">
           <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🔗</div>
           <div class="chain-name">${escapeHtml(s.name)}</div>
           <div class="chain-id">ID: ${s.id}</div>
-        </div>
-      `).join('');
+          <div class="chain-demand ${d.cls}" title="${d.label}">
+            <span>${d.icon}</span>
+            <span class="demand-text">${countText || d.label}</span>
+          </div>
+        </div>`;
+      }).join('');
     }
     
     function filterChains() {
