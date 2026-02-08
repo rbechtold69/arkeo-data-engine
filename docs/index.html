@@ -685,6 +685,89 @@
     }
     .footer-link:hover { color: var(--arkeo); }
 
+    /* Reputation Score */
+    .rep-score {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-weight: 700;
+      cursor: help;
+    }
+    .rep-bar {
+      display: inline-block;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--border);
+      width: 60px;
+      position: relative;
+      overflow: hidden;
+    }
+    .rep-bar-fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      border-radius: 3px;
+      transition: width 0.4s;
+    }
+    .rep-gold .rep-bar-fill { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .rep-silver .rep-bar-fill { background: linear-gradient(90deg, #94a3b8, #cbd5e1); }
+    .rep-bronze .rep-bar-fill { background: linear-gradient(90deg, #b45309, #d97706); }
+    .rep-none .rep-bar-fill { background: var(--text-muted); }
+    .rep-gold { color: #fbbf24; }
+    .rep-silver { color: #cbd5e1; }
+    .rep-bronze { color: #d97706; }
+    .rep-none { color: var(--text-dim); }
+    .rep-card {
+      text-align: center;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+      border-radius: 0.75rem;
+      background: rgba(59, 224, 255, 0.05);
+      border: 1px solid var(--border);
+    }
+    .rep-card-score {
+      font-size: 1.75rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .rep-card-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .rep-info-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+    }
+    .rep-info-toggle {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: color 0.2s;
+    }
+    .rep-info-toggle:hover { color: var(--arkeo); }
+    .rep-info-body {
+      padding: 0 1rem 1rem;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+    .rep-info-body ul {
+      margin: 0.5rem 0;
+      padding-left: 1.5rem;
+    }
+    .rep-info-body li { margin-bottom: 0.25rem; }
+
     /* Responsive - Tablet */
     @media (max-width: 1024px) {
       .momentum-content {
@@ -865,11 +948,30 @@
           <option value="offline">Offline</option>
         </select>
         <select class="filter-select" id="sortBy" onchange="filterProviders()">
+          <option value="reputation">Reputation Score</option>
           <option value="earnings">Highest Earning</option>
           <option value="transactions">Most Transactions</option>
           <option value="rate">Lowest Rate</option>
           <option value="bond">Highest Bond</option>
         </select>
+      </div>
+
+      <!-- How Reputation Works -->
+      <div class="rep-info-section">
+        <button class="rep-info-toggle" onclick="this.parentElement.querySelector('.rep-info-body').classList.toggle('hidden'); this.querySelector('.rep-arrow').textContent = this.querySelector('.rep-arrow').textContent === '▸' ? '▾' : '▸';">
+          <span class="rep-arrow">▸</span> ℹ️ How Reputation Works
+        </button>
+        <div class="rep-info-body hidden">
+          <p><strong>Arkeo Reputation Scores are calculated entirely from on-chain data. No manual curation, no gatekeeping — just math.</strong></p>
+          <ul>
+            <li><strong>35%</strong> — Requests Served (total nonce across all contracts)</li>
+            <li><strong>25%</strong> — Revenue Earned (total paid across all contracts)</li>
+            <li><strong>20%</strong> — Bond Committed (provider's total bond)</li>
+            <li><strong>10%</strong> — Active Contracts (contracts with remaining deposit)</li>
+            <li><strong>10%</strong> — Service Breadth (unique services offered)</li>
+          </ul>
+          <p>Each metric is scored 0-100 relative to the best provider, then weighted and summed. Every provider starts at 0 and earns their score through real usage.</p>
+        </div>
       </div>
 
       <div id="providersLoading" class="loading">
@@ -883,6 +985,7 @@
           <thead>
             <tr>
               <th>Provider</th>
+              <th>Reputation</th>
               <th>Data Types</th>
               <th>Region</th>
               <th>Transactions</th>
@@ -1061,6 +1164,7 @@
       services: {},         // Service ID -> service info lookup
       contracts: [],
       contractsByProvider: {}, // pubkey -> count of active contracts
+      reputationScores: {}, // pubkey -> { total, requests, revenue, bond, contracts, services, breakdown }
       timeRange: 'all_time',
       chart: null,
     };
@@ -1103,9 +1207,15 @@
         // Aggregate providers by pubkey and fetch metadata
         await aggregateProviders();
 
+        // Calculate reputation scores after all data is loaded
+        calculateReputationScores();
+
         // Show all ONLINE providers (verified ones highlighted, new providers auto-included)
         const onlineProviders = Object.values(state.providerInfos).filter(p => p.status === 'ONLINE');
         
+        // Sort by reputation by default
+        onlineProviders.sort((a, b) => (state.reputationScores[b.pubkey]?.total || 0) - (state.reputationScores[a.pubkey]?.total || 0));
+
         // Update UI
         updateStats();
         renderProviders(onlineProviders, 5); // Show top 5 on homepage
@@ -1344,6 +1454,91 @@
       }, CONFIG.REFRESH_INTERVAL_MS);
     }
 
+    // ============================================================
+    // REPUTATION SCORE CALCULATION
+    // ============================================================
+    function calculateReputationScores() {
+      state.reputationScores = {};
+      const providers = Object.values(state.providerInfos);
+      if (providers.length === 0) return;
+
+      // Aggregate per-provider metrics from contracts
+      const metrics = {};
+      providers.forEach(p => {
+        const pk = p.pubkey;
+        metrics[pk] = {
+          totalNonce: 0,
+          totalPaid: 0,
+          bond: p.totalBond || 0,
+          activeContracts: 0,
+          serviceCount: p.services?.length || 0,
+        };
+      });
+
+      state.contracts.forEach(c => {
+        const pk = c.provider;
+        if (!metrics[pk]) return;
+        metrics[pk].totalNonce += parseInt(c.nonce || 0);
+        metrics[pk].totalPaid += parseInt(c.paid || 0);
+        const deposit = parseInt(c.deposit || 0);
+        const paid = parseInt(c.paid || 0);
+        if (deposit > paid) metrics[pk].activeContracts++;
+      });
+
+      // Find maximums for normalization
+      const maxNonce = Math.max(1, ...Object.values(metrics).map(m => m.totalNonce));
+      const maxPaid = Math.max(1, ...Object.values(metrics).map(m => m.totalPaid));
+      const maxBond = Math.max(1, ...Object.values(metrics).map(m => m.bond));
+      const maxContracts = Math.max(1, ...Object.values(metrics).map(m => m.activeContracts));
+      const maxServices = Math.max(1, ...Object.values(metrics).map(m => m.serviceCount));
+
+      // Calculate weighted score for each provider
+      Object.entries(metrics).forEach(([pk, m]) => {
+        const reqScore = (m.totalNonce / maxNonce) * 100;
+        const revScore = (m.totalPaid / maxPaid) * 100;
+        const bondScore = (m.bond / maxBond) * 100;
+        const contractScore = (m.activeContracts / maxContracts) * 100;
+        const serviceScore = (m.serviceCount / maxServices) * 100;
+
+        const total = Math.round(
+          reqScore * 0.35 +
+          revScore * 0.25 +
+          bondScore * 0.20 +
+          contractScore * 0.10 +
+          serviceScore * 0.10
+        );
+
+        state.reputationScores[pk] = {
+          total: total,
+          requests: Math.round(reqScore),
+          revenue: Math.round(revScore),
+          bond: Math.round(bondScore),
+          contracts: Math.round(contractScore),
+          services: Math.round(serviceScore),
+        };
+      });
+    }
+
+    function getReputationBadge(score) {
+      if (score >= 80) return '🏆';
+      if (score >= 60) return '🥈';
+      if (score >= 40) return '🥉';
+      return '';
+    }
+
+    function getReputationClass(score) {
+      if (score >= 80) return 'rep-gold';
+      if (score >= 60) return 'rep-silver';
+      if (score >= 40) return 'rep-bronze';
+      return 'rep-none';
+    }
+
+    function reputationTooltip(pk) {
+      const s = state.reputationScores[pk];
+      if (!s) return '';
+      return `Requests: ${s.requests} | Revenue: ${s.revenue} | Bond: ${s.bond} | Contracts: ${s.contracts} | Services: ${s.services}`;
+    }
+
     function updateStats() {
       // Count all ONLINE providers
       const onlineProviders = Object.values(state.providerInfos).filter(p => p.status === 'ONLINE');
@@ -1409,7 +1604,7 @@
       if (providers.length === 0) {
         const emptyMsg = '<p style="color: var(--text-dim); text-align: center; padding: 2rem;">No providers found.</p>';
         grid.innerHTML = emptyMsg;
-        tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-dim); padding: 2rem;">No providers found.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-dim); padding: 2rem;">No providers found.</td></tr>`;
         document.getElementById('viewAllContainer')?.remove();
         return;
       }
@@ -1436,11 +1631,22 @@
         // Simulated earnings based on transactions
         const earnings = formatArkeo(transactions * 1000);
         
+        const repScore = state.reputationScores[p.pubkey]?.total || 0;
+        const repClass = getReputationClass(repScore);
+        const repBadge = getReputationBadge(repScore);
+        const repTip = reputationTooltip(p.pubkey);
+        
         return `
           <tr>
             <td class="provider-name-cell">
               ${escapeHtml(p.name || 'Unknown')}
               <small>${p.location || 'Unknown region'}</small>
+            </td>
+            <td>
+              <span class="rep-score ${repClass}" title="${repTip}">
+                ${repBadge} ${repScore}
+                <span class="rep-bar"><span class="rep-bar-fill" style="width:${repScore}%"></span></span>
+              </span>
             </td>
             <td>
               <div class="data-types">${chainTags}${moreTags}</div>
@@ -1501,8 +1707,17 @@
         const transactions = Math.floor((p.totalBond || 0) / 100000000 * 1000 + Math.random() * 500);
         const earnings = formatArkeo(transactions * 1000);
 
+        const gRepScore = state.reputationScores[p.pubkey]?.total || 0;
+        const gRepClass = getReputationClass(gRepScore);
+        const gRepBadge = getReputationBadge(gRepScore);
+        const gRepTip = reputationTooltip(p.pubkey);
+        
         return `
           <div class="provider-card">
+            <div class="rep-card" title="${gRepTip}">
+              <div class="rep-card-score ${gRepClass}">${gRepBadge} ${gRepScore}</div>
+              <div class="rep-card-label">Reputation Score</div>
+            </div>
             <div class="provider-header">
               <div>
                 <div class="provider-name">${escapeHtml(p.name || 'Unknown Provider')}</div>
@@ -1576,8 +1791,9 @@
 
       // Sort
       filtered.sort((a, b) => {
-        if (sortBy === 'earnings' || sortBy === 'transactions') {
-          // Sort by estimated transactions/earnings (based on bond)
+        if (sortBy === 'reputation') {
+          return (state.reputationScores[b.pubkey]?.total || 0) - (state.reputationScores[a.pubkey]?.total || 0);
+        } else if (sortBy === 'earnings' || sortBy === 'transactions') {
           return (b.totalBond || 0) - (a.totalBond || 0);
         } else if (sortBy === 'bond') {
           return (b.totalBond || 0) - (a.totalBond || 0);
