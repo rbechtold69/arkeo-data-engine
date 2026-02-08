@@ -1,0 +1,513 @@
+{
+  "metadata": {
+    "lastUpdated": "2026-02-08",
+    "notes": "Pricing data compiled from provider websites. Prices may change; verify before display. Per-request costs are estimates based on standard eth_call-equivalent requests.",
+    "disclaimer": "All pricing is approximate and subject to change. Free tiers may have additional restrictions not listed here."
+  },
+  "providers": {
+    "centralized": [
+      {
+        "name": "Infura",
+        "website": "https://www.infura.io",
+        "owner": "Consensys (MetaMask parent)",
+        "freeTier": {
+          "requestsPerDay": 100000,
+          "requestsPerMonth": 3000000,
+          "unit": "requests",
+          "notes": "100K requests/day across core APIs. Now part of MetaMask developer platform."
+        },
+        "paidPlans": [
+          {
+            "name": "Developer",
+            "price": "$50/month",
+            "includedRequests": "10M requests/month",
+            "overage": "$0.000005/request ($5/1M)",
+            "rateLimit": "50 req/s"
+          },
+          {
+            "name": "Team",
+            "price": "$225/month",
+            "includedRequests": "50M requests/month",
+            "overage": "$0.0000045/request ($4.50/1M)",
+            "rateLimit": "200 req/s"
+          },
+          {
+            "name": "Growth",
+            "price": "$1000/month",
+            "includedRequests": "Unlimited (fair use)",
+            "rateLimit": "Custom"
+          }
+        ],
+        "effectiveCostPerRequest": {
+          "free": "$0.00",
+          "paid": "$0.000005 (~$5/1M requests)",
+          "notes": "Based on Developer plan overage rate"
+        },
+        "supportedChains": {
+          "ethereum": true,
+          "polygon": true,
+          "arbitrum": true,
+          "optimism": true,
+          "avalanche": true,
+          "base": true,
+          "linea": true,
+          "starknet": true,
+          "cosmos": false,
+          "thorchain": false,
+          "totalChains": "15+",
+          "notes": "Primarily EVM chains. No Cosmos/Thorchain support."
+        },
+        "kyc": {
+          "required": false,
+          "signupFriction": "Email signup required. Credit card for paid plans.",
+          "notes": "Part of MetaMask/Consensys ecosystem"
+        },
+        "sellingPoints": [
+          "Most established provider (since 2016)",
+          "Deep MetaMask integration",
+          "Archive data included",
+          "MEV protection (Flashbots integration)",
+          "IPFS gateway included"
+        ]
+      },
+      {
+        "name": "Alchemy",
+        "website": "https://www.alchemy.com",
+        "owner": "Alchemy (private, valued at $10B+)",
+        "freeTier": {
+          "requestsPerDay": null,
+          "requestsPerMonth": null,
+          "computeUnitsPerMonth": 30000000,
+          "unit": "compute units (CU)",
+          "equivalentRequests": "~1.15M eth_call equivalents (26 CU each)",
+          "notes": "30M CU/month free. Simple calls (blockNumber) = 10 CU, eth_call = 26 CU. 25 req/s."
+        },
+        "paidPlans": [
+          {
+            "name": "Pay As You Go",
+            "price": "$0/month base (pay per use)",
+            "rate": "$0.40-$0.45 per 1M CU",
+            "rateLimit": "300 req/s",
+            "notes": "$0.45/1M CU up to 300M CU, $0.40/1M CU above 300M CU"
+          },
+          {
+            "name": "Enterprise",
+            "price": "Custom",
+            "notes": "Volume discounts, SLAs, dedicated support"
+          }
+        ],
+        "effectiveCostPerRequest": {
+          "free": "$0.00",
+          "paid": "~$0.0000104-$0.0000117 per eth_call (26 CU × $0.40-$0.45/1M CU)",
+          "simplified": "~$0.01 per 1000 requests",
+          "notes": "Varies heavily by method complexity. Simple calls much cheaper."
+        },
+        "supportedChains": {
+          "ethereum": true,
+          "polygon": true,
+          "arbitrum": true,
+          "optimism": true,
+          "solana": true,
+          "base": true,
+          "zksync": true,
+          "starknet": true,
+          "cosmos": false,
+          "thorchain": false,
+          "totalChains": "30+",
+          "notes": "Broad EVM + Solana. No Cosmos/Thorchain."
+        },
+        "kyc": {
+          "required": false,
+          "signupFriction": "Email/Google signup. Credit card for PAYG.",
+          "notes": "Very smooth onboarding"
+        },
+        "sellingPoints": [
+          "Generous free tier (30M CU)",
+          "Enhanced APIs (NFT, Token, Transfers)",
+          "Smart Wallets / Account Abstraction",
+          "Transaction simulation",
+          "Comprehensive developer tooling (SDK, Composer, Explorer)",
+          "Pay-as-you-go model (no monthly commitment)"
+        ]
+      },
+      {
+        "name": "QuickNode",
+        "website": "https://www.quicknode.com",
+        "owner": "QuickNode Inc. (raised $120M+)",
+        "freeTier": {
+          "requestsPerDay": null,
+          "requestsPerMonth": null,
+          "apiCreditsPerMonth": 50000000,
+          "unit": "API Credits",
+          "equivalentRequests": "~2.5M standard requests (20 credits each)",
+          "notes": "Free plan: 1 endpoint, limited to 10 req/s"
+        },
+        "paidPlans": [
+          {
+            "name": "Starter",
+            "price": "$49/month",
+            "includedCredits": "200M API credits/month",
+            "overage": "$1.50/1M extra credits",
+            "rateLimit": "25 req/s"
+          },
+          {
+            "name": "Build",
+            "price": "$299/month",
+            "includedCredits": "3B API credits/month",
+            "rateLimit": "150 req/s"
+          },
+          {
+            "name": "Scale",
+            "price": "$799/month",
+            "includedCredits": "10B API credits/month",
+            "rateLimit": "500 req/s"
+          }
+        ],
+        "effectiveCostPerRequest": {
+          "free": "$0.00",
+          "paid": "~$0.000005-$0.0000075 per request",
+          "notes": "Based on Starter plan: $49 / ~10M requests"
+        },
+        "supportedChains": {
+          "ethereum": true,
+          "polygon": true,
+          "solana": true,
+          "arbitrum": true,
+          "avalanche": true,
+          "base": true,
+          "cosmos": false,
+          "thorchain": false,
+          "totalChains": "25+",
+          "notes": "Strong Solana support. No Cosmos/Thorchain."
+        },
+        "kyc": {
+          "required": false,
+          "signupFriction": "Email/GitHub signup. Credit card for paid.",
+          "notes": "Straightforward signup"
+        },
+        "sellingPoints": [
+          "Marketplace of add-ons",
+          "QuickNode Streams (real-time data)",
+          "Functions (serverless)",
+          "Strong Solana infrastructure",
+          "Multi-chain in single dashboard"
+        ]
+      },
+      {
+        "name": "Chainstack",
+        "website": "https://chainstack.com",
+        "owner": "Chainstack Pte. Ltd.",
+        "freeTier": {
+          "requestsPerDay": null,
+          "requestsPerMonth": 3000000,
+          "unit": "request units (RU)",
+          "notes": "Developer plan: 3M RU/month, 25 req/s, 1 node. No time limit."
+        },
+        "paidPlans": [
+          {
+            "name": "Growth",
+            "price": "$49/month ($365/year promo)",
+            "includedRequests": "20M RU/month",
+            "overage": "$15/1M extra RU",
+            "rateLimit": "250 req/s",
+            "nodes": 10
+          },
+          {
+            "name": "Pro",
+            "price": "$349/month",
+            "includedRequests": "80M RU/month",
+            "overage": "$12.50/1M extra RU",
+            "rateLimit": "400 req/s",
+            "nodes": 15
+          },
+          {
+            "name": "Business",
+            "price": "$649/month",
+            "includedRequests": "140M RU/month",
+            "overage": "$10/1M extra RU",
+            "rateLimit": "600 req/s",
+            "nodes": 20
+          },
+          {
+            "name": "Enterprise",
+            "price": "Custom",
+            "includedRequests": "400M+ RU/month",
+            "overage": "Starting at $5/1M extra RU"
+          }
+        ],
+        "effectiveCostPerRequest": {
+          "free": "$0.00",
+          "paid": "$0.00000245 (~$2.45/1M) on Growth plan",
+          "notes": "Based on $49/20M included. Overage is $15/1M."
+        },
+        "supportedChains": {
+          "ethereum": true,
+          "polygon": true,
+          "solana": true,
+          "arbitrum": true,
+          "avalanche": true,
+          "base": true,
+          "cosmos": false,
+          "thorchain": false,
+          "totalChains": "70+",
+          "notes": "Claims 70+ blockchains. No Cosmos/Thorchain. Strong EVM coverage."
+        },
+        "kyc": {
+          "required": false,
+          "signupFriction": "Email signup. Crypto payments accepted.",
+          "notes": "Accepts crypto payments on all plans"
+        },
+        "sellingPoints": [
+          "70+ supported blockchains",
+          "Dedicated nodes available",
+          "Subgraph hosting",
+          "Geo-balanced infrastructure",
+          "Accepts crypto payments",
+          "Archive data on all paid plans",
+          "Very competitive pricing (claims 66% cheaper than competitors)"
+        ]
+      },
+      {
+        "name": "GetBlock",
+        "website": "https://getblock.io",
+        "owner": "GetBlock Ltd.",
+        "freeTier": {
+          "requestsPerDay": null,
+          "computeUnitsPerDay": 50000,
+          "computeUnitsPerMonth": 1500000,
+          "unit": "compute units (CU)",
+          "notes": "50K CU/day, 20 RPS, 2 access tokens. All supported chains included."
+        },
+        "paidPlans": [
+          {
+            "name": "Starter",
+            "price": "$39/month ($31/month annual)",
+            "includedCU": "50M CU/month",
+            "rateLimit": "100 RPS"
+          },
+          {
+            "name": "Advanced",
+            "price": "$159/month ($127/month annual)",
+            "includedCU": "220M CU/month",
+            "rateLimit": "300 RPS"
+          },
+          {
+            "name": "Pro",
+            "price": "$399/month ($319/month annual)",
+            "includedCU": "600M CU/month",
+            "rateLimit": "500 RPS"
+          },
+          {
+            "name": "Enterprise",
+            "price": "From $799/month",
+            "includedCU": "Custom",
+            "rateLimit": "Custom"
+          },
+          {
+            "name": "Dedicated Node",
+            "price": "From $1000/month",
+            "notes": "Unlimited requests, unlimited rate limit, archive data"
+          }
+        ],
+        "effectiveCostPerRequest": {
+          "free": "$0.00",
+          "paid": "~$0.00000078 ($0.78/1M CU) on Starter plan",
+          "notes": "Based on $39/50M CU. Actual per-request cost depends on CU weight per method."
+        },
+        "supportedChains": {
+          "ethereum": true,
+          "polygon": true,
+          "solana": true,
+          "arbitrum": true,
+          "avalanche": true,
+          "cosmos": true,
+          "thorchain": false,
+          "totalChains": "50+",
+          "notes": "50+ chains including some Cosmos chains. No Thorchain."
+        },
+        "kyc": {
+          "required": false,
+          "signupFriction": "Email signup. Crypto payments accepted.",
+          "notes": "Simple registration"
+        },
+        "sellingPoints": [
+          "Dedicated node option",
+          "50+ blockchains",
+          "Crypto payments accepted",
+          "Some Cosmos chain support",
+          "Trace & Debug APIs",
+          "Team accounts",
+          "Competitive pricing"
+        ]
+      }
+    ],
+    "decentralized": [
+      {
+        "name": "Pocket Network (POKT)",
+        "website": "https://pocket.network",
+        "token": "POKT",
+        "type": "Decentralized RPC Protocol",
+        "freeTier": {
+          "requestsPerDay": null,
+          "requestsPerMonth": null,
+          "unit": "requests",
+          "notes": "Free public RPC endpoints available with no API key required. Generous rate limits. 60+ chains."
+        },
+        "paidPlans": [
+          {
+            "name": "Foundation Partnership (Wholesale)",
+            "price": "$1 per 1 Billion Compute Units",
+            "notes": "Non-profit rate for chain foundations and dapps. Paid via POKT staking."
+          },
+          {
+            "name": "App Staking",
+            "price": "Stake POKT tokens",
+            "notes": "Stake POKT for throughput allocation. No fiat pricing — token-based access."
+          },
+          {
+            "name": "Gateway Operators",
+            "price": "Run your own gateway via PATH SDK",
+            "notes": "Self-hosted gateway for custom access patterns"
+          }
+        ],
+        "effectiveCostPerRequest": {
+          "free": "$0.00 (public endpoints)",
+          "paid": "~$0.000000001 per CU at wholesale ($1/1B CU)",
+          "notes": "Extraordinarily cheap at wholesale. Public endpoints are free but rate-limited."
+        },
+        "supportedChains": {
+          "ethereum": true,
+          "polygon": true,
+          "solana": true,
+          "avalanche": true,
+          "cosmos": true,
+          "thorchain": false,
+          "totalChains": "60+",
+          "notes": "60+ chains including Cosmos ecosystem. Community-driven chain additions."
+        },
+        "kyc": {
+          "required": false,
+          "signupFriction": "No signup needed for public RPCs. App staking requires POKT tokens.",
+          "notes": "Truly permissionless. No KYC, no email, no API keys for public endpoints."
+        },
+        "sellingPoints": [
+          "Fully decentralized protocol",
+          "Free public RPCs — no key needed",
+          "60+ chains",
+          "Non-profit foundation — lowest possible cost",
+          "$1 per 1B compute units (wholesale)",
+          "Censorship-resistant",
+          "No single point of failure",
+          "Community governed (DAO)"
+        ]
+      },
+      {
+        "name": "Lava Network",
+        "website": "https://www.lavanet.xyz",
+        "token": "LAVA",
+        "type": "Decentralized RPC Routing Protocol",
+        "freeTier": {
+          "requestsPerDay": null,
+          "requestsPerMonth": null,
+          "notes": "Free public RPC pools available. Rate-limited but no signup required."
+        },
+        "paidPlans": [
+          {
+            "name": "Lava RPC API",
+            "price": "Token-based (LAVA staking)",
+            "notes": "Incentive pools created by chains; providers earn from pools. Users access via staking or gateway."
+          },
+          {
+            "name": "Enterprise/Custom",
+            "price": "Contact team",
+            "notes": "Custom integrations for dapps and exchanges"
+          }
+        ],
+        "effectiveCostPerRequest": {
+          "free": "$0.00 (public RPC pools)",
+          "paid": "Token-based — varies with LAVA price",
+          "notes": "Pricing is protocol-native. No fixed fiat pricing published."
+        },
+        "supportedChains": {
+          "ethereum": true,
+          "cosmos": true,
+          "osmosis": true,
+          "starknet": true,
+          "near": true,
+          "thorchain": false,
+          "totalChains": "40+",
+          "notes": "Strong Cosmos ecosystem support. Smart Router directs to fastest provider."
+        },
+        "kyc": {
+          "required": false,
+          "signupFriction": "No signup for public RPCs. Gateway access may require wallet connection.",
+          "notes": "Permissionless protocol"
+        },
+        "sellingPoints": [
+          "Decentralized RPC routing (not just serving)",
+          "Smart Router — auto-selects fastest provider",
+          "Strong Cosmos ecosystem support",
+          "Chains create incentive pools for providers",
+          "Fault-tolerant architecture (audited)",
+          "AI agent friendly",
+          "New rollups get instant support via provider marketplace"
+        ]
+      },
+      {
+        "name": "DIN (Decentralized Intelligence Network)",
+        "website": "https://din.lol",
+        "token": "DIN",
+        "type": "AI Agent Blockchain / Data Network",
+        "freeTier": {
+          "notes": "DIN is primarily an AI data infrastructure network, not a traditional RPC provider. Node operators participate via AI Data Nodes."
+        },
+        "paidPlans": [
+          {
+            "name": "AI Data Node",
+            "price": "Node sale / token staking",
+            "notes": "Participants buy/run AI Data Nodes to contribute to the network. Not a traditional RPC subscription model."
+          }
+        ],
+        "effectiveCostPerRequest": {
+          "notes": "Not directly comparable — DIN focuses on AI data preprocessing and intelligence, not standard blockchain RPC."
+        },
+        "supportedChains": {
+          "notes": "DIN is chain-agnostic AI infrastructure. Not a direct RPC provider for specific blockchains.",
+          "cosmos": false,
+          "thorchain": false,
+          "ethereum": false
+        },
+        "kyc": {
+          "required": false,
+          "signupFriction": "Wallet-based access. Node purchase for participation.",
+          "notes": "Backed by Binance Labs. $8M raised."
+        },
+        "sellingPoints": [
+          "First AI Agent Blockchain",
+          "Decentralized data preprocessing for AI",
+          "Backed by Binance Labs, Hashkey Capital",
+          "$8M raised from top VCs",
+          "AI Data Nodes for network participation",
+          "Focus on AI agent infrastructure (not traditional RPC)"
+        ]
+      }
+    ]
+  },
+  "competitiveAnalysis": {
+    "arkeoAdvantages": [
+      "Native Cosmos/Thorchain support — none of the centralized providers support Thorchain",
+      "Decentralized like POKT/Lava but with integrated marketplace",
+      "Token-based pay-per-request — no subscriptions or credit cards needed",
+      "No KYC, no signup friction — truly permissionless",
+      "Provider competition drives prices down",
+      "Open marketplace — any chain can be added by providers",
+      "Smart contract-based SLAs"
+    ],
+    "marketGaps": [
+      "Thorchain RPC: No major provider (centralized or decentralized) currently offers Thorchain RPC",
+      "Cosmos ecosystem: Only GetBlock and POKT/Lava have partial Cosmos support among competitors",
+      "Permissionless access: Only POKT public RPCs are truly no-signup; all centralized providers require accounts",
+      "Crypto-native billing: Only Chainstack and GetBlock accept crypto among centralized; decentralized protocols are token-native"
+    ]
+  }
+}

@@ -893,6 +893,59 @@
       </div>
     </section>
 
+    <!-- Market Rate Comparison -->
+    <section class="momentum-section" style="margin-bottom: 2rem;">
+      <div style="position: relative; z-index: 1;">
+        <div class="momentum-badge">📊 Market Rate Comparison</div>
+        <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">How Does RPC Pricing Stack Up?</h2>
+        <p style="color: var(--text-dim); margin-bottom: 1.5rem;">See what centralized and decentralized providers charge — then compare with Arkeo's open marketplace.</p>
+        
+        <!-- Toggle between Centralized and Decentralized -->
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem;">
+          <button class="time-filter active" id="tabCentralized" onclick="showCompTab('centralized')">Centralized</button>
+          <button class="time-filter" id="tabDecentralized" onclick="showCompTab('decentralized')">Decentralized</button>
+          <button class="time-filter" id="tabAll" onclick="showCompTab('all')">All</button>
+        </div>
+
+        <!-- Comparison Table -->
+        <div class="provider-table-container" style="border-radius: 0.75rem;">
+          <table class="provider-table" id="compTable">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Type</th>
+                <th>Free Tier</th>
+                <th>Cost per 1M Requests</th>
+                <th>Cosmos</th>
+                <th>THORChain</th>
+                <th>KYC / Signup</th>
+                <th>Key Advantage</th>
+              </tr>
+            </thead>
+            <tbody id="compTableBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Arkeo Highlight -->
+        <div style="margin-top: 1.5rem; padding: 1.25rem; background: rgba(59, 224, 255, 0.08); border: 1px solid rgba(59, 224, 255, 0.3); border-radius: 0.75rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 0.25rem;">
+              <span style="color: var(--arkeo);">Arkeo</span> — The Open Alternative
+            </div>
+            <div style="color: var(--text-dim); font-size: 0.9rem;">
+              No signup. No KYC. No monthly plans. Pay per request with ARKEO tokens (15% discount) or USDC. The only marketplace with native THORChain & Cosmos support.
+            </div>
+          </div>
+          <a href="subscribe.html" class="btn btn-primary" style="white-space: nowrap;">Try Arkeo Now →</a>
+        </div>
+
+        <p style="color: var(--text-muted); font-size: 0.75rem; margin-top: 1rem;">
+          * Pricing as of Feb 2026. Rates may vary by method complexity and volume. Per-request costs calculated from published plan pricing.
+          <a href="https://github.com/rbechtold69/arkeo-data-engine/issues" target="_blank" style="color: var(--arkeo);">Report outdated pricing →</a>
+        </p>
+      </div>
+    </section>
+
     <!-- Providers Section -->
     <section>
       <div class="section-header">
@@ -1649,10 +1702,99 @@
     }
 
     // ============================================================
+    // COMPETITOR COMPARISON
+    // ============================================================
+    const COMPETITORS = [
+      {
+        name: 'Infura', type: 'centralized', website: 'https://infura.io',
+        freeTier: '100K req/day', costPer1M: '~$5.00', cosmos: false, thorchain: false,
+        kyc: 'Email required', advantage: 'Most established (since 2016), MetaMask integration'
+      },
+      {
+        name: 'Alchemy', type: 'centralized', website: 'https://alchemy.com',
+        freeTier: '~1.15M req/mo', costPer1M: '~$10.00', cosmos: false, thorchain: false,
+        kyc: 'Email required', advantage: 'Enhanced APIs (NFT, Token), generous free tier'
+      },
+      {
+        name: 'QuickNode', type: 'centralized', website: 'https://quicknode.com',
+        freeTier: '~2.5M req/mo', costPer1M: '~$5.00', cosmos: false, thorchain: false,
+        kyc: 'Email required', advantage: 'Add-on marketplace, strong Solana support'
+      },
+      {
+        name: 'Chainstack', type: 'centralized', website: 'https://chainstack.com',
+        freeTier: '3M req/mo', costPer1M: '~$2.45', cosmos: false, thorchain: false,
+        kyc: 'Email required', advantage: 'Cheapest centralized, 70+ chains, accepts crypto'
+      },
+      {
+        name: 'GetBlock', type: 'centralized', website: 'https://getblock.io',
+        freeTier: '50K CU/day', costPer1M: '~$0.78', cosmos: true, thorchain: false,
+        kyc: 'Email required', advantage: 'Dedicated nodes, some Cosmos support, accepts crypto'
+      },
+      {
+        name: 'Pocket (POKT)', type: 'decentralized', website: 'https://pocket.network',
+        freeTier: 'Free public RPCs', costPer1M: '~$0.001', cosmos: true, thorchain: false,
+        kyc: 'None', advantage: 'Truly permissionless, 60+ chains, DAO governed'
+      },
+      {
+        name: 'Lava Network', type: 'decentralized', website: 'https://lavanet.xyz',
+        freeTier: 'Free public RPCs', costPer1M: 'Token-based', cosmos: true, thorchain: false,
+        kyc: 'None', advantage: 'Smart routing to fastest provider, strong Cosmos focus'
+      },
+      {
+        name: 'Arkeo', type: 'arkeo', website: '#',
+        freeTier: '10 req/day (free tier)', costPer1M: 'Market-priced', cosmos: true, thorchain: true,
+        kyc: 'None', advantage: 'Open marketplace, THORChain support, ARKEO discount, auto-failover'
+      },
+    ];
+
+    let compTab = 'centralized';
+
+    function showCompTab(tab) {
+      compTab = tab;
+      document.getElementById('tabCentralized').classList.toggle('active', tab === 'centralized');
+      document.getElementById('tabDecentralized').classList.toggle('active', tab === 'decentralized');
+      document.getElementById('tabAll').classList.toggle('active', tab === 'all');
+      renderCompTable();
+    }
+
+    function renderCompTable() {
+      const tbody = document.getElementById('compTableBody');
+      const filtered = COMPETITORS.filter(c => {
+        if (compTab === 'all') return true;
+        if (compTab === 'centralized') return c.type === 'centralized';
+        if (compTab === 'decentralized') return c.type === 'decentralized' || c.type === 'arkeo';
+        return true;
+      });
+
+      tbody.innerHTML = filtered.map(c => {
+        const isArkeo = c.type === 'arkeo';
+        const rowStyle = isArkeo ? 'background: rgba(59, 224, 255, 0.05);' : '';
+        const nameStyle = isArkeo ? 'color: var(--arkeo); font-weight: 700;' : '';
+        const typeLabel = c.type === 'centralized' ? '🏢 Centralized' : c.type === 'decentralized' ? '🌐 Decentralized' : '⚡ Decentralized';
+        const check = '<span style="color: var(--success);">✓</span>';
+        const cross = '<span style="color: var(--text-muted);">✗</span>';
+
+        return `<tr style="${rowStyle}">
+          <td class="provider-name-cell" style="${nameStyle}">
+            ${isArkeo ? '⚡ ' : ''}<a href="${c.website}" target="_blank" style="color: inherit; text-decoration: none;">${c.name}</a>
+          </td>
+          <td style="font-size: 0.8rem;">${typeLabel}</td>
+          <td style="font-size: 0.85rem;">${c.freeTier}</td>
+          <td style="font-weight: 600;">${c.costPer1M}</td>
+          <td style="text-align: center;">${c.cosmos ? check : cross}</td>
+          <td style="text-align: center;">${c.thorchain ? check : cross}</td>
+          <td style="font-size: 0.85rem;">${c.kyc}</td>
+          <td style="font-size: 0.8rem; color: var(--text-dim);">${c.advantage}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // ============================================================
     // INITIALIZE
     // ============================================================
     document.addEventListener('DOMContentLoaded', () => {
       // Load initial data
+      renderCompTable();
       loadData();
       
       // Start auto-refresh (every 30 seconds when tab is visible)
