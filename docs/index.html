@@ -831,6 +831,78 @@
 
   <!-- Main Content -->
   <main class="main">
+    <!-- Providers Section -->
+    <section>
+      <div class="section-header">
+        <h2 class="section-title">Active Providers</h2>
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <button class="view-toggle active" id="viewTable" onclick="setView('table')" title="Table View">☰</button>
+          <button class="view-toggle" id="viewGrid" onclick="setView('grid')" title="Grid View">⊞</button>
+          <a href="become-provider.html" class="btn btn-secondary">+ Add Your Node</a>
+        </div>
+      </div>
+
+      <!-- Enhanced Filter Bar -->
+      <div class="filters" style="flex-wrap: wrap;">
+        <input type="text" class="filter-input" id="searchInput" placeholder="🔍 Search providers or chains..." oninput="filterProviders()" style="min-width: 250px;">
+        <select class="filter-select" id="dataTypeFilter" onchange="filterProviders()">
+          <option value="all">All Data Types</option>
+          <option value="eth">Ethereum</option>
+          <option value="btc">Bitcoin</option>
+          <option value="cosmos">Cosmos</option>
+          <option value="thorchain">THORChain</option>
+          <option value="osmosis">Osmosis</option>
+        </select>
+        <select class="filter-select" id="regionFilter" onchange="filterProviders()">
+          <option value="all">All Regions</option>
+          <option value="americas">Americas</option>
+          <option value="europe">Europe</option>
+          <option value="asia">Asia Pacific</option>
+        </select>
+        <select class="filter-select" id="statusFilter" onchange="filterProviders()">
+          <option value="all">All Status</option>
+          <option value="online">Online Only</option>
+          <option value="offline">Offline</option>
+        </select>
+        <select class="filter-select" id="sortBy" onchange="filterProviders()">
+          <option value="earnings">Highest Earning</option>
+          <option value="transactions">Most Transactions</option>
+          <option value="rate">Lowest Rate</option>
+          <option value="bond">Highest Bond</option>
+        </select>
+      </div>
+
+      <div id="providersLoading" class="loading">
+        <div class="spinner"></div>
+        <p>Loading providers from Arkeo network...</p>
+      </div>
+
+      <!-- Table View -->
+      <div class="provider-table-container" id="providerTableContainer">
+        <table class="provider-table" id="providerTable">
+          <thead>
+            <tr>
+              <th>Provider</th>
+              <th>Data Types</th>
+              <th>Region</th>
+              <th>Transactions</th>
+              <th>ARKEO Earned</th>
+              <th>Status</th>
+              <th title="Health checks use on-chain contract data. Active contracts prove a provider is serving data.">Health ℹ️</th>
+              <th>Bond</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="providerTableBody">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Grid View (hidden by default) -->
+      <div class="provider-grid hidden" id="providerGrid"></div>
+    </section>
+
     <!-- Marketplace Momentum -->
     <section class="momentum-section">
       <div class="momentum-content">
@@ -917,77 +989,6 @@
       </div>
     </section>
 
-    <!-- Providers Section -->
-    <section>
-      <div class="section-header">
-        <h2 class="section-title">Active Providers</h2>
-        <div style="display: flex; gap: 0.75rem; align-items: center;">
-          <button class="view-toggle active" id="viewTable" onclick="setView('table')" title="Table View">☰</button>
-          <button class="view-toggle" id="viewGrid" onclick="setView('grid')" title="Grid View">⊞</button>
-          <a href="become-provider.html" class="btn btn-secondary">+ Add Your Node</a>
-        </div>
-      </div>
-
-      <!-- Enhanced Filter Bar -->
-      <div class="filters" style="flex-wrap: wrap;">
-        <input type="text" class="filter-input" id="searchInput" placeholder="🔍 Search providers or chains..." oninput="filterProviders()" style="min-width: 250px;">
-        <select class="filter-select" id="dataTypeFilter" onchange="filterProviders()">
-          <option value="all">All Data Types</option>
-          <option value="eth">Ethereum</option>
-          <option value="btc">Bitcoin</option>
-          <option value="cosmos">Cosmos</option>
-          <option value="thorchain">THORChain</option>
-          <option value="osmosis">Osmosis</option>
-        </select>
-        <select class="filter-select" id="regionFilter" onchange="filterProviders()">
-          <option value="all">All Regions</option>
-          <option value="americas">Americas</option>
-          <option value="europe">Europe</option>
-          <option value="asia">Asia Pacific</option>
-        </select>
-        <select class="filter-select" id="statusFilter" onchange="filterProviders()">
-          <option value="all">All Status</option>
-          <option value="online">Online Only</option>
-          <option value="offline">Offline</option>
-        </select>
-        <select class="filter-select" id="sortBy" onchange="filterProviders()">
-          <option value="earnings">Highest Earning</option>
-          <option value="transactions">Most Transactions</option>
-          <option value="rate">Lowest Rate</option>
-          <option value="bond">Highest Bond</option>
-        </select>
-      </div>
-
-      <div id="providersLoading" class="loading">
-        <div class="spinner"></div>
-        <p>Loading providers from Arkeo network...</p>
-      </div>
-
-      <!-- Table View -->
-      <div class="provider-table-container" id="providerTableContainer">
-        <table class="provider-table" id="providerTable">
-          <thead>
-            <tr>
-              <th>Provider</th>
-              <th>Data Types</th>
-              <th>Region</th>
-              <th>Transactions</th>
-              <th>ARKEO Earned</th>
-              <th>Status</th>
-              <th title="Health checks use on-chain contract data. Active contracts prove a provider is serving data.">Health ℹ️</th>
-              <th>Bond</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="providerTableBody">
-            <!-- Populated by JS -->
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Grid View (hidden by default) -->
-      <div class="provider-grid hidden" id="providerGrid"></div>
-    </section>
   </main>
 
   <!-- Racing Section -->
