@@ -1082,11 +1082,14 @@
         state.providers = providers;
         state.contracts = contracts;
         
-        // Count active contracts per provider
+        // Count ACTIVE contracts per provider (must have remaining deposit)
         state.contractsByProvider = {};
         contracts.forEach(c => {
           const pk = c.provider;
-          if (pk) {
+          const deposit = parseInt(c.deposit || 0);
+          const paid = parseInt(c.paid || 0);
+          const hasBalance = deposit > paid;
+          if (pk && hasBalance) {
             state.contractsByProvider[pk] = (state.contractsByProvider[pk] || 0) + 1;
           }
         });
