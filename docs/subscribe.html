@@ -524,6 +524,12 @@
       .btn-group { flex-direction: column; }
       .container { padding: 1rem; }
       .provider-stats { flex-wrap: wrap; gap: 0.75rem; }
+      .nav { padding: 0.75rem 1rem; flex-wrap: wrap; gap: 0.5rem; }
+      .logo { font-size: 1rem; }
+      .logo img { height: 28px; }
+      .wizard-card { padding: 1.25rem; }
+      .wizard-title { font-size: 1.25rem; }
+      .deposit-input-group { flex-wrap: wrap; }
     }
   </style>
   <!-- Arkeo transaction helper -->
@@ -1827,11 +1833,12 @@
         
         document.getElementById('finalDeposit').textContent = depositAmount + ' ARKEO';
         document.getElementById('finalRequests').textContent = '~' + requests.toLocaleString();
-        document.getElementById('finalContractId').textContent = '#' + Math.floor(Math.random() * 90000 + 10000);
+        // Contract ID will come from tx response in production
+        document.getElementById('finalContractId').textContent = txHash ? txHash.slice(0, 12) + '...' : 'Pending...';
         
-        // Build sentinel endpoint URL
-        const sentinelUrl = selectedProvider.sentinelUrl || `https://sentinel.${selectedProvider.name.toLowerCase().replace(/\s/g, '')}.io`;
-        document.getElementById('finalEndpoint').textContent = `${sentinelUrl}/${selectedChain.name.toLowerCase().split(' ')[0]}`;
+        // Build sentinel endpoint URL — show provider pubkey for reference
+        // The actual sentinel URL comes from the provider's on-chain metadata
+        document.getElementById('finalEndpoint').textContent = `Use provider sentinel (see provider details page)`;
         
         // Update failover status
         const failoverStatus = document.getElementById('failoverStatus');
