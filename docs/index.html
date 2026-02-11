@@ -1511,13 +1511,20 @@
           if (expiry > currentHeight) activeProviderKeys.add(c.provider);
         });
 
-        // Filter out dead/ghost providers:
+        // Filter to show only legitimate, active providers:
         // 1. Must be ONLINE with bond > 0
-        // 2. Must NOT have localhost/127.0.0.1 metadata (misconfigured test accounts)
+        // 2. Must NOT have localhost/127.0.0.1 metadata
+        // 3. Must be verified (in KNOWN_PROVIDERS) OR have valid HTTPS metadata
+        // 4. Must have at least one service with a real PAYG rate
         const onlineProviders = Object.values(state.providerInfos).filter(p => {
           if (p.status !== 'ONLINE' || p.totalBond <= 0) return false;
           const uri = p.metadataUri || '';
           if (uri.includes('127.0.0.1') || uri.includes('localhost')) return false;
+          if (!uri || uri.trim() === '') return false;
+          // Must be in KNOWN_PROVIDERS or have HTTPS metadata (reachable from browser)
+          const isVerified = p.verified || false;
+          const hasHttps = uri.startsWith('https://');
+          if (!isVerified && !hasHttps) return false;
           return true;
         });
         
@@ -1891,11 +1898,15 @@
     function updateStats() {
       const currentHeight = state.currentHeight || 0;
 
-      // Use same filter as provider listing: ONLINE, bond > 0, no localhost
+      // Use same filter as provider listing
       const visibleProviders = Object.values(state.providerInfos).filter(p => {
         if (p.status !== 'ONLINE' || p.totalBond <= 0) return false;
         const uri = p.metadataUri || '';
         if (uri.includes('127.0.0.1') || uri.includes('localhost')) return false;
+        if (!uri || uri.trim() === '') return false;
+        const isVerified = p.verified || false;
+        const hasHttps = uri.startsWith('https://');
+        if (!isVerified && !hasHttps) return false;
         return true;
       });
       document.getElementById('providerCount').textContent = visibleProviders.length;

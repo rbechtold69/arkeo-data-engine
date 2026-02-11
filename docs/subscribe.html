@@ -1256,7 +1256,15 @@
         ]);
         
         const services = servicesRes.services || [];
-        rawProviders = (providersRes.provider || []).filter(p => p.status === 'ONLINE');
+        rawProviders = (providersRes.provider || []).filter(p => {
+          if (p.status !== 'ONLINE') return false;
+          const uri = p.metadata_uri || '';
+          if (uri.includes('127.0.0.1') || uri.includes('localhost') || !uri) return false;
+          // Must be in KNOWN_PROVIDERS or have HTTPS metadata
+          const isKnown = KNOWN_PROVIDERS && KNOWN_PROVIDERS[p.pub_key];
+          if (!isKnown && !uri.startsWith('https://')) return false;
+          return true;
+        });
         serviceDemand = computeServiceDemand(allContracts);
         
         // Build service ID → name lookup from API
