@@ -9,6 +9,7 @@
   <script src="js/utils.js"></script>
   <script src="js/arkeo-tx.js"></script>
   <script src="js/arkauth.js"></script>
+  <script src="js/providers.js"></script>
   <style>
     :root {
       --bg-main: #0C0E14;
@@ -253,6 +254,7 @@
               <th>Deposit</th>
               <th>Paid</th>
               <th>Rate</th>
+              <th>Time Left</th>
               <th>Status</th>
               <th>Action</th>
             </tr>
@@ -442,9 +444,28 @@
         const rate = c.rate ? `${(parseInt(c.rate.amount) / CONFIG.ARKEO_DIVISOR).toFixed(4)}` : '-';
         const contractType = parseInt(c.contract_type) === 0 ? 'Sub' : 'PAYG';
         const service = state.services?.[c.service] || c.service || '-';
+        // Resolve pubkeys to names
+        const providerName = (typeof KNOWN_PROVIDERS !== 'undefined' && KNOWN_PROVIDERS[c.provider])
+          ? KNOWN_PROVIDERS[c.provider].name
+          : c.provider?.slice(0, 16) + '...';
+        const clientName = c.client?.slice(0, 16) + '...';
         const counterparty = c.isClient
-          ? `<span class="addr truncate" title="${c.provider}">${c.provider}</span>`
-          : `<span class="addr truncate" title="${c.client}">${c.client}</span>`;
+          ? `<span title="${c.provider}">${providerName}</span>`
+          : `<span title="${c.client}">${clientName}</span>`;
+        
+        // Calculate time remaining
+        const height = parseInt(c.height) || 0;
+        const duration = parseInt(c.duration) || 0;
+        const expiryBlock = height + duration;
+        const blocksLeft = Math.max(0, expiryBlock - state.currentHeight);
+        const secondsLeft = blocksLeft * 4;
+        let timeLeft = '-';
+        if (c.active) {
+          if (secondsLeft >= 86400) timeLeft = `~${Math.round(secondsLeft / 86400)}d`;
+          else if (secondsLeft >= 3600) timeLeft = `~${Math.round(secondsLeft / 3600)}h`;
+          else if (secondsLeft >= 60) timeLeft = `~${Math.round(secondsLeft / 60)}m`;
+          else timeLeft = '< 1m';
+        }
         const roleLabel = c.isClient
           ? '<span class="badge badge-client">Client</span>'
           : '<span class="badge badge-provider">Provider</span>';
@@ -468,6 +489,7 @@
           <td>${(deposit / CONFIG.ARKEO_DIVISOR).toFixed(2)}</td>
           <td>${(paid / CONFIG.ARKEO_DIVISOR).toFixed(2)}</td>
           <td>${rate}</td>
+          <td>${timeLeft}</td>
           <td>${statusBadge}</td>
           <td>${actionBtn}</td>
         </tr>`;
