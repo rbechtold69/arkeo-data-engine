@@ -749,9 +749,78 @@
         </div>
         
         <div style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-          <a href="index.html" class="btn btn-primary">View Marketplace</a>
-          <a href="subscribe.html" class="btn btn-secondary">Test Your Provider</a>
+          <button class="btn btn-primary" onclick="goToStep(6)">Next: Configure Sentinel →</button>
+          <a href="index.html" class="btn btn-secondary">View Marketplace</a>
         </div>
+      </div>
+    </div>
+
+    <!-- Step 6: Configure Sentinel -->
+    <div class="wizard-card hidden" id="step6">
+      <h2 class="wizard-title">🛡️ Configure Your Sentinel</h2>
+      <p class="wizard-subtitle">Generate a ready-to-use sentinel config for your provider.</p>
+
+      <!-- Node RPC URL Input -->
+      <div class="form-group">
+        <label class="form-label">What's your node's internal RPC URL?</label>
+        <input type="url" class="form-input" id="sentinelConfigRpcUrl"
+               placeholder="http://192.168.1.50:26657" oninput="updateSentinelConfig()">
+        <p class="form-hint">The internal address where your node's RPC is accessible from the sentinel server.</p>
+      </div>
+
+      <!-- Generated Config -->
+      <div style="position: relative; margin: 1.5rem 0;">
+        <label class="form-label">Generated Sentinel Config</label>
+        <div style="background: #0d1117; border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem; font-family: 'SF Mono', Monaco, monospace; font-size: 0.8rem; overflow-x: auto;">
+          <pre id="sentinelConfigYaml" style="color: #e6edf3; margin: 0; white-space: pre-wrap;"></pre>
+        </div>
+        <button class="btn btn-primary" style="margin-top: 1rem; width: 100%; font-size: 1.1rem; padding: 1rem;" onclick="copySentinelConfig()">
+          📋 Copy Config
+        </button>
+      </div>
+
+      <!-- Setup Instructions -->
+      <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin: 1.5rem 0;">
+        <h3 style="margin-bottom: 1rem;">📝 Setup Instructions</h3>
+        <ol style="padding-left: 1.5rem; color: var(--text-dim); line-height: 2;">
+          <li>Save this config as <code style="background: var(--bg-card); padding: 0.15rem 0.4rem; border-radius: 0.25rem;">config.yaml</code> on your server (same machine running the sentinel)</li>
+          <li><strong>Docker:</strong> Mount into container at <code style="background: var(--bg-card); padding: 0.15rem 0.4rem; border-radius: 0.25rem;">/root/.arkeo/config.yaml</code></li>
+          <li><strong>Direct install:</strong> Save to <code style="background: var(--bg-card); padding: 0.15rem 0.4rem; border-radius: 0.25rem;">~/.arkeo/config.yaml</code></li>
+          <li>Restart your sentinel:
+            <div style="background: #0d1117; border-radius: 0.5rem; padding: 0.75rem; margin: 0.5rem 0; font-family: monospace; font-size: 0.8rem;">
+              <span style="color: #10b981;">docker restart arkeo-sentinel</span>
+              <span style="color: var(--text-dim);"> # or </span>
+              <span style="color: #10b981;">systemctl restart sentinel</span>
+            </div>
+          </li>
+          <li>Test it:
+            <div style="background: #0d1117; border-radius: 0.5rem; padding: 0.75rem; margin: 0.5rem 0; font-family: monospace; font-size: 0.75rem; word-break: break-all; position: relative;">
+              <pre id="curlTestCmd" style="color: #10b981; margin: 0; white-space: pre-wrap;"></pre>
+              <button onclick="navigator.clipboard.writeText(document.getElementById('curlTestCmd').textContent); this.textContent='✓'; setTimeout(()=>this.textContent='📋',2000);"
+                style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-dim); padding: 0.2rem 0.4rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.7rem;">📋</button>
+            </div>
+          </li>
+        </ol>
+      </div>
+
+      <!-- Self-Test -->
+      <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin: 1.5rem 0;">
+        <h3 style="margin-bottom: 1rem;">🧪 Test Your Sentinel</h3>
+        <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 1rem;">
+          Check if your sentinel is reachable and responding correctly.
+        </p>
+        <button class="btn btn-primary" id="selfTestBtn" onclick="runSelfTest()" style="width: 100%;">
+          🔍 Test My Sentinel
+        </button>
+        <div id="selfTestResults" style="margin-top: 1rem;"></div>
+        <div class="alert alert-warning" style="margin-top: 1rem; font-size: 0.8rem;">
+          ⚠️ If the test fails but your sentinel is running, it may be a browser security (CORS) issue. Try testing from your server terminal instead using the curl command above.
+        </div>
+      </div>
+
+      <div style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+        <a href="index.html" class="btn btn-primary">View Marketplace</a>
+        <a href="subscribe.html" class="btn btn-secondary">Test Your Provider</a>
       </div>
     </div>
   </div>
@@ -1561,8 +1630,9 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
     // ============================================================
     function goToStep(step) {
       // Hide all steps
-      for (let i = 1; i <= 5; i++) {
-        document.getElementById('step' + i).classList.add('hidden');
+      for (let i = 1; i <= 6; i++) {
+        const el = document.getElementById('step' + i);
+        if (el) el.classList.add('hidden');
         if (i <= 4) {
           document.getElementById('dot' + i).classList.remove('active', 'complete');
           document.getElementById('dot' + i).innerHTML = i;
@@ -1603,6 +1673,9 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
         } else {
           updateStep4UI();
         }
+      }
+      if (step === 6) {
+        updateSentinelConfig();
       }
     }
     
@@ -2059,6 +2132,127 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
     
     function hideLoading() {
       document.getElementById('loadingOverlay').classList.add('hidden');
+    }
+
+    // ============================================================
+    // SENTINEL CONFIG GENERATOR
+    // ============================================================
+    function generateSentinelConfig() {
+      const rpcUrl = document.getElementById('sentinelConfigRpcUrl').value || 'http://YOUR_NODE_IP:26657';
+      const serviceName = state.selectedService?.name || 'arkeo-mainnet-fullnode';
+      const pubkey = state.walletPubkeyBech32 || state.walletAddress || '<your_arkeopub>';
+      const address = state.walletAddress || '<your_arkeo_address>';
+      const date = new Date().toISOString().split('T')[0];
+
+      return `# Arkeo Sentinel Configuration
+# Generated by Arkeo Marketplace - ${date}
+# Provider: ${address}
+
+host: 0.0.0.0
+port: 3636
+provider_pubkey: ${pubkey}
+source_chain: ${CONFIG.CHAIN_ID}
+event_stream_host: wss://rpc-seed.arkeo.network/websocket
+free_rate_limit: 10
+free_rate_limit_duration: 1m
+claims_enabled: true
+claim_check_interval: 30m
+
+services:
+  - name: ${serviceName}
+    rpc_url: ${rpcUrl}`;
+    }
+
+    function updateSentinelConfig() {
+      const yaml = generateSentinelConfig();
+      document.getElementById('sentinelConfigYaml').textContent = yaml;
+      updateCurlTestCmd();
+    }
+
+    function updateCurlTestCmd() {
+      const sentinelUrl = state.sentinelUrl || 'http://YOUR_SERVER_IP:3636';
+      const serviceName = state.selectedService?.name || 'arkeo-mainnet-fullnode';
+      const baseUrl = sentinelUrl.replace(/\/+$/, '');
+      document.getElementById('curlTestCmd').textContent =
+        `curl ${baseUrl}/${serviceName} -d '{"jsonrpc":"2.0","method":"health","id":1}'`;
+    }
+
+    function copySentinelConfig() {
+      const yaml = generateSentinelConfig();
+      navigator.clipboard.writeText(yaml);
+      const btn = event.target.closest('button');
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function runSelfTest() {
+      const resultsDiv = document.getElementById('selfTestResults');
+      const btn = document.getElementById('selfTestBtn');
+      btn.disabled = true;
+
+      // Derive base URL from metadata URI or sentinel URL
+      let baseUrl = '';
+      if (state.metadataUrl) {
+        baseUrl = state.metadataUrl.replace(/\/metadata\.json\/?$/, '');
+      } else if (state.sentinelUrl) {
+        baseUrl = state.sentinelUrl.replace(/\/+$/, '');
+      }
+
+      if (!baseUrl) {
+        resultsDiv.innerHTML = `<div class="status-box error"><span>❌</span><span>No sentinel URL available. Please go back and set one.</span></div>`;
+        btn.disabled = false;
+        return;
+      }
+
+      const serviceName = state.selectedService?.name || '';
+      const metaUrl = baseUrl + '/metadata.json';
+
+      // Test 1: metadata
+      resultsDiv.innerHTML = `<div class="status-box testing"><div class="spinner"></div><span>Testing metadata endpoint...</span></div>`;
+
+      let metaOk = false;
+      try {
+        const resp = await fetch(metaUrl, { signal: AbortSignal.timeout(10000) });
+        if (resp.ok) {
+          metaOk = true;
+          resultsDiv.innerHTML = `<div class="status-box success"><span>✅</span><span>Metadata endpoint responding! (${metaUrl})</span></div>`;
+        } else {
+          resultsDiv.innerHTML = `<div class="status-box error"><span>❌</span><span>Metadata returned HTTP ${resp.status}</span></div>`;
+        }
+      } catch (e) {
+        resultsDiv.innerHTML = `<div class="status-box error"><span>❌</span><span>Could not reach metadata endpoint — likely CORS or firewall. Try curl from your server.</span></div>`;
+      }
+
+      // Test 2: service health
+      if (metaOk && serviceName) {
+        const serviceUrl = baseUrl + '/' + serviceName;
+        resultsDiv.innerHTML += `<div class="status-box testing" id="serviceTestStatus"><div class="spinner"></div><span>Testing service endpoint...</span></div>`;
+        try {
+          const rpcResp = await fetch(serviceUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', method: 'health', id: 1 }),
+            signal: AbortSignal.timeout(10000),
+          });
+          const el = document.getElementById('serviceTestStatus');
+          if (rpcResp.ok) {
+            el.className = 'status-box success';
+            el.innerHTML = `<span>✅</span><span>Service endpoint responding!</span>`;
+          } else {
+            el.className = 'status-box warning';
+            el.innerHTML = `<span>⚠️</span><span>Service returned HTTP ${rpcResp.status} — may still be starting up.</span>`;
+          }
+        } catch (e) {
+          const el = document.getElementById('serviceTestStatus');
+          if (el) {
+            el.className = 'status-box warning';
+            el.innerHTML = `<span>⚠️</span><span>Could not reach service endpoint from browser — try curl from your server.</span>`;
+          }
+        }
+      }
+
+      btn.disabled = false;
     }
 
     // ============================================================
