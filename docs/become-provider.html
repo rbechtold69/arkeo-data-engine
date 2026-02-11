@@ -1739,13 +1739,20 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
       
       btn.disabled = true;
       
-      // Get pubkey bytes for transactions
+      // Get pubkey bytes — auto-reconnect wallet if needed
+      if (!state.walletPubkeyBytes) {
+        try {
+          await connectWallet();
+        } catch (e) {
+          console.error('Auto-reconnect failed:', e);
+        }
+      }
       const pubkeyBytes = state.walletPubkeyBytes;
       if (!pubkeyBytes) {
         statusDiv.innerHTML = `
           <div class="status-box error">
             <span>❌</span>
-            <span>Could not get wallet public key. Please reconnect.</span>
+            <span>Could not get wallet public key. Please click the Connect Wallet button in the top right and try again.</span>
           </div>
         `;
         btn.disabled = false;
