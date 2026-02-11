@@ -221,10 +221,13 @@
         log('ArkAuth', arkauth);
         log('URL', url);
 
-        const resp = await fetch(url);
+        const resp = await fetch(url, { mode: 'cors' });
         const body = await resp.text();
         log('Status', `${resp.status}`, resp.status >= 200 && resp.status < 300 ? 'ok' : 'err');
         log('Response', body.substring(0, 2000));
+        if (resp.status === 400 && body.includes('bad nonce')) {
+          log('Hint', 'Try incrementing the nonce — the sentinel tracks used nonces in memory', 'err');
+        }
 
         // Auto-increment nonce
         $('nonce').value = parseInt(nonce) + 1;
