@@ -526,9 +526,57 @@
       }
     }
 
-    // Claim Earnings (placeholder — requires arkauth signature)
+    // Claim Earnings
     async function claimEarnings(contractId) {
-      showToast('Earnings are claimed automatically by your sentinel. Manual claiming coming soon.', 'error');
+      const contract = state.contracts.find(c => c.id == contractId);
+      if (!contract) return;
+
+      const deposit = parseInt(contract.deposit) || 0;
+      const paid = parseInt(contract.paid) || 0;
+      const nonce = parseInt(contract.nonce) || 0;
+      const unclaimed = deposit - paid;
+
+      if (unclaimed <= 0) {
+        showToast('No unclaimed earnings on this contract.', 'error');
+        return;
+      }
+
+      // For PAYG contracts, the claim TX requires an arkauth signature from the client
+      // that proves N requests were served. The sentinel handles this automatically
+      // because it collects these signatures as it proxies requests.
+      //
+      // For manual claiming, we use ADR-036 signing via Keplr to generate
+      // the arkauth signature for the current nonce.
+      if (!confirm(`Claim earnings from contract #${contractId}?\n\nDeposit: ${(deposit / CONFIG.ARKEO_DIVISOR).toFixed(4)} ARKEO\nAlready paid: ${(paid / CONFIG.ARKEO_DIVISOR).toFixed(4)} ARKEO\nCurrent nonce: ${nonce}\n\nThis will claim any unclaimed income up to the current nonce.`)) return;
+
+      try {
+        // Get the arkauth signature for the current nonce using Keplr
+        // The preimage is "{contractId}:{nonce}:" — same format sentinel uses
+        const preimage = `${contractId}:${nonce}:`;
+        
+        // Sign via Keplr's signArbitrary (ADR-036)
+        const signResult = await window.keplr.signArbitrary(CONFIG.CHAIN_ID, state.walletAddress, preimage);
+        
+        // Convert base64 signature to bytes
+        const sigBytes = Uint8Array.from(atob(signResult.signature), c => c.charCodeAt(0));
+
+        const msg = {
+          typeUrl: '/arkeo.arkeo.MsgClaimContractIncome',
+          value: {
+            creator: state.walletAddress,
+            contractId: contractId,
+            signature: sigBytes,
+            nonce: nonce
+          }
+        };
+
+        const result = await signAndBroadcastDirect(msg);
+        showToast(`Earnings claimed! TX: ${result.txhash.slice(0, 12)}...`);
+        setTimeout(loadContracts, 3000);
+      } catch (e) {
+        console.error(e);
+        showToast('Failed to claim: ' + e.message, 'error');
+      }
     }
   </script>
 </body>
