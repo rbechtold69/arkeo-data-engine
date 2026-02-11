@@ -1821,7 +1821,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
         
         // Wait for the bond TX to be confirmed and sequence to update
         // Poll until sequence increments (up to 30 seconds)
-        const prevSeq = accountInfo.sequence;
+        const prevSeq = accountInfo1.sequence;
         let accountInfo2 = null;
         for (let i = 0; i < 15; i++) {
           await new Promise(r => setTimeout(r, 2000));
