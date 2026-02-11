@@ -1470,6 +1470,13 @@
         state.providers = providers;
         state.contracts = contracts;
         
+        // Fetch current block height for contract expiry checks
+        try {
+          const statusResp = await fetch('https://rpc-seed.arkeo.network/status');
+          const statusData = await statusResp.json();
+          state.currentHeight = parseInt(statusData.result?.sync_info?.latest_block_height || '0');
+        } catch (e) { state.currentHeight = 0; }
+        
         // Count ACTIVE contracts per provider (must have remaining deposit)
         // Also track QPM (queries_per_minute) per provider from contracts
         state.contractsByProvider = {};
@@ -1503,7 +1510,18 @@
         calculateReputationScores();
 
         // Show all ONLINE providers (verified ones highlighted, new providers auto-included)
-        const onlineProviders = Object.values(state.providerInfos).filter(p => p.status === 'ONLINE' && p.totalBond > 0);
+        // Determine which providers have active (non-expired) contracts
+        const currentHeight = state.currentHeight || 0;
+        const activeProviderKeys = new Set();
+        state.contracts.forEach(c => {
+          const expiry = parseInt(c.height || 0) + parseInt(c.duration || 0);
+          if (expiry > currentHeight) activeProviderKeys.add(c.provider);
+        });
+
+        // Show providers that are ONLINE with bond AND have active contracts
+        const onlineProviders = Object.values(state.providerInfos).filter(p => 
+          p.status === 'ONLINE' && p.totalBond > 0 && activeProviderKeys.has(p.pubkey)
+        );
         
         // Sort by reputation by default
         onlineProviders.sort((a, b) => (state.reputationScores[b.pubkey]?.total || 0) - (state.reputationScores[a.pubkey]?.total || 0));
@@ -1833,7 +1851,12 @@
 
     function updateStats() {
       // Count all ONLINE providers
-      const onlineProviders = Object.values(state.providerInfos).filter(p => p.status === 'ONLINE' && p.totalBond > 0);
+      const currentHeight = state.currentHeight || 0;
+      const statsActiveKeys = new Set();
+      state.contracts.forEach(c => {
+        if (parseInt(c.height || 0) + parseInt(c.duration || 0) > currentHeight) statsActiveKeys.add(c.provider);
+      });
+      const onlineProviders = Object.values(state.providerInfos).filter(p => p.status === 'ONLINE' && p.totalBond > 0 && statsActiveKeys.has(p.pubkey));
       document.getElementById('providerCount').textContent = onlineProviders.length;
 
       // Count unique chains/services offered
