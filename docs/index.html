@@ -1005,12 +1005,9 @@
               <th>Reputation</th>
               <th>Data Types</th>
               <th>Region</th>
-              <th>Transactions <span class="badge-estimated" title="Estimated from on-chain data">⚠️ Est.</span></th>
-              <th>ARKEO Earned <span class="badge-estimated" title="Estimated from on-chain data">⚠️ Est.</span></th>
               <th title="Queries Per Minute — from on-chain contract settings">QPM</th>
               <th>Status</th>
               <th title="Health checks use on-chain contract data. Active contracts prove a provider is serving data.">Health ℹ️</th>
-              <th>Bond</th>
               <th></th>
             </tr>
           </thead>
@@ -1542,6 +1539,9 @@
         renderProviders(onlineProviders, 5); // Show top 5 on homepage
         renderEarningsChart();
 
+        // Live health check — ping metadata endpoints in background
+        runLiveHealthChecks(onlineProviders);
+
         // Show success briefly
         if (CONFIG.DEBUG_MODE) {
           console.log('Data loaded:', { 
@@ -2011,7 +2011,6 @@
       // Render Table View
       tableBody.innerHTML = displayProviders.map(p => {
         const isOnline = p.status === 'ONLINE';
-        const totalBond = formatArkeo(p.totalBond);
         const serviceCount = p.services?.length || 0;
         
         // Generate chain tags (limit to 3)
@@ -2019,12 +2018,6 @@
           `<span class="chain-tag">${escapeHtml(s.name.split('-')[0])}</span>`
         ).join('') || '';
         const moreTags = serviceCount > 3 ? `<span class="chain-tag more">+${serviceCount - 3}</span>` : '';
-        
-        // Simulated transaction count based on bond (real data would come from directory)
-        const transactions = Math.floor((p.totalBond || 0) / 100000000 * 1000 + Math.random() * 500);
-        
-        // Simulated earnings based on transactions
-        const earnings = formatArkeo(transactions * 1000);
         
         const repScore = state.reputationScores[p.pubkey]?.total || 0;
         const repClass = getReputationClass(repScore);
@@ -2047,8 +2040,6 @@
               <div class="data-types">${chainTags}${moreTags}</div>
             </td>
             <td>${escapeHtml(p.location || 'Unknown')}</td>
-            <td class="transactions">${transactions.toLocaleString()}</td>
-            <td class="earnings">${earnings}</td>
             <td style="color: var(--arkeo); font-weight: 600;">${getProviderQpm(p.pubkey)}</td>
             <td>
               <span class="provider-status ${isOnline ? 'online' : 'offline'}">
@@ -2056,7 +2047,6 @@
               </span>
             </td>
             <td>${healthHtml(p, false)}</td>
-            <td>${totalBond}</td>
             <td style="display: flex; gap: 0.5rem;">
               <a href="provider.html?pubkey=${encodeURIComponent(p.pubkey || '')}" class="btn btn-secondary btn-sm">Details</a>
               <a href="subscribe.html?provider=${encodeURIComponent(p.pubkey || '')}" class="btn btn-primary btn-sm">Subscribe</a>
@@ -2228,6 +2218,56 @@
       });
 
       renderProviders(filtered, 5);
+    }
+
+    // Live health check — pings each provider's metadata endpoint
+    async function runLiveHealthChecks(providers) {
+      const checks = providers.map(async (p) => {
+        // Find a metadata URI to ping
+        const metaUri = p.services?.find(s => s.metadataUri && s.metadataUri.startsWith('http'))?.metadataUri;
+        if (!metaUri) return;
+        
+        try {
+          const url = metaUri.replace(/^http:/, 'https:');
+          const resp = await fetch(url, { mode: 'cors', signal: AbortSignal.timeout(5000) });
+          if (resp.ok) {
+            // Update health in KNOWN_PROVIDERS or create temp entry
+            if (KNOWN_PROVIDERS[p.pubkey]) {
+              KNOWN_PROVIDERS[p.pubkey].health = 'healthy';
+            } else {
+              KNOWN_PROVIDERS[p.pubkey] = { name: p.name || 'Unknown', health: 'healthy' };
+            }
+          } else {
+            if (KNOWN_PROVIDERS[p.pubkey]) KNOWN_PROVIDERS[p.pubkey].health = 'unhealthy';
+          }
+        } catch (e) {
+          // Try HTTP as fallback (won't work from HTTPS page, but try)
+          try {
+            if (KNOWN_PROVIDERS[p.pubkey]) KNOWN_PROVIDERS[p.pubkey].health = 'unhealthy';
+          } catch {}
+        }
+      });
+      
+      await Promise.allSettled(checks);
+      
+      // Re-render with updated health
+      const onlineProviders = Object.values(state.providerInfos).filter(p => {
+        if (p.status !== 'ONLINE' || p.totalBond < parseInt(CONFIG.MIN_BOND)) return false;
+        const metaUri = p.services?.find(s => s.metadataUri)?.metadataUri || '';
+        if (metaUri.includes('localhost') || metaUri.includes('127.0.0.1')) return false;
+        if (!metaUri || metaUri.trim() === '') return false;
+        const isVerified = p.verified || false;
+        const hasHttps = metaUri.startsWith('https://');
+        if (!isVerified && !hasHttps) return false;
+        return true;
+      });
+      onlineProviders.sort((a, b) => {
+        const aHealth = (KNOWN_PROVIDERS[a.pubkey]?.health === 'healthy') ? 1 : 0;
+        const bHealth = (KNOWN_PROVIDERS[b.pubkey]?.health === 'healthy') ? 1 : 0;
+        if (bHealth !== aHealth) return bHealth - aHealth;
+        return (state.reputationScores[b.pubkey]?.total || 0) - (state.reputationScores[a.pubkey]?.total || 0);
+      });
+      renderProviders(onlineProviders, 5);
     }
 
     function getHealthIndicator(provider) {
