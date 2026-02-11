@@ -433,9 +433,14 @@
       <img src="images/arkeo-logo-200px_1.png" alt="Arkeo">
       <span>Arkeo</span> Marketplace
     </a>
-    <a href="index.html" class="wallet-btn" style="text-decoration: none; display: inline-flex; align-items: center;">
-      ← Return to Marketplace
-    </a>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+      <button id="walletBtn" class="wallet-btn" onclick="connectWallet()" style="cursor: pointer;">
+        🔗 Connect Wallet
+      </button>
+      <a href="index.html" style="text-decoration: none; color: var(--text-dim); font-size: 0.85rem;">
+        ← Marketplace
+      </a>
+    </div>
   </nav>
 
   <div class="container">
@@ -1592,7 +1597,12 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
         updateSummary();
       }
       if (step === 4) {
-        updateStep4UI();
+        // Auto-connect wallet if not already connected
+        if (!state.walletConnected) {
+          connectWallet().then(() => updateStep4UI()).catch(() => updateStep4UI());
+        } else {
+          updateStep4UI();
+        }
       }
     }
     
