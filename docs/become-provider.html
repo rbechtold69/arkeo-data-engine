@@ -1817,11 +1817,23 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
         tx2Status.style.borderColor = 'var(--arkeo)';
         tx2Icon.textContent = '🔄';
         
-        showLoading('Transaction 2 of 2', 'Configure Service - Approve in Keplr');
+        showLoading('Transaction 2 of 2', 'Waiting for chain to confirm bond...');
         
-        // Wait a moment for sequence to update
-        await new Promise(r => setTimeout(r, 2000));
-        const accountInfo2 = await getAccountInfo(state.walletAddress);
+        // Wait for the bond TX to be confirmed and sequence to update
+        // Poll until sequence increments (up to 30 seconds)
+        const prevSeq = accountInfo.sequence;
+        let accountInfo2 = null;
+        for (let i = 0; i < 15; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          accountInfo2 = await getAccountInfo(state.walletAddress);
+          if (parseInt(accountInfo2.sequence) > parseInt(prevSeq)) break;
+        }
+        if (!accountInfo2 || parseInt(accountInfo2.sequence) <= parseInt(prevSeq)) {
+          // Force increment as fallback
+          accountInfo2 = { ...accountInfo, sequence: String(parseInt(prevSeq) + 1) };
+        }
+        
+        showLoading('Transaction 2 of 2', 'Configure Service - Approve in Keplr');
         
         // Build metadata URL from sentinel URL
         const metadataUrl = state.sentinelUrl ? state.sentinelUrl.replace(/\/$/, '') + '/metadata.json' : '';
