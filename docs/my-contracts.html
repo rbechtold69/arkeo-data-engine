@@ -333,6 +333,14 @@
 
       await fetchCurrentHeight();
 
+      // Fetch services for name resolution
+      try {
+        const svcRes = await fetch(`${CONFIG.REST_API}/arkeo/services`);
+        const svcData = await svcRes.json();
+        state.services = {};
+        (svcData.services || []).forEach(s => { state.services[s.service_id] = s.name; });
+      } catch (e) { state.services = {}; }
+
       // Fetch all contracts (paginated)
       let allContracts = [];
       let nextKey = null;
@@ -410,7 +418,7 @@
         const paid = parseInt(c.paid) || 0;
         const rate = c.rate ? `${(parseInt(c.rate.amount) / CONFIG.ARKEO_DIVISOR).toFixed(4)}` : '-';
         const contractType = parseInt(c.contract_type) === 0 ? 'Sub' : 'PAYG';
-        const service = c.service ? atob(c.service) : '-';
+        const service = state.services?.[c.service] || c.service || '-';
         const counterparty = c.isClient
           ? `<span class="addr truncate" title="${c.provider}">${c.provider}</span>`
           : `<span class="addr truncate" title="${c.client}">${c.client}</span>`;
