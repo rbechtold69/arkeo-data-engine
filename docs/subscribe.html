@@ -1314,8 +1314,8 @@
         const urlParams = new URLSearchParams(window.location.search);
         const providerPubkey = urlParams.get('provider');
         if (providerPubkey) {
-          console.log('Pre-selecting provider:', providerPubkey);
-          // Find which chain this provider serves
+          // Find ALL chains this provider serves
+          const providerChains = [];
           for (const [chainId, providers] of Object.entries(providersByChain)) {
             const provider = providers.find(p => 
               p.pubkey === providerPubkey || 
@@ -1323,20 +1323,37 @@
               p.pubkey.startsWith(providerPubkey.slice(0, 40))
             );
             if (provider) {
-              // Auto-select chain
               const chain = chains.find(c => c.id == chainId);
-              if (chain) {
-                selectChain(chain.id, chain.name);
-                // Move to step 2 and select provider
-                setTimeout(() => {
-                  goToStep(2);
-                  setTimeout(() => {
-                    selectProvider(provider.id, provider.name, provider.rate, chainId);
-                  }, 100);
-                }, 100);
-              }
-              break;
+              if (chain) providerChains.push({ chain, provider, chainId });
             }
+          }
+          
+          if (providerChains.length === 1) {
+            // Single chain — skip straight to step 3 (duration/payment)
+            const { chain, provider, chainId } = providerChains[0];
+            selectChain(chain.id, chain.name);
+            selectProvider(provider.id, provider.name, provider.rate, chainId);
+            setTimeout(() => goToStep(3), 100);
+          } else if (providerChains.length > 1) {
+            // Multiple chains — show only this provider's chains, skip provider selection
+            const providerName = providerChains[0].provider.name;
+            document.querySelector('.step-title')?.replaceWith(Object.assign(document.createElement('h2'), {
+              className: 'step-title',
+              textContent: `Select a chain from ${providerName}`
+            }));
+            const filteredChains = providerChains.map(pc => pc.chain);
+            renderChains(filteredChains);
+            
+            // Override selectChain to auto-select provider and skip to step 3
+            const origSelectChain = selectChain;
+            selectChain = function(id, name) {
+              origSelectChain(id, name);
+              const match = providerChains.find(pc => pc.chain.id == id);
+              if (match) {
+                selectProvider(match.provider.id, match.provider.name, match.provider.rate, match.chainId);
+                setTimeout(() => goToStep(3), 100);
+              }
+            };
           }
         }
         
