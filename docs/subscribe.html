@@ -1971,7 +1971,7 @@
         } else if (selectedProvider.metadataUri) {
           sentinelBaseUrl = selectedProvider.metadataUri.replace(/\/metadata\.json$/, '');
         }
-        const svcName = selectedProvider.serviceId || selectedChain?.id || '';
+        const svcName = serviceName || SERVICE_ID_TO_NAME[selectedProvider.serviceId] || selectedProvider.serviceId || '';
         const endpointUrl = sentinelBaseUrl ? `${sentinelBaseUrl}/${svcName}` : `Provider sentinel URL not found`;
         document.getElementById('finalEndpoint').textContent = endpointUrl;
         
