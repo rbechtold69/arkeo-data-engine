@@ -1294,6 +1294,7 @@
             pubkey: pubkey,
             verified: !!meta,
             metadataUri: p.metadata_uri || '',
+            settlementDuration: p.settlement_duration || '10',
           });
         });
         
@@ -1507,7 +1508,8 @@
       const chainProviders = providersByChain[serviceId || selectedChain?.id] || [];
       const provInfo = chainProviders.find(p => p.pubkey === pubkey);
       const metadataUri = provInfo?.metadataUri || '';
-      selectedProvider = { id: pubkey, name, rate, pubkey, serviceId: serviceId || selectedChain?.id, metadataUri };
+      const settlementDuration = provInfo?.settlementDuration || '10';
+      selectedProvider = { id: pubkey, name, rate, pubkey, serviceId: serviceId || selectedChain?.id, metadataUri, settlementDuration };
       
       document.querySelectorAll('.provider-card').forEach((el) => {
         el.classList.remove('selected');
@@ -1865,7 +1867,7 @@
             duration: String(contractDurationBlocks),
             rate: { denom: CONFIG.ARKEO_DENOM, amount: String(rateUarkeo) },
             deposit: depositUarkeo,
-            settlementDuration: '10',
+            settlementDuration: String(selectedProvider.settlementDuration || '10'),
             authorization: 0, // STRICT = 0
             queriesPerMinute: '100',
           }
