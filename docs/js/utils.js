@@ -207,19 +207,24 @@ const API = {
     const maxPages = 20; // Safety limit
     
     do {
-      const params = nextKey ? `?pagination.key=${encodeURIComponent(nextKey)}` : '';
-      const data = await this.fetch(`/arkeo/contracts${params}`, { 
-        cacheKey: nextKey ? null : 'contracts' // Only cache first page
-      });
-      const contracts = data.contract || data.contracts || [];
-      allContracts = allContracts.concat(contracts);
-      nextKey = data.pagination?.next_key || null;
-      page++;
+      try {
+        const params = nextKey ? `?pagination.key=${encodeURIComponent(nextKey)}` : '';
+        const data = await this.fetch(`/arkeo/contracts${params}`, { 
+          cacheKey: nextKey ? null : 'contracts', // Only cache first page
+          useCache: page === 0 // Only use cache for first page
+        });
+        const contracts = data.contract || data.contracts || [];
+        allContracts = allContracts.concat(contracts);
+        nextKey = data.pagination?.next_key || null;
+        page++;
+        console.log(`Contracts page ${page}: ${contracts.length} loaded (total: ${allContracts.length})`);
+      } catch (e) {
+        console.warn(`Contracts page ${page + 1} failed:`, e.message);
+        break;
+      }
     } while (nextKey && page < maxPages);
     
-    if (CONFIG.DEBUG_MODE) {
-      console.log(`Loaded ${allContracts.length} contracts across ${page} pages`);
-    }
+    console.log(`Loaded ${allContracts.length} contracts across ${page} pages`);
     return allContracts;
   }
 };
