@@ -260,6 +260,28 @@
           <tbody id="contractsBody"></tbody>
         </table>
       </div>
+
+      <!-- Provider Bonds Section -->
+      <div style="margin-top: 2rem;">
+        <h2 style="font-size: 1.2rem; margin-bottom: 1rem;">🔒 My Provider Bonds</h2>
+        <div id="bondsLoading" style="color: var(--text-dim); font-size: 0.9rem;">Loading bonds...</div>
+        <div id="bondsEmpty" style="display:none; color: var(--text-dim); font-size: 0.9rem; padding: 1rem; background: var(--bg-card); border-radius: 0.75rem; border: 1px solid var(--border);">
+          You don't have any provider bonds.
+        </div>
+        <div id="bondsTable" style="display:none; overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--border);">
+                <th style="padding: 0.75rem; text-align: left; color: var(--text-dim); font-size: 0.8rem;">Service</th>
+                <th style="padding: 0.75rem; text-align: right; color: var(--text-dim); font-size: 0.8rem;">Bond</th>
+                <th style="padding: 0.75rem; text-align: right; color: var(--text-dim); font-size: 0.8rem;">Status</th>
+                <th style="padding: 0.75rem; text-align: right; color: var(--text-dim); font-size: 0.8rem;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="bondsBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -308,6 +330,7 @@
         document.getElementById('contractsSection').style.display = 'block';
 
         await loadContracts();
+        await loadBonds();
       } catch (e) {
         console.error(e);
         showToast('Failed to connect wallet: ' + e.message, 'error');
@@ -576,6 +599,84 @@
       } catch (e) {
         console.error(e);
         showToast('Failed to claim: ' + e.message, 'error');
+      }
+    }
+    // Load provider bonds
+    async function loadBonds() {
+      document.getElementById('bondsLoading').style.display = 'block';
+      document.getElementById('bondsTable').style.display = 'none';
+      document.getElementById('bondsEmpty').style.display = 'none';
+
+      try {
+        const res = await fetch(`${CONFIG.REST_API}/arkeo/providers`);
+        const data = await res.json();
+        const providers = data.provider || [];
+
+        // Filter for providers matching this wallet's pubkey
+        const myBonds = providers.filter(p => p.pub_key === state.walletPubkey);
+
+        document.getElementById('bondsLoading').style.display = 'none';
+
+        if (myBonds.length === 0) {
+          document.getElementById('bondsEmpty').style.display = 'block';
+          return;
+        }
+
+        // Fetch services for name resolution
+        if (!state.services || Object.keys(state.services).length === 0) {
+          try {
+            const svcRes = await fetch(`${CONFIG.REST_API}/arkeo/services`);
+            const svcData = await svcRes.json();
+            state.services = {};
+            (svcData.services || []).forEach(s => { state.services[s.service_id] = s.name; });
+          } catch (e) { state.services = {}; }
+        }
+
+        document.getElementById('bondsTable').style.display = 'block';
+        const tbody = document.getElementById('bondsBody');
+        tbody.innerHTML = myBonds.map(p => {
+          const bond = parseInt(p.bond) || 0;
+          const serviceName = state.services?.[p.service] || p.service;
+          const statusColor = p.status === 'ONLINE' ? 'var(--success)' : 'var(--error)';
+          return `<tr style="border-bottom: 1px solid var(--border);">
+            <td style="padding: 0.75rem; font-size: 0.9rem;">${serviceName}</td>
+            <td style="padding: 0.75rem; text-align: right; font-size: 0.9rem;">${(bond / CONFIG.ARKEO_DIVISOR).toFixed(2)} ARKEO</td>
+            <td style="padding: 0.75rem; text-align: right;"><span style="color: ${statusColor}; font-size: 0.85rem; font-weight: 600;">${p.status}</span></td>
+            <td style="padding: 0.75rem; text-align: right;">
+              <button onclick="unbondProvider('${p.pub_key}', '${serviceName}', ${bond})" 
+                style="padding: 0.4rem 0.8rem; background: rgba(239,68,68,0.1); border: 1px solid var(--error); border-radius: 0.5rem; color: var(--error); font-size: 0.8rem; cursor: pointer; font-weight: 600;">
+                Unbond
+              </button>
+            </td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        console.error(e);
+        document.getElementById('bondsLoading').textContent = 'Failed to load bonds.';
+      }
+    }
+
+    // Unbond provider
+    async function unbondProvider(pubkey, serviceName, currentBond) {
+      const bondArkeo = (currentBond / CONFIG.ARKEO_DIVISOR).toFixed(2);
+      if (!confirm(`Unbond ${bondArkeo} ARKEO from service "${serviceName}"?\n\nThis will remove your provider bond and return the ARKEO to your wallet.`)) return;
+
+      try {
+        const msg = {
+          typeUrl: '/arkeo.arkeo.MsgBondProvider',
+          value: {
+            creator: state.walletAddress,
+            provider: pubkey,
+            service: serviceName,
+            bond: '-' + String(currentBond)
+          }
+        };
+        const result = await signAndBroadcastDirect(msg);
+        showToast(`Unbonded! TX: ${result.txhash.slice(0, 12)}...`);
+        setTimeout(loadBonds, 3000);
+      } catch (e) {
+        console.error(e);
+        showToast('Failed to unbond: ' + e.message, 'error');
       }
     }
   </script>
