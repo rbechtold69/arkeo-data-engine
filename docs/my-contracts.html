@@ -210,7 +210,19 @@
       <a href="become-provider.html" class="nav-link">Provide Data</a>
       <a href="subscribe.html" class="nav-link">Use Data</a>
     </div>
-    <button class="wallet-btn" id="walletBtn" onclick="connectWallet()">🔗 Connect Keplr</button>
+    <div style="position: relative;">
+      <button class="wallet-btn" id="walletBtn" onclick="toggleWalletMenu()">🔗 Connect Keplr</button>
+      <div id="walletMenu" style="display:none; position:absolute; right:0; top:calc(100% + 0.5rem); background:var(--bg-card); border:1px solid var(--border); border-radius:0.75rem; padding:0.75rem; min-width:280px; z-index:100; box-shadow: 0 8px 24px rgba(0,0,0,0.4);">
+        <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:0.25rem;">Connected Wallet</div>
+        <div id="menuAddress" style="font-size:0.85rem; font-family:monospace; word-break:break-all; margin-bottom:0.75rem; color:var(--text);"></div>
+        <div style="display:flex; gap:0.5rem; margin-bottom:0.5rem;">
+          <button onclick="copyAddress()" style="flex:1; padding:0.5rem; background:var(--bg-input); border:1px solid var(--border); border-radius:0.5rem; color:var(--text); font-size:0.8rem; cursor:pointer;">📋 Copy Address</button>
+          <button onclick="viewOnExplorer()" style="flex:1; padding:0.5rem; background:var(--bg-input); border:1px solid var(--border); border-radius:0.5rem; color:var(--text); font-size:0.8rem; cursor:pointer;">🔗 Explorer</button>
+        </div>
+        <div id="menuBalance" style="font-size:0.85rem; color:var(--arkeo); margin-bottom:0.75rem; padding:0.5rem; background:var(--arkeo-dim); border-radius:0.5rem; text-align:center;"></div>
+        <button onclick="disconnectWallet()" style="width:100%; padding:0.5rem; background:rgba(239,68,68,0.1); border:1px solid var(--error); border-radius:0.5rem; color:var(--error); font-size:0.85rem; cursor:pointer; font-weight:600;">Sign Out</button>
+      </div>
+    </div>
   </nav>
 
   <div class="container">
@@ -307,6 +319,58 @@
       setTimeout(() => t.remove(), 5000);
     }
 
+    // Wallet menu
+    let walletMenuOpen = false;
+
+    function toggleWalletMenu() {
+      if (!state.walletAddress) { connectWallet(); return; }
+      walletMenuOpen = !walletMenuOpen;
+      document.getElementById('walletMenu').style.display = walletMenuOpen ? 'block' : 'none';
+    }
+
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#walletBtn') && !e.target.closest('#walletMenu')) {
+        walletMenuOpen = false;
+        document.getElementById('walletMenu').style.display = 'none';
+      }
+    });
+
+    function copyAddress() {
+      navigator.clipboard.writeText(state.walletAddress);
+      showToast('Address copied!');
+    }
+
+    function viewOnExplorer() {
+      window.open(`https://explorer.arkeo.network/arkeo/account/${state.walletAddress}`, '_blank');
+    }
+
+    async function fetchBalance() {
+      try {
+        const res = await fetch(`${CONFIG.REST_API}/cosmos/bank/v1beta1/balances/${state.walletAddress}`);
+        const data = await res.json();
+        const uarkeo = (data.balances || []).find(b => b.denom === 'uarkeo');
+        const balance = uarkeo ? (parseInt(uarkeo.amount) / CONFIG.ARKEO_DIVISOR).toFixed(2) : '0.00';
+        document.getElementById('menuBalance').textContent = `💰 ${balance} ARKEO`;
+      } catch (e) {
+        document.getElementById('menuBalance').textContent = 'Balance unavailable';
+      }
+    }
+
+    function disconnectWallet() {
+      state.walletAddress = null;
+      state.walletPubkey = null;
+      state.walletPubkeyBytes = null;
+      state.contracts = [];
+      const btn = document.getElementById('walletBtn');
+      btn.className = 'wallet-btn';
+      btn.textContent = '🔗 Connect Keplr';
+      document.getElementById('walletMenu').style.display = 'none';
+      document.getElementById('contractsSection').style.display = 'none';
+      document.getElementById('connectPrompt').style.display = 'block';
+      walletMenuOpen = false;
+    }
+
     // Connect Keplr
     async function connectWallet() {
       if (!window.keplr) { showToast('Please install Keplr wallet extension', 'error'); return; }
@@ -327,6 +391,8 @@
         const btn = document.getElementById('walletBtn');
         btn.className = 'wallet-btn connected';
         btn.textContent = `✓ ${state.walletAddress.slice(0, 10)}...${state.walletAddress.slice(-4)}`;
+        document.getElementById('menuAddress').textContent = state.walletAddress;
+        fetchBalance();
 
         document.getElementById('connectPrompt').style.display = 'none';
         document.getElementById('contractsSection').style.display = 'block';
