@@ -1971,8 +1971,8 @@
         } else if (selectedProvider.metadataUri) {
           sentinelBaseUrl = selectedProvider.metadataUri.replace(/\/metadata\.json$/, '');
         }
-        const serviceName = selectedProvider.serviceId || selectedChain?.id || '';
-        const endpointUrl = sentinelBaseUrl ? `${sentinelBaseUrl}/${serviceName}` : `Provider sentinel URL not found`;
+        const svcName = selectedProvider.serviceId || selectedChain?.id || '';
+        const endpointUrl = sentinelBaseUrl ? `${sentinelBaseUrl}/${svcName}` : `Provider sentinel URL not found`;
         document.getElementById('finalEndpoint').textContent = endpointUrl;
         
         // Update failover status
