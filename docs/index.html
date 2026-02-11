@@ -1518,10 +1518,27 @@
           if (expiry > currentHeight) activeProviderKeys.add(c.provider);
         });
 
-        // Show providers that are ONLINE with bond AND have active contracts
-        const onlineProviders = Object.values(state.providerInfos).filter(p => 
-          p.status === 'ONLINE' && p.totalBond > 0 && activeProviderKeys.has(p.pubkey)
-        );
+        // Filter out dead/ghost providers:
+        // 1. Must be ONLINE with bond > 0
+        // 2. Must NOT have localhost/127.0.0.1 metadata (misconfigured)
+        // 3. Must have been updated within ~500k blocks (~2 months) OR have active contracts
+        // 4. Must be in KNOWN_PROVIDERS OR have reachable metadata
+        const STALENESS_THRESHOLD = 500000; // ~2 months of blocks
+        const onlineProviders = Object.values(state.providerInfos).filter(p => {
+          if (p.status !== 'ONLINE' || p.totalBond <= 0) return false;
+          // Reject localhost metadata
+          const uri = p.metadataUri || '';
+          if (uri.includes('127.0.0.1') || uri.includes('localhost')) return false;
+          // Accept if has active contracts (proven alive)
+          if (activeProviderKeys.has(p.pubkey)) return true;
+          // Accept if known/verified provider
+          if (p.verified) return true;
+          // Accept if recently updated (not stale)
+          const lastUpdate = p.lastUpdate || 0;
+          if (currentHeight > 0 && lastUpdate > 0 && (currentHeight - lastUpdate) < STALENESS_THRESHOLD) return true;
+          // Otherwise filter out as likely dead/ghost
+          return false;
+        });
         
         // Sort by reputation by default
         onlineProviders.sort((a, b) => (state.reputationScores[b.pubkey]?.total || 0) - (state.reputationScores[a.pubkey]?.total || 0));
@@ -1585,6 +1602,7 @@
             totalBond: 0,
             status: 'OFFLINE',
             metadataUri: p.metadata_uri,
+            lastUpdate: 0,
           };
         }
         
@@ -1592,6 +1610,9 @@
         info.totalBond += parseInt(p.bond || 0);
         if (p.status === 'ONLINE') info.status = 'ONLINE';
         info.metadataUri = info.metadataUri || p.metadata_uri;
+        // Track most recent update across all service entries
+        const lu = parseInt(p.last_update || 0);
+        if (lu > info.lastUpdate) info.lastUpdate = lu;
         
         // Add service info
         const serviceName = getServiceName(p.service);
@@ -2104,7 +2125,24 @@
       };
       const expandedSearch = chainAliases[search] || search;
 
+      // Apply same alive-provider filter as homepage
+      const currentHeight = state.currentHeight || 0;
+      const STALENESS_THRESHOLD = 500000;
+      const activeProviderKeys = new Set();
+      state.contracts.forEach(c => {
+        const expiry = parseInt(c.height || 0) + parseInt(c.duration || 0);
+        if (expiry > currentHeight) activeProviderKeys.add(c.provider);
+      });
+
       let filtered = Object.values(state.providerInfos).filter(p => {
+        // Dead/ghost provider filter
+        const uri = p.metadataUri || '';
+        const isLocalhost = uri.includes('127.0.0.1') || uri.includes('localhost');
+        if (isLocalhost) return false;
+        const isAlive = activeProviderKeys.has(p.pubkey) || p.verified ||
+          (currentHeight > 0 && p.lastUpdate > 0 && (currentHeight - p.lastUpdate) < STALENESS_THRESHOLD);
+        if (!isAlive) return false;
+
         // Search filter - search provider name, chains, or pubkey
         const providerName = (p.name || '').toLowerCase();
         const chainNames = p.services?.map(s => s.name.toLowerCase()).join(' ') || '';
