@@ -2541,7 +2541,9 @@ services:
       const pubkey = state.walletPubkey || 'YOUR_PUBKEY';
       const rpcUrl = state.rpcUrl || 'http://localhost:26657';
       const serviceName = state.selectedService?.name || 'arkeo-mainnet-fullnode';
-      const domain = (document.getElementById('sentinelDomain')?.value || '').trim();
+      // Strip protocol from domain if user types full URL
+      let domain = (document.getElementById('sentinelDomain')?.value || '').trim()
+        .replace(/^https?:\/\//, '').replace(/\/+$/, '');
       const hubUri = state.arkeoHubUri || 'https://rest-seed.arkeo.network';
       const fallbacks = (state.arkeoFallbacks || []).join(',');
       const moniker = (state.providerName || 'My Arkeo Provider').replace(/'/g, "\\'");

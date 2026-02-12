@@ -13,19 +13,24 @@
 
 set -euo pipefail
 
-# ── Configuration (injected by wizard) ────────────────────────
-PROVIDER_PUBKEY="{{PROVIDER_PUBKEY}}"
-SOURCE_CHAIN="{{SOURCE_CHAIN}}"
-HUB_URI="{{HUB_URI}}"
-HUB_FALLBACKS="{{HUB_FALLBACKS}}"
-SERVICE_NAME="{{SERVICE_NAME}}"
-RPC_URL="{{RPC_URL}}"
-FREE_RATE_LIMIT="{{FREE_RATE_LIMIT}}"
-CONTRACT_RATE_LIMIT="{{CONTRACT_RATE_LIMIT}}"
-MONIKER="{{MONIKER}}"
-DESCRIPTION="{{DESCRIPTION}}"
-LOCATION="{{LOCATION}}"
-DOMAIN="{{DOMAIN}}"
+# ── Configuration (passed as env vars by wizard) ──────────────
+PROVIDER_PUBKEY="${PROVIDER_PUBKEY:?ERROR: PROVIDER_PUBKEY is required}"
+SOURCE_CHAIN="${SOURCE_CHAIN:-arkeo-main-v1}"
+HUB_URI="${HUB_URI:-https://rest-seed.arkeo.network}"
+HUB_FALLBACKS="${HUB_FALLBACKS:-}"
+SERVICE_NAME="${SERVICE_NAME:-arkeo-mainnet-fullnode}"
+RPC_URL="${RPC_URL:-http://localhost:26657}"
+FREE_RATE_LIMIT="${FREE_RATE_LIMIT:-10}"
+CONTRACT_RATE_LIMIT="${CONTRACT_RATE_LIMIT:-100}"
+MONIKER="${MONIKER:-My Arkeo Provider}"
+DESCRIPTION="${DESCRIPTION:-}"
+LOCATION="${LOCATION:-}"
+DOMAIN="${DOMAIN:-}"
+
+# Strip protocol from domain if accidentally included
+DOMAIN="${DOMAIN#https://}"
+DOMAIN="${DOMAIN#http://}"
+DOMAIN="${DOMAIN%/}"
 # ──────────────────────────────────────────────────────────────
 
 CYAN='\033[0;36m'
