@@ -368,6 +368,12 @@
       const val = parseInt(uarkeo || 0) / CONFIG.ARKEO_DIVISOR;
       if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
       if (val >= 1000) return (val / 1000).toFixed(1) + 'K';
+      // Use enough decimals to show small values (e.g. rate 25000 uarkeo = 0.00025)
+      if (val > 0 && val < 0.01) {
+        // Show up to 6 significant decimals for small values
+        const s = val.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+        return s;
+      }
       return val.toFixed(decimals);
     }
 
@@ -470,6 +476,14 @@
         if (!info.name) info.name = 'Provider ' + pubkey.slice(-8);
 
         // Process contracts for this provider
+        // Get current block height for expiry checks
+        let currentHeight = 0;
+        try {
+          const statusResp = await fetch(CONFIG.RPC_API + '/status');
+          const statusData = await statusResp.json();
+          currentHeight = parseInt(statusData.result?.sync_info?.latest_block_height || 0);
+        } catch (e) { console.warn('Could not fetch block height'); }
+
         const provContracts = contracts.filter(c => c.provider === pubkey);
         let totalPaid = 0, totalNonce = 0, activeContracts = 0;
         provContracts.forEach(c => {
@@ -477,7 +491,11 @@
           totalNonce += parseInt(c.nonce || 0);
           const deposit = parseInt(c.deposit || 0);
           const paid = parseInt(c.paid || 0);
-          if (deposit > paid) activeContracts++;
+          const height = parseInt(c.height || 0);
+          const duration = parseInt(c.duration || 0);
+          const expiry = height + duration;
+          const notExpired = currentHeight === 0 || expiry > currentHeight;
+          if (deposit > paid && notExpired) activeContracts++;
         });
 
         // Calculate reputation (relative to all providers)
@@ -521,7 +539,7 @@
         );
 
         // Render
-        renderProvider(info, provContracts, { totalPaid, totalNonce, activeContracts, total: provContracts.length }, repTotal, repBreakdown);
+        renderProvider(info, provContracts, { totalPaid, totalNonce, activeContracts, total: provContracts.length }, repTotal, repBreakdown, currentHeight);
 
       } catch (err) {
         console.error('Provider load error:', err);
@@ -538,7 +556,7 @@
       errorEl.style.display = 'block';
     }
 
-    function renderProvider(info, contracts, contractStats, repTotal, repBreakdown) {
+    function renderProvider(info, contracts, contractStats, repTotal, repBreakdown, currentHeight) {
       document.getElementById('loading').style.display = 'none';
       const content = document.getElementById('content');
       content.style.display = 'block';
@@ -602,7 +620,7 @@
                   <tr>
                     <td><span class="chain-icon">${s.icon}</span> ${escapeHtml(s.displayName)}</td>
                     <td style="color:var(--text-dim); font-size:0.8rem;">${escapeHtml(s.name)}</td>
-                    <td style="color:var(--arkeo); font-weight:600;">${formatArkeo(s.rate)} ARKEO</td>
+                    <td style="color:var(--arkeo); font-weight:600;">${parseInt(s.rate).toLocaleString()} uarkeo <span style="color:var(--text-dim); font-size:0.8rem;">(${formatArkeo(s.rate)} ARKEO)</span></td>
                     <td>${formatArkeo(s.bond)} ARKEO</td>
                     <td><span class="badge ${s.status === 'ONLINE' ? 'badge-online' : 'badge-offline'}">${s.status === 'ONLINE' ? '● Online' : '○ Offline'}</span></td>
                   </tr>
@@ -651,9 +669,14 @@
                 ${recentContracts.map(c => {
                   const deposit = parseInt(c.deposit || 0);
                   const paid = parseInt(c.paid || 0);
-                  const isActive = deposit > paid;
+                  const height = parseInt(c.height || 0);
                   const duration = parseInt(c.duration || 0);
-                  const durationStr = duration > 0 ? (duration >= 86400 ? Math.floor(duration/86400) + 'd' : duration >= 3600 ? Math.floor(duration/3600) + 'h' : duration + 's') : '—';
+                  const expiry = height + duration;
+                  const notExpired = currentHeight === 0 || expiry > currentHeight;
+                  const isActive = deposit > paid && notExpired;
+                  const durationBlocks = duration;
+                  const durationSecs = durationBlocks * 4; // ~4s per block
+                  const durationStr = durationSecs > 0 ? (durationSecs >= 86400 ? Math.floor(durationSecs/86400) + 'd' : durationSecs >= 3600 ? Math.floor(durationSecs/3600) + 'h' : durationSecs + 's') : '—';
                   return `<tr>
                     <td style="font-weight:600;">#${c.id || '?'}</td>
                     <td><span class="chain-icon">${getChainIcon(c.service)}</span> ${getChainDisplayName(c.service)}</td>
