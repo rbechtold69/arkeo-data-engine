@@ -1226,11 +1226,14 @@
         const services = servicesRes.services || [];
         rawProviders = (providersRes.provider || []).filter(p => {
           if (p.status !== 'ONLINE') return false;
+          const bond = parseInt(p.bond || '0');
+          if (bond <= 0) return false;
           const uri = p.metadata_uri || '';
-          if (uri.includes('127.0.0.1') || uri.includes('localhost') || !uri) return false;
-          // Must be in KNOWN_PROVIDERS or have HTTPS metadata
+          if (uri.includes('127.0.0.1') || uri.includes('localhost')) return false;
+          // Show if: in KNOWN_PROVIDERS, has metadata URI, or has PAYG rate
           const isKnown = !!findKnown(p.pub_key);
-          if (!isKnown && (!uri || uri.trim() === '')) return false;
+          const hasRate = p.pay_as_you_go_rate && p.pay_as_you_go_rate.length > 0;
+          if (!isKnown && (!uri || uri.trim() === '') && !hasRate) return false;
           return true;
         });
         serviceDemand = computeServiceDemand(allContracts);
