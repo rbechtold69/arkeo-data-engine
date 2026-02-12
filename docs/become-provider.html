@@ -3207,6 +3207,7 @@ services:
         window.keplr.getKey(CONFIG.CHAIN_ID).then(key => {
           if (key) {
             state.walletAddress = key.bech32Address;
+            state.walletPubkeyBytes = key.pubKey;
             state.walletPubkey = Buffer.from(key.pubKey).toString('base64');
             state.walletPubkeyBech32 = pubkeyToBech32(key.pubKey, 'arkeopub');
             state.walletConnected = true;
