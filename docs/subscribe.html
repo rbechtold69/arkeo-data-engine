@@ -799,11 +799,11 @@
       <div class="form-group">
         <label class="form-label">Contract Duration</label>
         <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
-          <button type="button" class="duration-preset" onclick="setDuration(1, 'hours')">1 Hour</button>
-          <button type="button" class="duration-preset" onclick="setDuration(1, 'days')">1 Day</button>
-          <button type="button" class="duration-preset" onclick="setDuration(1, 'weeks')">1 Week</button>
-          <button type="button" class="duration-preset" onclick="setDuration(1, 'months')">1 Month</button>
-          <button type="button" class="duration-preset active" onclick="setDuration(1, 'years')">1 Year</button>
+          <button type="button" class="duration-preset" data-blocks="900" onclick="setDuration(1, 'hours')">1 Hour</button>
+          <button type="button" class="duration-preset" data-blocks="21600" onclick="setDuration(1, 'days')">1 Day</button>
+          <button type="button" class="duration-preset" data-blocks="151200" onclick="setDuration(1, 'weeks')">1 Week</button>
+          <button type="button" class="duration-preset active" data-blocks="648000" onclick="setDuration(1, 'months')">1 Month</button>
+          <button type="button" class="duration-preset" data-blocks="7884000" onclick="setDuration(1, 'years')">1 Year</button>
         </div>
         <div style="display: flex; align-items: center; gap: 0.5rem;">
           <input type="number" class="deposit-input" id="durationValue" value="1" min="1" style="width: 80px;" oninput="updateDuration()">
@@ -1298,6 +1298,8 @@
             verified: !!meta,
             metadataUri: p.metadata_uri || '',
             settlementDuration: p.settlement_duration || '10',
+            minDuration: parseInt(p.min_contract_duration || 10),
+            maxDuration: parseInt(p.max_contract_duration || 432000),
           });
         });
         
@@ -1512,7 +1514,22 @@
       const provInfo = chainProviders.find(p => p.pubkey === pubkey);
       const metadataUri = provInfo?.metadataUri || '';
       const settlementDuration = provInfo?.settlementDuration || '10';
-      selectedProvider = { id: pubkey, name, rate, pubkey, serviceId: serviceId || selectedChain?.id, metadataUri, settlementDuration };
+      const minDuration = provInfo?.minDuration || 10;
+      const maxDuration = provInfo?.maxDuration || 432000;
+      selectedProvider = { id: pubkey, name, rate, pubkey, serviceId: serviceId || selectedChain?.id, metadataUri, settlementDuration, minDuration, maxDuration };
+      
+      // Update duration presets — hide any that exceed provider's max
+      document.querySelectorAll('.duration-preset').forEach(btn => {
+        const blocks = parseInt(btn.getAttribute('data-blocks') || 0);
+        btn.style.display = blocks > maxDuration ? 'none' : '';
+      });
+      // If current duration exceeds max, reset to largest visible preset
+      if (contractDurationBlocks > maxDuration) {
+        const presets = [648000, 151200, 21600, 900];
+        for (const p of presets) {
+          if (p <= maxDuration) { setDuration(p === 900 ? 1 : p === 21600 ? 1 : p === 151200 ? 1 : 1, p === 900 ? 'hours' : p === 21600 ? 'days' : p === 151200 ? 'weeks' : 'months'); break; }
+        }
+      }
       
       document.querySelectorAll('.provider-card').forEach((el) => {
         el.classList.remove('selected');
@@ -1625,7 +1642,7 @@
     
     // Duration picker
     const BLOCK_TIME_SECONDS = 4;
-    let contractDurationBlocks = 7884000; // default 1 year
+    let contractDurationBlocks = 648000; // default 1 month (~30 days)
 
     function durationToBlocks(value, unit) {
       const seconds = {
@@ -1660,8 +1677,11 @@
       const unit = document.getElementById('durationUnit').value;
       contractDurationBlocks = durationToBlocks(value, unit);
       const humanTime = blocksToHumanTime(contractDurationBlocks);
+      const maxDur = selectedProvider?.maxDuration || 432000;
+      const overMax = contractDurationBlocks > maxDur;
       document.getElementById('durationEstimate').innerHTML = 
-        `≈ <strong>${contractDurationBlocks.toLocaleString()}</strong> blocks (${humanTime} at ~${BLOCK_TIME_SECONDS}s/block)`;
+        `≈ <strong>${contractDurationBlocks.toLocaleString()}</strong> blocks (${humanTime} at ~${BLOCK_TIME_SECONDS}s/block)` +
+        (overMax ? `<br><span style="color:var(--error);">⚠️ Exceeds provider max of ${maxDur.toLocaleString()} blocks (${blocksToHumanTime(maxDur)})</span>` : '');
       // Clear active preset if custom
       document.querySelectorAll('.duration-preset').forEach(b => b.classList.remove('active'));
     }
