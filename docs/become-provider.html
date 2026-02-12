@@ -2990,7 +2990,7 @@ services:
         let providerData = null;
         if (state.walletPubkeyBech32) {
           try {
-            const provResp = await fetch(`${CONFIG.REST_API}/arkeo/provider/${state.walletPubkeyBech32}/2`);
+            const provResp = await fetch(`${CONFIG.REST_API}/arkeo/provider/${state.walletPubkeyBech32}/arkeo-mainnet-fullnode`);
             if (provResp.ok) {
               providerData = (await provResp.json()).provider;
               if (!serviceName) serviceName = providerData.service || '2';
@@ -3208,6 +3208,7 @@ services:
           if (key) {
             state.walletAddress = key.bech32Address;
             state.walletPubkey = Buffer.from(key.pubKey).toString('base64');
+            state.walletPubkeyBech32 = pubkeyToBech32(key.pubKey, 'arkeopub');
             state.walletConnected = true;
             
             const btn = document.getElementById('walletBtn');
