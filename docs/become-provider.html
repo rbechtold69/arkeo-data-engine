@@ -605,39 +605,37 @@
       
       <div id="rpcStatus"></div>
       
-      <!-- Sentinel Setup -->
+      <!-- Sentinel URL -->
       <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin: 1.5rem 0;">
-        <h3 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
-          🛡️ Sentinel Setup
-          <span style="font-size: 0.75rem; background: var(--warning); color: #000; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">Required</span>
+        <h3 style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+          🛡️ Sentinel URL
         </h3>
         <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 1rem;">
-          The sentinel is a proxy that sits in front of your node. It handles authentication, metering, and rate limiting.
+          The sentinel is a lightweight proxy that sits in front of your node. It handles authentication, metering, and payments. 
+          <strong>You'll set it up in a later step</strong> — for now, just tell us where it will be accessible.
         </p>
         
-        <div style="background: #1a1f2e; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; font-family: monospace; font-size: 0.85rem; overflow-x: auto;">
-          <div style="color: var(--text-dim); margin-bottom: 0.5rem;"># Run on your node server (separate from validator):</div>
-          <div style="color: #10b981;">docker run -d --name arkeo-sentinel \</div>
-          <div style="color: #10b981; padding-left: 1rem;">-p 3636:3636 \</div>
-          <div style="color: #10b981; padding-left: 1rem;">-e PROXY_HOST=<span id="sentinelRpcPlaceholder" style="color: var(--arkeo);">localhost:26657</span> \</div>
-          <div style="color: #10b981; padding-left: 1rem;">ghcr.io/arkeonetwork/sentinel:latest</div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="form-label">Public Sentinel URL</label>
+          <input type="url" class="form-input" id="sentinelUrl" 
+                 placeholder="https://your-server.com:3636" oninput="validateSentinelUrl()">
+          <p class="form-hint">The public URL where subscribers will connect. Must include protocol (https recommended). Default port is 3636.</p>
         </div>
         
-        <button class="btn btn-secondary" style="font-size: 0.8rem;" onclick="copySentinelCommand()">
-          📋 Copy Command
-        </button>
-        
-        <div class="alert alert-warning" style="margin-top: 1rem; font-size: 0.85rem;">
-          ⚠️ <strong>Important:</strong> Port 3636 must be accessible from the internet. This is your sentinel's public endpoint.
-        </div>
-      </div>
-      
-      <!-- Sentinel URL -->
-      <div class="form-group">
-        <label class="form-label">Your Sentinel URL (public)</label>
-        <input type="url" class="form-input" id="sentinelUrl" 
-               placeholder="https://your-server.com:3636" oninput="validateSentinelUrl()">
-        <p class="form-hint">The public URL where users will connect. Must include protocol (https recommended).</p>
+        <details style="margin-top: 0.75rem;">
+          <summary style="cursor: pointer; color: var(--arkeo); font-size: 0.85rem; font-weight: 600;">
+            🤔 What should I put here?
+          </summary>
+          <div style="margin-top: 0.5rem; color: var(--text-dim); font-size: 0.85rem; line-height: 1.8;">
+            <p>This is the URL that subscribers will use to query your data. Examples:</p>
+            <div style="display: flex; flex-direction: column; gap: 0.3rem; margin: 0.5rem 0; font-family: monospace; font-size: 0.8rem;">
+              <span style="background: var(--bg-input); padding: 0.3rem 0.5rem; border-radius: 0.25rem;">https://my-provider.example.com</span>
+              <span style="background: var(--bg-input); padding: 0.3rem 0.5rem; border-radius: 0.25rem;">https://my-server.com:3636</span>
+              <span style="background: var(--bg-input); padding: 0.3rem 0.5rem; border-radius: 0.25rem;">https://my-node.duckdns.org</span>
+            </div>
+            <p style="margin-top: 0.5rem;">💡 <strong>Tip:</strong> Use a domain name instead of an IP address. Free options like <a href="https://www.duckdns.org" target="_blank" style="color: var(--arkeo);">DuckDNS</a> work great. Add HTTPS with <a href="https://letsencrypt.org" target="_blank" style="color: var(--arkeo);">Let's Encrypt</a> (free).</p>
+          </div>
+        </details>
       </div>
       
       <div id="sentinelStatus"></div>
