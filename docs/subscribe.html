@@ -555,6 +555,16 @@
   </style>
   <!-- Arkeo transaction helper -->
   <script src="js/arkeo-tx.js?v=20260208"></script>
+  <!-- secp256k1 and hashing for key generation -->
+  <script src="https://cdn.jsdelivr.net/npm/@noble/secp256k1@2.0.0/+esm" type="module"></script>
+  <script type="module">
+    import * as secp256k1 from 'https://cdn.jsdelivr.net/npm/@noble/secp256k1@2.0.0/+esm';
+    import { sha256 } from 'https://cdn.jsdelivr.net/npm/@noble/hashes@1.3.3/sha256.js';
+    import { ripemd160 } from 'https://cdn.jsdelivr.net/npm/@noble/hashes@1.3.3/ripemd160.js';
+    window.nobleSecp256k1 = secp256k1;
+    window.nobleSha256 = sha256;
+    window.nobleRipemd160 = ripemd160;
+  </script>
 </head>
 <body>
   <!-- Navigation -->
@@ -877,6 +887,105 @@
         </div>
       </div>
       
+      <!-- API Signing Key Section -->
+      <div class="form-group" style="margin-top: 2rem;">
+        <label class="form-label">🔑 API Signing Key</label>
+        <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem;">
+          <!-- Key Type Toggle -->
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+            <button type="button" id="generateKeyBtn" class="btn btn-primary" style="flex: 1;" onclick="selectKeyMode('generate')">
+              Generate New Key
+            </button>
+            <button type="button" id="existingKeyBtn" class="btn btn-secondary" style="flex: 1;" onclick="selectKeyMode('existing')">
+              Use Existing Key
+            </button>
+          </div>
+          
+          <!-- Generate Key Flow -->
+          <div id="generateKeyFlow">
+            <div style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.5; margin-bottom: 1rem;">
+              Generate a dedicated signing key for SDK requests. This key can ONLY make RPC queries against your contract — it cannot access your wallet or move funds.
+            </div>
+            <button type="button" class="btn btn-primary" onclick="generateSigningKey()" style="width: 100%;">
+              🔑 Generate Signing Key
+            </button>
+            
+            <!-- Key Display (hidden until generated) -->
+            <div id="generatedKeyDisplay" style="display: none; margin-top: 1rem;">
+              <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; margin-bottom: 0.5rem; color: #ef4444;">
+                  ⚠️ Save your private key now!
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-dim); line-height: 1.4;">
+                  You won't see it again. Treat it like an API key — store it securely on your server.
+                </div>
+              </div>
+              
+              <div style="margin-bottom: 1rem;">
+                <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-dim);">Private Key (hex)</div>
+                <div style="background: #0d1117; border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; word-break: break-all; position: relative;">
+                  <span id="privateKeyDisplay" style="color: #ff7b72;"></span>
+                  <button onclick="copyKey('private')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-card); border: 1px solid var(--border); color: var(--text); padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.75rem;">📋 Copy</button>
+                </div>
+              </div>
+              
+              <div style="margin-bottom: 1rem;">
+                <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-dim);">Public Key (arkeopub...)</div>
+                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; word-break: break-all; color: var(--arkeo);" id="publicKeyDisplay"></div>
+              </div>
+              
+              <div>
+                <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-dim);">Address (arkeo1...)</div>
+                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; word-break: break-all; color: var(--text);" id="addressDisplay"></div>
+              </div>
+              
+              <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(59, 224, 255, 0.05); border-radius: 0.5rem; font-size: 0.8rem; color: var(--text-dim);">
+                ✓ Key ready — This will be set as the contract delegate
+              </div>
+            </div>
+          </div>
+          
+          <!-- Existing Key Flow -->
+          <div id="existingKeyFlow" style="display: none;">
+            <div style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.5; margin-bottom: 1rem;">
+              Paste your existing private key (hex) or public key (arkeopub...). If you provide a public key, you must already have the private key stored securely.
+            </div>
+            <input type="text" id="existingKeyInput" class="form-input" placeholder="Private key (hex) or public key (arkeopub...)" oninput="parseExistingKey()" style="margin-bottom: 1rem;">
+            
+            <!-- Parsed Key Display -->
+            <div id="parsedKeyDisplay" style="display: none;">
+              <div style="margin-bottom: 1rem;">
+                <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-dim);">Public Key</div>
+                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; word-break: break-all; color: var(--arkeo);" id="existingPubKeyDisplay"></div>
+              </div>
+              
+              <div>
+                <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-dim);">Address</div>
+                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; word-break: break-all; color: var(--text);" id="existingAddressDisplay"></div>
+              </div>
+              
+              <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(59, 224, 255, 0.05); border-radius: 0.5rem; font-size: 0.8rem; color: var(--text-dim);">
+                ✓ Key imported — This will be set as the contract delegate
+              </div>
+            </div>
+          </div>
+          
+          <!-- Security Notes -->
+          <details style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+            <summary style="cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--text-dim); user-select: none;">🔒 Security Details</summary>
+            <div style="padding: 0.75rem 0; font-size: 0.8rem; color: var(--text-dim); line-height: 1.6;">
+              <ul style="margin: 0; padding-left: 1.5rem;">
+                <li>Generated entirely in your browser — never sent to any server</li>
+                <li>This key can ONLY make RPC queries against your contract</li>
+                <li>It cannot access your wallet or move funds</li>
+                <li>Treat it like an API key — store it securely on your server</li>
+                <li>You can revoke access by closing the contract</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+      </div>
+      
       <div class="wallet-section" id="walletSection">
         <div class="wallet-label">Connect your wallet to open the contract</div>
         <button class="connect-wallet-btn" onclick="connectWallet()">
@@ -1020,13 +1129,15 @@
           </div>
           
           <!-- Security warning -->
-          <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
+          <div id="sdkSecurityWarning" style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
             <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
               <span style="font-size: 1.25rem;">⚠️</span>
               <div>
                 <div style="font-weight: 600; margin-bottom: 0.25rem;">Security Best Practice</div>
                 <div style="font-size: 0.85rem; color: var(--text-dim); line-height: 1.5;">
-                  Use a dedicated signing key for SDK calls, not your main wallet key. This limits exposure if your application is compromised.
+                  <span id="sdkSecurityMessage">
+                    Use a dedicated signing key for SDK calls, not your main wallet key. This limits exposure if your application is compromised.
+                  </span>
                 </div>
               </div>
             </div>
@@ -1917,6 +2028,17 @@
       const statusDiv = document.getElementById('contractStatus');
       const btn = document.getElementById('openContractBtn');
       
+      // Warn if no signing key is set
+      if (!signingKey) {
+        const proceed = confirm(
+          '⚠️ No API signing key configured.\n\n' +
+          'Without a signing key, your SDK code will need to use Keplr for every request.\n\n' +
+          'It\'s highly recommended to generate a signing key first.\n\n' +
+          'Continue anyway?'
+        );
+        if (!proceed) return;
+      }
+      
       btn.disabled = true;
       btn.textContent = 'Opening Contract...';
       
@@ -1975,6 +2097,9 @@
           throw new Error('No service name found. Please select a provider again.');
         }
         
+        // Use signing key as delegate if available, otherwise use client pubkey
+        const delegatePubkey = signingKey ? signingKey.publicKeyBech32 : clientPubkey;
+        
         // Build MsgOpenContract with proper format
         const msg = {
           typeUrl: '/arkeo.arkeo.MsgOpenContract',
@@ -1983,7 +2108,7 @@
             provider: selectedProvider.pubkey,
             service: serviceName,
             client: clientPubkey,
-            delegate: '',
+            delegate: delegatePubkey,
             contractType: 1, // PAY_AS_YOU_GO = 1
             duration: String(contractDurationBlocks),
             rate: { denom: CONFIG.ARKEO_DENOM, amount: String(rateUarkeo) },
@@ -2094,6 +2219,22 @@
           </div>
         `;
         
+        // Show signing key reminder if one was generated
+        if (signingKey && signingKey.privateKeyHex) {
+          statusDiv.innerHTML += `
+            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 0.5rem; padding: 1rem; margin-top: 1rem;">
+              <div style="font-weight: 600; margin-bottom: 0.5rem; color: #ef4444;">⚠️ Don't Forget Your Signing Key!</div>
+              <div style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.5rem;">
+                Your contract is configured with a dedicated signing key. Make sure you've saved the private key — it's shown in the SDK examples below.
+              </div>
+              <button onclick="navigator.clipboard.writeText('${signingKey.privateKeyHex}'); event.target.textContent='✓ Copied!'; setTimeout(() => event.target.textContent='📋 Copy Private Key Again', 2000);" 
+                style="padding: 0.5rem 1rem; background: var(--arkeo); color: #000; border: none; border-radius: 0.375rem; font-weight: 600; cursor: pointer;">
+                📋 Copy Private Key Again
+              </button>
+            </div>
+          `;
+        }
+        
         // Update final values
         const rate = selectedProvider.rate || 1;
         const requests = Math.floor((parseFloat(depositAmount) * CONFIG.ARKEO_DIVISOR) / rate);
@@ -2157,15 +2298,50 @@
         const sentinelUrl = sentinelBaseUrl || endpointUrl.replace(/\/[^\/]+$/, '');
         const contractId = txHash ? txHash.slice(0, 12) : 'CONTRACT_ID';
         
+        // Use the actual signing key if available
+        const privateKeyForSDK = signingKey?.privateKeyHex || 'YOUR_SIGNING_KEY_HEX';
+        
         // Populate JavaScript example
         document.getElementById('js-endpoint').textContent = `'${sentinelUrl}'`;
         document.getElementById('js-contract-id').textContent = contractId;
         document.getElementById('js-service').textContent = `'${svcName}'`;
         
+        // Update the JavaScript code block to include the private key
+        const jsCodeBlock = document.querySelector('#sdk-js pre');
+        if (jsCodeBlock && signingKey?.privateKeyHex) {
+          jsCodeBlock.innerHTML = jsCodeBlock.innerHTML.replace(
+            /'YOUR_SIGNING_KEY_HEX'/g,
+            `'${privateKeyForSDK}'`
+          );
+        }
+        
         // Populate Python example
         document.getElementById('py-endpoint').textContent = `'${sentinelUrl}'`;
         document.getElementById('py-contract-id').textContent = contractId;
         document.getElementById('py-service').textContent = `'${svcName}'`;
+        
+        // Update the Python code block to include the private key
+        const pyCodeBlock = document.querySelector('#sdk-python pre');
+        if (pyCodeBlock && signingKey?.privateKeyHex) {
+          pyCodeBlock.innerHTML = pyCodeBlock.innerHTML.replace(
+            /'YOUR_SIGNING_KEY_HEX'/g,
+            `'${privateKeyForSDK}'`
+          );
+        }
+        
+        // Update security message if signing key is used
+        const securityMsg = document.getElementById('sdkSecurityMessage');
+        const securityWarning = document.getElementById('sdkSecurityWarning');
+        if (signingKey && securityMsg && securityWarning) {
+          securityMsg.innerHTML = `
+            ✅ Your contract uses a dedicated signing key (set as delegate). 
+            This key can ONLY make RPC queries against your contract — it cannot access your wallet or move funds. 
+            Store the private key securely on your server.
+          `;
+          securityWarning.style.background = 'rgba(16, 185, 129, 0.1)';
+          securityWarning.style.borderColor = '#10b981';
+          securityWarning.querySelector('span').textContent = '🔒';
+        }
         
         setTimeout(() => goToStep(4), 1000);
       } catch (err) {
@@ -2334,6 +2510,206 @@
         console.error('Copy failed:', err);
         button.textContent = '❌ Failed';
         setTimeout(() => button.textContent = '📋', 2000);
+      });
+    }
+
+    // ============================================================
+    // SIGNING KEY GENERATION
+    // ============================================================
+    let signingKey = null; // { privateKeyHex, publicKeyHex, publicKeyBech32, address }
+    
+    function selectKeyMode(mode) {
+      const generateBtn = document.getElementById('generateKeyBtn');
+      const existingBtn = document.getElementById('existingKeyBtn');
+      const generateFlow = document.getElementById('generateKeyFlow');
+      const existingFlow = document.getElementById('existingKeyFlow');
+      
+      if (mode === 'generate') {
+        generateBtn.classList.remove('btn-secondary');
+        generateBtn.classList.add('btn-primary');
+        existingBtn.classList.remove('btn-primary');
+        existingBtn.classList.add('btn-secondary');
+        generateFlow.style.display = 'block';
+        existingFlow.style.display = 'none';
+      } else {
+        existingBtn.classList.remove('btn-secondary');
+        existingBtn.classList.add('btn-primary');
+        generateBtn.classList.remove('btn-primary');
+        generateBtn.classList.add('btn-secondary');
+        existingFlow.style.display = 'block';
+        generateFlow.style.display = 'none';
+      }
+    }
+    
+    async function generateSigningKey() {
+      try {
+        // Generate 32 random bytes as private key
+        const privateKeyBytes = crypto.getRandomValues(new Uint8Array(32));
+        const privateKeyHex = Array.from(privateKeyBytes, b => b.toString(16).padStart(2, '0')).join('');
+        
+        // Derive public key using secp256k1
+        const publicKeyBytes = await nobleSecp256k1.getPublicKey(privateKeyBytes, true); // compressed (33 bytes)
+        const publicKeyHex = Array.from(publicKeyBytes, b => b.toString(16).padStart(2, '0')).join('');
+        
+        // Encode public key as arkeopub bech32
+        const publicKeyBech32 = pubkeyToBech32(publicKeyBytes, 'arkeopub');
+        
+        // Derive address (arkeo1...)
+        const address = await deriveAddress(publicKeyBytes);
+        
+        // Store signing key
+        signingKey = { privateKeyHex, publicKeyHex, publicKeyBech32, address, publicKeyBytes };
+        
+        // Display
+        document.getElementById('privateKeyDisplay').textContent = privateKeyHex;
+        document.getElementById('publicKeyDisplay').textContent = publicKeyBech32;
+        document.getElementById('addressDisplay').textContent = address;
+        document.getElementById('generatedKeyDisplay').style.display = 'block';
+        
+        console.log('Generated signing key:', signingKey);
+      } catch (err) {
+        console.error('Key generation failed:', err);
+        alert('Failed to generate key: ' + err.message);
+      }
+    }
+    
+    async function parseExistingKey() {
+      const input = document.getElementById('existingKeyInput').value.trim();
+      const display = document.getElementById('parsedKeyDisplay');
+      
+      if (!input) {
+        display.style.display = 'none';
+        signingKey = null;
+        return;
+      }
+      
+      try {
+        let publicKeyBytes, publicKeyBech32, address;
+        
+        if (input.startsWith('arkeopub')) {
+          // Bech32 public key provided
+          publicKeyBech32 = input;
+          // Decode bech32 to get raw pubkey bytes
+          const decoded = bech32Decode(input);
+          // Remove amino prefix (first 5 bytes: eb5ae98721)
+          publicKeyBytes = decoded.slice(5);
+        } else if (input.length === 64 || input.length === 66) {
+          // Hex private or public key
+          const keyBytes = hexToBytes(input);
+          
+          if (keyBytes.length === 32) {
+            // Private key — derive public key
+            publicKeyBytes = await nobleSecp256k1.getPublicKey(keyBytes, true);
+          } else if (keyBytes.length === 33) {
+            // Compressed public key
+            publicKeyBytes = keyBytes;
+          } else {
+            throw new Error('Invalid key length');
+          }
+          
+          publicKeyBech32 = pubkeyToBech32(publicKeyBytes, 'arkeopub');
+        } else {
+          throw new Error('Invalid key format. Expected hex (64/66 chars) or arkeopub bech32.');
+        }
+        
+        // Derive address
+        address = await deriveAddress(publicKeyBytes);
+        
+        // Store
+        signingKey = { 
+          privateKeyHex: input.length === 64 && !input.startsWith('arkeopub') ? input : null,
+          publicKeyBech32, 
+          address, 
+          publicKeyBytes 
+        };
+        
+        // Display
+        document.getElementById('existingPubKeyDisplay').textContent = publicKeyBech32;
+        document.getElementById('existingAddressDisplay').textContent = address;
+        display.style.display = 'block';
+        
+        console.log('Parsed existing key:', signingKey);
+      } catch (err) {
+        console.error('Key parsing failed:', err);
+        display.style.display = 'none';
+        signingKey = null;
+      }
+    }
+    
+    function hexToBytes(hex) {
+      const bytes = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+      }
+      return bytes;
+    }
+    
+    function bech32Decode(bech32Str) {
+      const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+      const parts = bech32Str.split('1');
+      if (parts.length !== 2) throw new Error('Invalid bech32');
+      
+      const data = [];
+      for (const c of parts[1]) {
+        const idx = CHARSET.indexOf(c);
+        if (idx === -1) throw new Error('Invalid bech32 character');
+        data.push(idx);
+      }
+      
+      // Remove checksum (last 6 values)
+      const payload = data.slice(0, -6);
+      
+      // Convert from 5-bit to 8-bit
+      const bytes = [];
+      let acc = 0, bits = 0;
+      for (const val of payload) {
+        acc = (acc << 5) | val;
+        bits += 5;
+        while (bits >= 8) {
+          bits -= 8;
+          bytes.push((acc >> bits) & 0xff);
+        }
+      }
+      
+      return new Uint8Array(bytes);
+    }
+    
+    async function deriveAddress(publicKeyBytes) {
+      // SHA-256 hash of public key
+      const sha256Hash = window.nobleSha256 
+        ? window.nobleSha256(publicKeyBytes)
+        : new Uint8Array(await crypto.subtle.digest('SHA-256', publicKeyBytes));
+      
+      // RIPEMD160 of SHA-256 hash
+      const hash160 = window.nobleRipemd160 
+        ? window.nobleRipemd160(sha256Hash)
+        : sha256Hash.slice(0, 20); // Fallback if ripemd160 not loaded
+      
+      // Encode as bech32 with 'arkeo' prefix
+      return bech32EncodeAddress('arkeo', hash160);
+    }
+    
+    function bech32EncodeAddress(prefix, data) {
+      const words = toWords(data);
+      return bech32Encode(prefix, words);
+    }
+    
+    function copyKey(type) {
+      const text = type === 'private' 
+        ? document.getElementById('privateKeyDisplay').textContent
+        : document.getElementById('publicKeyDisplay').textContent;
+      
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        btn.style.background = 'var(--success)';
+        btn.style.color = '#fff';
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.style.background = 'var(--bg-card)';
+          btn.style.color = 'var(--text)';
+        }, 2000);
       });
     }
 
