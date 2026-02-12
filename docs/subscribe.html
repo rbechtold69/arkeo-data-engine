@@ -1490,7 +1490,7 @@
           contractDurationBlocks,
           depositAmount: document.getElementById('depositAmount')?.value || '10',
           paymentMethod,
-          signingKey,
+          signingKey: signingKey ? { publicKeyBech32: signingKey.publicKeyBech32, address: signingKey.address } : null, // Never persist private key
           walletAddress,
           walletPubkeyBytes: walletPubkeyBytes ? Array.from(walletPubkeyBytes) : null,
           failoverEnabled,
