@@ -2822,8 +2822,10 @@ services:
       const sentinelUrl = state.sentinelUrl || 'http://YOUR_SERVER_IP:3636';
       const serviceName = state.selectedService?.name || 'arkeo-mainnet-fullnode';
       const baseUrl = sentinelUrl.replace(/\/+$/, '');
-      document.getElementById('curlTestCmd').textContent =
-        `curl ${baseUrl}/${serviceName} -d '{"jsonrpc":"2.0","method":"health","id":1}'`;
+      const el = document.getElementById('curlTestCmd');
+      if (el) {
+        el.textContent = `curl ${baseUrl}/${serviceName} -d '{"jsonrpc":"2.0","method":"health","id":1}'`;
+      }
     }
 
     function copySentinelConfig() {
