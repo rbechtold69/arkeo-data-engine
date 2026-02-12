@@ -944,6 +944,102 @@
           </div>
         </div>
         
+        <!-- Developer Integration Section -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin: 2rem 0; text-align: left;">
+          <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">🚀 Start Making Queries</h3>
+          <p style="color: var(--text-dim); margin-bottom: 1.5rem;">Use our SDK to start making authenticated RPC calls from your application.</p>
+          
+          <!-- Language tabs -->
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border);">
+            <button class="sdk-tab active" data-lang="js" onclick="switchSDKTab('js')" style="padding: 0.75rem 1.5rem; background: none; border: none; border-bottom: 2px solid var(--arkeo); color: var(--arkeo); font-weight: 600; cursor: pointer; transition: all 0.2s;">
+              JavaScript
+            </button>
+            <button class="sdk-tab" data-lang="python" onclick="switchSDKTab('python')" style="padding: 0.75rem 1.5rem; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-dim); font-weight: 600; cursor: pointer; transition: all 0.2s;">
+              Python
+            </button>
+          </div>
+          
+          <!-- JavaScript content -->
+          <div id="sdk-js" class="sdk-content">
+            <div style="margin-bottom: 1rem;">
+              <div style="font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem;">📦 Install Dependencies</div>
+              <div style="background: #0d1117; border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; font-size: 0.85rem; position: relative;">
+                <button onclick="copyToClipboard(this, 'npm install @noble/secp256k1 @noble/hashes')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-dim); padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.75rem;">📋</button>
+                <code style="color: #e6edf3;">npm install @noble/secp256k1 @noble/hashes</code>
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 1rem;">
+              <div style="font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem;">💻 Code Example</div>
+              <div style="background: #0d1117; border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; font-size: 0.85rem; position: relative; overflow-x: auto;">
+                <button onclick="copyToClipboard(this, this.parentElement.querySelector('pre').textContent)" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-dim); padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.75rem;">📋</button>
+<pre style="margin: 0; color: #e6edf3; line-height: 1.6;"><span style="color: #ff7b72;">import</span> { ArkeoClient } <span style="color: #ff7b72;">from</span> <span style="color: #a5d6ff;">'./arkeo-client.js'</span>;
+
+<span style="color: #ff7b72;">const</span> <span style="color: #79c0ff;">client</span> <span style="color: #ff7b72;">=</span> <span style="color: #ff7b72;">new</span> <span style="color: #d2a8ff;">ArkeoClient</span>({
+  <span style="color: #79c0ff;">sentinelUrl</span>: <span style="color: #a5d6ff;" id="js-endpoint">'ENDPOINT_URL'</span>,
+  <span style="color: #79c0ff;">contractId</span>: <span style="color: #79c0ff;" id="js-contract-id">CONTRACT_ID</span>,
+  <span style="color: #79c0ff;">privateKey</span>: <span style="color: #a5d6ff;">'YOUR_SIGNING_KEY_HEX'</span>,
+  <span style="color: #79c0ff;">service</span>: <span style="color: #a5d6ff;" id="js-service">'SERVICE_NAME'</span>
+});
+
+<span style="color: #8b949e;">// Make authenticated RPC calls</span>
+<span style="color: #ff7b72;">const</span> <span style="color: #79c0ff;">status</span> <span style="color: #ff7b72;">=</span> <span style="color: #ff7b72;">await</span> client.<span style="color: #d2a8ff;">rpcJson</span>(<span style="color: #a5d6ff;">'/status'</span>);
+<span style="color: #79c0ff;">console</span>.<span style="color: #d2a8ff;">log</span>(status);</pre>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Python content -->
+          <div id="sdk-python" class="sdk-content" style="display: none;">
+            <div style="margin-bottom: 1rem;">
+              <div style="font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem;">📦 Install Dependencies</div>
+              <div style="background: #0d1117; border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; font-size: 0.85rem; position: relative;">
+                <button onclick="copyToClipboard(this, 'pip install ecdsa requests')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-dim); padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.75rem;">📋</button>
+                <code style="color: #e6edf3;">pip install ecdsa requests</code>
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 1rem;">
+              <div style="font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem;">💻 Code Example</div>
+              <div style="background: #0d1117; border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; font-size: 0.85rem; position: relative; overflow-x: auto;">
+                <button onclick="copyToClipboard(this, this.parentElement.querySelector('pre').textContent)" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-dim); padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.75rem;">📋</button>
+<pre style="margin: 0; color: #e6edf3; line-height: 1.6;"><span style="color: #ff7b72;">from</span> arkeo_client <span style="color: #ff7b72;">import</span> ArkeoClient
+
+<span style="color: #79c0ff;">client</span> <span style="color: #ff7b72;">=</span> <span style="color: #d2a8ff;">ArkeoClient</span>(
+    <span style="color: #79c0ff;">sentinel_url</span><span style="color: #ff7b72;">=</span><span style="color: #a5d6ff;" id="py-endpoint">'ENDPOINT_URL'</span>,
+    <span style="color: #79c0ff;">contract_id</span><span style="color: #ff7b72;">=</span><span style="color: #79c0ff;" id="py-contract-id">CONTRACT_ID</span>,
+    <span style="color: #79c0ff;">private_key</span><span style="color: #ff7b72;">=</span><span style="color: #a5d6ff;">'YOUR_SIGNING_KEY_HEX'</span>,
+    <span style="color: #79c0ff;">service</span><span style="color: #ff7b72;">=</span><span style="color: #a5d6ff;" id="py-service">'SERVICE_NAME'</span>
+)
+
+<span style="color: #8b949e;"># Make authenticated RPC calls</span>
+<span style="color: #79c0ff;">status</span> <span style="color: #ff7b72;">=</span> client.<span style="color: #d2a8ff;">rpc_json</span>(<span style="color: #a5d6ff;">'/status'</span>)
+<span style="color: #ff7b72;">print</span>(status)</pre>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Security warning -->
+          <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
+            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+              <span style="font-size: 1.25rem;">⚠️</span>
+              <div>
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">Security Best Practice</div>
+                <div style="font-size: 0.85rem; color: var(--text-dim); line-height: 1.5;">
+                  Use a dedicated signing key for SDK calls, not your main wallet key. This limits exposure if your application is compromised.
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Link to full docs -->
+          <div style="text-align: center; margin-top: 1.5rem;">
+            <a href="sdk/README.md" target="_blank" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: var(--arkeo); color: #000; text-decoration: none; border-radius: 0.5rem; font-weight: 600; transition: all 0.2s;">
+              📚 View Full SDK Documentation →
+            </a>
+          </div>
+        </div>
+
         <a href="index.html" class="listing-link">Back to Marketplace</a>
         <a href="#" class="listing-link secondary" onclick="findAnother()">Find Another Provider</a>
       </div>
@@ -2054,6 +2150,21 @@
           failoverInfo.style.display = 'none';
         }
         
+        // Populate SDK integration section with dynamic values
+        // Extract base sentinel URL (remove service path if present)
+        const sentinelUrl = sentinelBaseUrl || endpointUrl.replace(/\/[^\/]+$/, '');
+        const contractId = txHash ? txHash.slice(0, 12) : 'CONTRACT_ID';
+        
+        // Populate JavaScript example
+        document.getElementById('js-endpoint').textContent = `'${sentinelUrl}'`;
+        document.getElementById('js-contract-id').textContent = contractId;
+        document.getElementById('js-service').textContent = `'${svcName}'`;
+        
+        // Populate Python example
+        document.getElementById('py-endpoint').textContent = `'${sentinelUrl}'`;
+        document.getElementById('py-contract-id').textContent = contractId;
+        document.getElementById('py-service').textContent = `'${svcName}'`;
+        
         setTimeout(() => goToStep(4), 1000);
       } catch (err) {
         console.error('Contract error:', err);
@@ -2186,6 +2297,42 @@
         btn.textContent = '❌ Failed to check';
         setTimeout(() => { btn.textContent = '🔄 Check My Balance'; btn.disabled = false; }, 2000);
       }
+    }
+
+    // ============================================================
+    // SDK INTEGRATION HELPERS
+    // ============================================================
+    function switchSDKTab(lang) {
+      // Update tab styles
+      document.querySelectorAll('.sdk-tab').forEach(tab => {
+        const isActive = tab.getAttribute('data-lang') === lang;
+        tab.style.borderBottomColor = isActive ? 'var(--arkeo)' : 'transparent';
+        tab.style.color = isActive ? 'var(--arkeo)' : 'var(--text-dim)';
+        if (isActive) tab.classList.add('active');
+        else tab.classList.remove('active');
+      });
+      
+      // Show/hide content
+      document.getElementById('sdk-js').style.display = lang === 'js' ? 'block' : 'none';
+      document.getElementById('sdk-python').style.display = lang === 'python' ? 'block' : 'none';
+    }
+    
+    function copyToClipboard(button, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = button.textContent;
+        button.textContent = '✓ Copied!';
+        button.style.background = 'var(--success)';
+        button.style.color = '#fff';
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.style.background = 'var(--bg-card)';
+          button.style.color = 'var(--text-dim)';
+        }, 2000);
+      }).catch(err => {
+        console.error('Copy failed:', err);
+        button.textContent = '❌ Failed';
+        setTimeout(() => button.textContent = '📋', 2000);
+      });
     }
 
     // Initialize on load
