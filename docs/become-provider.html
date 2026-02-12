@@ -605,45 +605,23 @@
       
       <div id="rpcStatus"></div>
       
-      <!-- Sentinel URL -->
-      <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin: 1.5rem 0;">
-        <h3 style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-          🛡️ Sentinel URL
-        </h3>
-        <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 1rem;">
-          The sentinel is a lightweight proxy that sits in front of your node. It handles authentication, metering, and payments. 
-          <strong>You'll set it up in a later step</strong> — for now, just tell us where it will be accessible.
-        </p>
-        
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label">Public Sentinel URL</label>
-          <input type="url" class="form-input" id="sentinelUrl" 
-                 placeholder="https://your-server.com:3636" oninput="validateSentinelUrl()">
-          <p class="form-hint">The public URL where subscribers will connect. Must include protocol (https recommended). Default port is 3636.</p>
-        </div>
-        
-        <details style="margin-top: 0.75rem;">
-          <summary style="cursor: pointer; color: var(--arkeo); font-size: 0.85rem; font-weight: 600;">
-            🤔 What should I put here?
-          </summary>
-          <div style="margin-top: 0.5rem; color: var(--text-dim); font-size: 0.85rem; line-height: 1.8;">
-            <p>This is the URL that subscribers will use to query your data. Examples:</p>
-            <div style="display: flex; flex-direction: column; gap: 0.3rem; margin: 0.5rem 0; font-family: monospace; font-size: 0.8rem;">
-              <span style="background: var(--bg-input); padding: 0.3rem 0.5rem; border-radius: 0.25rem;">https://my-provider.example.com</span>
-              <span style="background: var(--bg-input); padding: 0.3rem 0.5rem; border-radius: 0.25rem;">https://my-server.com:3636</span>
-              <span style="background: var(--bg-input); padding: 0.3rem 0.5rem; border-radius: 0.25rem;">https://my-node.duckdns.org</span>
-            </div>
-            <p style="margin-top: 0.5rem;">💡 <strong>Tip:</strong> Use a domain name instead of an IP address. Free options like <a href="https://www.duckdns.org" target="_blank" style="color: var(--arkeo);">DuckDNS</a> work great. Add HTTPS with <a href="https://letsencrypt.org" target="_blank" style="color: var(--arkeo);">Let's Encrypt</a> (free).</p>
+      <!-- Sentinel info (setup happens after registration in Step 6) -->
+      <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem; margin: 1.5rem 0;">
+        <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+          <span style="font-size: 1.5rem;">🛡️</span>
+          <div>
+            <div style="font-weight: 600; margin-bottom: 0.25rem;">What about the Sentinel?</div>
+            <p style="color: var(--text-dim); font-size: 0.9rem; margin: 0;">
+              The sentinel is a lightweight proxy that handles authentication and payments. You'll set it up <strong>after registration</strong> — we'll generate a ready-to-use config and walk you through the install in a later step.
+            </p>
           </div>
-        </details>
+        </div>
       </div>
-      
-      <div id="sentinelStatus"></div>
       
       <div class="btn-group">
         <button class="btn btn-secondary" onclick="goToStep(1)">← Back</button>
         <button class="btn btn-primary" id="nextBtn2" disabled onclick="testEndpoints()">
-          Test Connections →
+          Continue →
         </button>
       </div>
     </div>
@@ -722,7 +700,7 @@
           <span class="summary-value" id="summaryChain">-</span>
         </div>
         <div class="summary-row">
-          <span class="summary-label">Sentinel URL</span>
+          <span class="summary-label">Node RPC</span>
           <span class="summary-value" id="summarySentinel">-</span>
         </div>
         <div class="summary-row">
@@ -862,11 +840,32 @@
     <!-- Step 6: Configure Sentinel -->
     <div class="wizard-card hidden" id="step6">
       <h2 class="wizard-title">🛡️ Configure Your Sentinel</h2>
-      <p class="wizard-subtitle">Generate a ready-to-use sentinel config for your provider.</p>
+      <p class="wizard-subtitle">Set up the sentinel proxy that sits in front of your node.</p>
+
+      <!-- Sentinel Public URL -->
+      <div class="form-group">
+        <label class="form-label">Your Sentinel's Public URL</label>
+        <input type="url" class="form-input" id="sentinelPublicUrl"
+               placeholder="https://your-server.com:3636" oninput="onSentinelPublicUrlChange()">
+        <p class="form-hint">The public URL where subscribers will reach your sentinel. Use a domain name with HTTPS for best results.</p>
+        <details style="margin-top: 0.5rem;">
+          <summary style="cursor: pointer; color: var(--arkeo); font-size: 0.85rem; font-weight: 600;">
+            🤔 How do I set up a public URL?
+          </summary>
+          <div style="margin-top: 0.5rem; color: var(--text-dim); font-size: 0.85rem; line-height: 1.8;">
+            <ol style="padding-left: 1.25rem;">
+              <li><strong>Get a free domain:</strong> Use <a href="https://www.duckdns.org" target="_blank" style="color: var(--arkeo);">DuckDNS</a> to point a subdomain at your server's IP</li>
+              <li><strong>Add free SSL:</strong> Install <a href="https://certbot.eff.org" target="_blank" style="color: var(--arkeo);">Certbot</a> with nginx for automatic HTTPS</li>
+              <li><strong>Set up nginx:</strong> Reverse proxy port 443 to your sentinel on port 3636</li>
+            </ol>
+            <p style="margin-top: 0.5rem;">Example: <code style="background: var(--bg-input); padding: 0.1rem 0.3rem; border-radius: 0.2rem;">https://my-node.duckdns.org</code> → your sentinel on port 3636. Total cost: $0.</p>
+          </div>
+        </details>
+      </div>
 
       <!-- Node RPC URL Input -->
       <div class="form-group">
-        <label class="form-label">What's your node's internal RPC URL?</label>
+        <label class="form-label">Your node's internal RPC URL</label>
         <input type="url" class="form-input" id="sentinelConfigRpcUrl"
                placeholder="http://192.168.1.50:26657" oninput="updateSentinelConfig()">
         <p class="form-hint">The internal address where your node's RPC is accessible from the sentinel server.</p>
@@ -1770,53 +1769,25 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
     }
     
     function validateSentinelUrl() {
-      checkStep2Ready();
+      // Now handled in Step 6, kept for compatibility
     }
     
     function checkStep2Ready() {
       const rpcUrl = document.getElementById('rpcUrl').value;
-      const sentinelUrl = document.getElementById('sentinelUrl').value;
       const btn = document.getElementById('nextBtn2');
       
       let rpcValid = false;
-      let sentinelValid = false;
-      
       try {
         new URL(rpcUrl);
         rpcValid = true;
       } catch {}
       
-      try {
-        new URL(sentinelUrl);
-        sentinelValid = true;
-      } catch {}
-      
-      btn.disabled = !(rpcValid && sentinelValid);
-    }
-    
-    function copySentinelCommand() {
-      const rpcUrl = document.getElementById('rpcUrl').value || 'localhost:26657';
-      let host = 'localhost:26657';
-      try {
-        const parsed = new URL(rpcUrl);
-        host = parsed.host;
-      } catch {}
-      
-      const cmd = `docker run -d --name arkeo-sentinel \\
-  -p 3636:3636 \\
-  -e PROXY_HOST=${host} \\
-  ghcr.io/arkeonetwork/sentinel:latest`;
-      
-      navigator.clipboard.writeText(cmd);
-      event.target.textContent = '✓ Copied!';
-      setTimeout(() => event.target.textContent = '📋 Copy Command', 2000);
+      btn.disabled = !rpcValid;
     }
     
     async function testEndpoints() {
       const rpcUrl = document.getElementById('rpcUrl').value;
-      const sentinelUrl = document.getElementById('sentinelUrl').value;
       const rpcStatus = document.getElementById('rpcStatus');
-      const sentinelStatus = document.getElementById('sentinelStatus');
       const btn = document.getElementById('nextBtn2');
       
       btn.disabled = true;
@@ -1830,63 +1801,12 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
         </div>
       `;
       
-      // Test Sentinel — try to reach it, but don't block on failure
-      // Many sentinels have CORS/firewall configs that prevent browser testing
-      sentinelStatus.innerHTML = `
-        <div class="status-box testing">
-          <div class="spinner"></div>
-          <span>Checking sentinel...</span>
-        </div>
-      `;
-      
-      let sentinelOk = false;
-      let sentinelReachable = false;
-      try {
-        const response = await fetch(sentinelUrl + '/metadata.json', {
-          signal: AbortSignal.timeout(8000),
-        });
-        sentinelReachable = true;
-        sentinelStatus.innerHTML = `
-          <div class="status-box success">
-            <span>✅</span>
-            <span>Sentinel is running!</span>
-          </div>
-        `;
-        sentinelOk = true;
-      } catch (err) {
-        // Browser can't reach it — this is common due to CORS, firewalls, etc.
-        // Validate URL format and let them proceed
-        try {
-          const url = new URL(sentinelUrl);
-          sentinelStatus.innerHTML = `
-            <div class="status-box success">
-              <span>✅</span>
-              <span>Sentinel URL saved — will be verified on-chain after registration.</span>
-            </div>
-          `;
-          sentinelOk = true;
-        } catch (urlErr) {
-          sentinelStatus.innerHTML = `
-            <div class="status-box warning">
-              <span>⚠️</span>
-              <span>Invalid URL format. Please enter a valid URL (e.g. https://your-server.com)</span>
-            </div>
-          `;
-        }
-      }
-      
-      if (sentinelOk) {
-        state.rpcUrl = rpcUrl;
-        state.sentinelUrl = sentinelUrl;
-        setTimeout(() => goToStep(3), 1500);
-      } else {
-        btn.disabled = false;
-      }
+      state.rpcUrl = rpcUrl;
+      setTimeout(() => goToStep(3), 1000);
     }
     
     function proceedWithoutSentinelTest() {
       state.rpcUrl = document.getElementById('rpcUrl').value;
-      state.sentinelUrl = document.getElementById('sentinelUrl').value;
       goToStep(3);
     }
     
@@ -1938,7 +1858,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
       state.paygRate = parseInt(rate);
       
       document.getElementById('summaryChain').textContent = state.selectedService?.name || '-';
-      document.getElementById('summarySentinel').textContent = state.sentinelUrl || '-';
+      document.getElementById('summarySentinel').textContent = state.rpcUrl || '-';
       document.getElementById('summaryRate').textContent = `${rate} uarkeo/req`;
     }
 
@@ -1992,6 +1912,14 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
         }
       }
       if (step === 6) {
+        // Pre-fill RPC URL from Step 2 if available
+        if (state.rpcUrl) {
+          document.getElementById('sentinelConfigRpcUrl').value = state.rpcUrl;
+        }
+        // Pre-fill sentinel URL if already set
+        if (state.sentinelUrl) {
+          document.getElementById('sentinelPublicUrl').value = state.sentinelUrl;
+        }
         updateSentinelConfig();
       }
     }
@@ -2479,6 +2407,13 @@ claim_check_interval: 30m
 services:
   - name: ${serviceName}
     rpc_url: ${rpcUrl}`;
+    }
+
+    function onSentinelPublicUrlChange() {
+      const url = document.getElementById('sentinelPublicUrl').value.trim();
+      state.sentinelUrl = url;
+      updateSentinelConfig();
+      updateCurlTestCmd();
     }
 
     function updateSentinelConfig() {
