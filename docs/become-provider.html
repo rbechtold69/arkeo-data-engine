@@ -512,6 +512,9 @@
           Continue →
         </button>
       </div>
+      <p style="text-align: center; margin-top: 1rem; font-size: 0.9rem; color: var(--text-muted);">
+        Already registered as a provider? <a href="#" onclick="goToStep(6); return false;" style="color: var(--accent);">Skip to Sentinel Setup →</a>
+      </p>
     </div>
 
     <!-- Step 2: Infrastructure Setup -->
@@ -1856,7 +1859,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
           const d = state.serviceDemand[svc.name] || state.serviceDemand[svc.id] || { active: 0, total: 0 };
           svc.activeContracts = d.active;
           svc.totalContracts = d.total;
-          svc.providerCount = providerCounts[svc.name] || 0;
+          svc.providerCount = providerCounts[svc.name] || providerCounts[svc.id] || 0;
         }
         
         // Sort by active contracts (desc), then total contracts (desc), then name (asc)
@@ -3173,6 +3176,12 @@ services:
     document.addEventListener('DOMContentLoaded', () => {
       // Restore state first
       restoreState();
+      
+      // Allow ?step=N URL param to jump directly
+      const urlStep = new URLSearchParams(window.location.search).get('step');
+      if (urlStep && parseInt(urlStep) >= 1 && parseInt(urlStep) <= 6) {
+        setTimeout(() => goToStep(parseInt(urlStep)), 200);
+      }
       
       loadServices();
       checkArkeoEndpoints();
