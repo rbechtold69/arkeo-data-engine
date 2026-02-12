@@ -2864,15 +2864,18 @@ services:
 
       let metaOk = false;
       try {
+        console.log('Testing metadata URL:', metaUrl);
         const resp = await fetch(metaUrl, { signal: AbortSignal.timeout(10000) });
         if (resp.ok) {
           metaOk = true;
           resultsDiv.innerHTML = `<div class="status-box success"><span>✅</span><span>Metadata endpoint responding! (${metaUrl})</span></div>`;
         } else {
-          resultsDiv.innerHTML = `<div class="status-box error"><span>❌</span><span>Metadata returned HTTP ${resp.status}</span></div>`;
+          const body = await resp.text().catch(() => '');
+          resultsDiv.innerHTML = `<div class="status-box error"><span>❌</span><span>Metadata returned HTTP ${resp.status}: ${body.slice(0, 100)}</span></div>`;
         }
       } catch (e) {
-        resultsDiv.innerHTML = `<div class="status-box error"><span>❌</span><span>Could not reach metadata endpoint — likely CORS or firewall. Try curl from your server.</span></div>`;
+        console.error('Metadata fetch error:', e);
+        resultsDiv.innerHTML = `<div class="status-box error"><span>❌</span><span>Could not reach metadata endpoint (${metaUrl}). Error: ${e.message || 'Unknown'}. Check the URL and try again.</span></div>`;
       }
 
       // Test 2: service health
