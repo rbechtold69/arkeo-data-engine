@@ -631,11 +631,63 @@
       <h2 class="wizard-title">Service Configuration</h2>
       <p class="wizard-subtitle">Set your pricing and provider metadata.</p>
       
-      <div class="form-group">
-        <label class="form-label">Pay-As-You-Go Rate (uarkeo per request)</label>
-        <input type="number" class="form-input" id="paygRate" 
-               value="1" min="1" step="1" oninput="updateSummary()">
-        <p class="form-hint">1 ARKEO = 100,000,000 uarkeo. Example: 1 uarkeo = 0.00000001 ARKEO per request.</p>
+      <!-- Pricing -->
+      <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem;">
+        <h3 style="margin-bottom: 0.5rem;">💰 Pricing</h3>
+        <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 1rem;">
+          Set your pay-as-you-go rate. This is what subscribers pay per request to your node.
+        </p>
+        
+        <div class="form-group" style="margin-bottom: 0.75rem;">
+          <label class="form-label">Rate (uarkeo per request)</label>
+          <input type="number" class="form-input" id="paygRate" 
+                 value="25000" min="1" step="1" oninput="updateSummary()">
+        </div>
+        
+        <!-- Price calculator -->
+        <div id="priceCalc" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; font-size: 0.85rem;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+            <span style="color: var(--text-dim);">Per request:</span>
+            <span id="calcPerRequest" style="color: var(--text);">0.00025 ARKEO</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+            <span style="color: var(--text-dim);">Per 1,000 requests:</span>
+            <span id="calcPer1k" style="color: var(--text);">0.25 ARKEO</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+            <span style="color: var(--text-dim);">Per 1M requests:</span>
+            <span id="calcPer1m" style="color: var(--arkeo); font-weight: 600;">250 ARKEO</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 0.5rem;">
+            <span style="color: var(--text-dim);">USD per 1M requests:</span>
+            <span id="calcUsd" style="color: var(--success); font-weight: 600;">~$3.47</span>
+          </div>
+        </div>
+        
+        <details style="margin-top: 0.75rem;">
+          <summary style="cursor: pointer; color: var(--arkeo); font-size: 0.85rem; font-weight: 600;">
+            📊 How should I price my service?
+          </summary>
+          <div style="margin-top: 0.5rem; color: var(--text-dim); font-size: 0.85rem; line-height: 1.8;">
+            <p style="margin-bottom: 0.5rem;"><strong>Competitor pricing for reference:</strong></p>
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-bottom: 0.75rem;">
+              <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 0.3rem;">Infura</td>
+                <td style="padding: 0.3rem;">Free tier + $50/mo for 100k req/day</td>
+              </tr>
+              <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 0.3rem;">Alchemy</td>
+                <td style="padding: 0.3rem;">Free tier + $49/mo for 50M compute units</td>
+              </tr>
+              <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 0.3rem;">QuickNode</td>
+                <td style="padding: 0.3rem;">$49/mo for 15M API credits</td>
+              </tr>
+            </table>
+            <p><strong>Tips:</strong> Start competitive to attract subscribers. You can adjust your rate anytime by updating your provider config on-chain.</p>
+            <p style="margin-top: 0.5rem;">⚠️ <strong>Rate limits</strong> are separate from pricing — they're set per contract when a subscriber opens one, not here.</p>
+          </div>
+        </details>
       </div>
       
       <!-- Metadata Section -->
@@ -1853,14 +1905,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
       }
     }
     
-    function updateSummary() {
-      const rate = document.getElementById('paygRate').value || 1;
-      state.paygRate = parseInt(rate);
-      
-      document.getElementById('summaryChain').textContent = state.selectedService?.name || '-';
-      document.getElementById('summarySentinel').textContent = state.rpcUrl || '-';
-      document.getElementById('summaryRate').textContent = `${rate} uarkeo/req`;
-    }
+    // First updateSummary removed — see second definition below which includes price calculator
 
     // ============================================================
     // STEP NAVIGATION
@@ -1925,12 +1970,33 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
     }
     
     function updateSummary() {
-      const rate = document.getElementById('paygRate').value || 200;
-      state.paygRate = parseInt(rate);
+      const rate = parseInt(document.getElementById('paygRate').value) || 25000;
+      state.paygRate = rate;
       
-      document.getElementById('summaryChain').textContent = state.selectedService?.name || '-';
-      document.getElementById('summaryRpc').textContent = state.rpcUrl || '-';
-      document.getElementById('summaryRate').textContent = `${rate} uarkeo / 1000 req`;
+      // Update summary card
+      const chainEl = document.getElementById('summaryChain');
+      if (chainEl) chainEl.textContent = state.selectedService?.name || '-';
+      const rpcEl = document.getElementById('summarySentinel') || document.getElementById('summaryRpc');
+      if (rpcEl) rpcEl.textContent = state.rpcUrl || '-';
+      const rateEl = document.getElementById('summaryRate');
+      if (rateEl) rateEl.textContent = `${rate.toLocaleString()} uarkeo/req`;
+      
+      // Update price calculator
+      const arkeoPerReq = rate / 100000000;
+      const arkeoPer1k = arkeoPerReq * 1000;
+      const arkeoPer1m = arkeoPerReq * 1000000;
+      const arkeoPrice = 0.0139; // approximate ARKEO price in USD
+      const usdPer1m = arkeoPer1m * arkeoPrice;
+      
+      const calcPerReq = document.getElementById('calcPerRequest');
+      const calcPer1k = document.getElementById('calcPer1k');
+      const calcPer1m = document.getElementById('calcPer1m');
+      const calcUsd = document.getElementById('calcUsd');
+      
+      if (calcPerReq) calcPerReq.textContent = `${arkeoPerReq.toFixed(8)} ARKEO`;
+      if (calcPer1k) calcPer1k.textContent = `${arkeoPer1k < 0.01 ? arkeoPer1k.toFixed(6) : arkeoPer1k.toFixed(4)} ARKEO`;
+      if (calcPer1m) calcPer1m.textContent = `${arkeoPer1m < 1 ? arkeoPer1m.toFixed(4) : arkeoPer1m.toFixed(2)} ARKEO`;
+      if (calcUsd) calcUsd.textContent = `~$${usdPer1m < 0.01 ? usdPer1m.toFixed(4) : usdPer1m.toFixed(2)}`;
     }
     
     function updateStep4UI() {
