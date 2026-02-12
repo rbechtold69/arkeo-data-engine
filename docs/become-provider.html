@@ -499,23 +499,23 @@
         </p>
         
         <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
-          <!-- Option A -->
+          <!-- Option A: Own node (promoted) -->
           <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 1rem; background: var(--bg-card); border: 2px solid var(--arkeo); border-radius: 0.5rem; cursor: pointer;" id="arkeoOptionA">
-            <input type="radio" name="arkeoConnection" value="public" checked 
-                   onchange="updateArkeoConnection()" style="margin-top: 0.25rem; accent-color: var(--arkeo);">
-            <div>
-              <div style="font-weight: 600; color: var(--text);">Use a public endpoint <span style="font-size: 0.75rem; background: var(--success); color: #fff; padding: 0.15rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">Recommended</span></div>
-              <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">Free, no setup required. Connects to Arkeo's public infrastructure. Best for most providers.</div>
-            </div>
-          </label>
-          
-          <!-- Option B -->
-          <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 1rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.5rem; cursor: pointer;" id="arkeoOptionB">
             <input type="radio" name="arkeoConnection" value="custom" 
                    onchange="updateArkeoConnection()" style="margin-top: 0.25rem; accent-color: var(--arkeo);">
             <div>
-              <div style="font-weight: 600; color: var(--text);">Use your own Arkeo node</div>
-              <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">If you run an Arkeo validator or full node, point to your own endpoint for maximum decentralization.</div>
+              <div style="font-weight: 600; color: var(--text);">Use your own Arkeo node <span style="font-size: 0.75rem; background: var(--arkeo); color: #000; padding: 0.15rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">Best for Decentralization</span></div>
+              <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">Run your own Arkeo node for maximum independence. No reliance on third-party infrastructure. <strong>Recommended for serious providers.</strong></div>
+            </div>
+          </label>
+          
+          <!-- Option B: Community endpoint -->
+          <label style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 1rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.5rem; cursor: pointer;" id="arkeoOptionB">
+            <input type="radio" name="arkeoConnection" value="public" checked
+                   onchange="updateArkeoConnection()" style="margin-top: 0.25rem; accent-color: var(--arkeo);">
+            <div>
+              <div style="font-weight: 600; color: var(--text);">Use a community endpoint</div>
+              <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">Connect to a free public Arkeo node run by community validators. Quick start, but you depend on their uptime. Automatic failover if your selected endpoint goes down.</div>
             </div>
           </label>
         </div>
@@ -526,13 +526,35 @@
             <label class="form-label">Your Arkeo Node REST API URL</label>
             <input type="url" class="form-input" id="arkeoNodeUrl" 
                    placeholder="https://your-arkeo-node:1317" oninput="validateArkeoUrl()">
-            <p class="form-hint">REST API endpoint of your Arkeo node (typically port 1317).</p>
+            <p class="form-hint">REST API endpoint of your Arkeo node (typically port 1317). A pruned node works fine.</p>
           </div>
           <div id="arkeoUrlStatus"></div>
         </div>
         
-        <div id="arkeoConnectionStatus" class="status-box" style="margin-top: 0.75rem; background: var(--success-dim); border: 1px solid var(--success); border-radius: 0.5rem; padding: 0.75rem; font-size: 0.85rem;">
-          ✅ Will connect via <strong>rest-seed.arkeo.network</strong> (Arkeo public endpoint)
+        <!-- Public endpoint selector (shown by default) -->
+        <div id="arkeoPublicSelect">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label">Select Primary Endpoint</label>
+            <div id="arkeoEndpointList" style="display: flex; flex-direction: column; gap: 0.5rem;">
+              <!-- Populated by JS on load -->
+              <div style="color: var(--text-dim); font-size: 0.85rem; padding: 0.5rem;">
+                <div class="spinner" style="display: inline-block; width: 14px; height: 14px; border-width: 2px; vertical-align: middle; margin-right: 0.5rem;"></div>
+                Checking available endpoints...
+              </div>
+            </div>
+            <p class="form-hint" style="margin-top: 0.75rem;">
+              🔄 <strong>Automatic failover:</strong> If your selected endpoint goes down, your sentinel config will include all healthy endpoints as fallbacks.
+            </p>
+          </div>
+        </div>
+        
+        <div id="arkeoConnectionStatus" class="status-box" style="margin-top: 0.75rem; background: var(--arkeo-dim); border: 1px solid var(--arkeo); border-radius: 0.5rem; padding: 0.75rem; font-size: 0.85rem;">
+          ⏳ Checking community endpoints...
+        </div>
+        
+        <!-- Decentralization callout -->
+        <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning); border-radius: 0.5rem; font-size: 0.85rem;">
+          ⚠️ <strong>Why this matters:</strong> Arkeo currently has very few public endpoints. If they go down, your sentinel can't verify contracts. Running your own Arkeo node (even pruned) makes you fully independent and strengthens the entire network.
         </div>
       </div>
       
@@ -1190,30 +1212,140 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
       paygRate: 1,
       currentStep: 1,
       arkeoHubUri: 'https://rest-seed.arkeo.network',
+      arkeoFallbacks: [],
     };
 
     // ============================================================
     // ARKEO NETWORK CONNECTION
     // ============================================================
+    
+    // Known community Arkeo endpoints — add new ones here as validators open up
+    const ARKEO_COMMUNITY_ENDPOINTS = [
+      { url: 'https://rest-seed.arkeo.network', name: 'Arkeo Seed', operator: 'Arkeo Foundation' },
+      { url: 'https://arkeo-api.polkachu.com', name: 'Polkachu', operator: 'Polkachu' },
+    ];
+    
+    // Track health status
+    let arkeoEndpointHealth = [];
+    
+    async function checkArkeoEndpoints() {
+      const listDiv = document.getElementById('arkeoEndpointList');
+      const statusDiv = document.getElementById('arkeoConnectionStatus');
+      arkeoEndpointHealth = [];
+      
+      const checks = ARKEO_COMMUNITY_ENDPOINTS.map(async (ep) => {
+        const start = Date.now();
+        try {
+          const resp = await fetch(ep.url + '/cosmos/base/tendermint/v1beta1/node_info', 
+            { signal: AbortSignal.timeout(5000) });
+          if (resp.ok) {
+            const data = await resp.json();
+            const latency = Date.now() - start;
+            const network = data?.default_node_info?.network || '';
+            const height = data?.default_node_info?.other?.tx_index || '';
+            return { ...ep, online: network === 'arkeo-main-v1', latency, network };
+          }
+          return { ...ep, online: false, latency: 0 };
+        } catch {
+          return { ...ep, online: false, latency: 0 };
+        }
+      });
+      
+      arkeoEndpointHealth = await Promise.all(checks);
+      
+      // Sort: online first, then by latency
+      arkeoEndpointHealth.sort((a, b) => {
+        if (a.online && !b.online) return -1;
+        if (!a.online && b.online) return 1;
+        return a.latency - b.latency;
+      });
+      
+      // Render endpoint list
+      const onlineCount = arkeoEndpointHealth.filter(e => e.online).length;
+      
+      listDiv.innerHTML = arkeoEndpointHealth.map((ep, i) => `
+        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; 
+               background: var(--bg-card); border: 1px solid ${ep.online ? 'var(--border)' : 'var(--error)'}; 
+               border-radius: 0.5rem; cursor: ${ep.online ? 'pointer' : 'not-allowed'}; 
+               opacity: ${ep.online ? '1' : '0.5'};">
+          <input type="radio" name="arkeoEndpoint" value="${ep.url}" 
+                 ${i === 0 && ep.online ? 'checked' : ''} 
+                 ${!ep.online ? 'disabled' : ''}
+                 onchange="selectArkeoEndpoint('${ep.url}', '${ep.name}')"
+                 style="accent-color: var(--arkeo);">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 0.9rem;">${ep.name} <span style="font-weight: 400; color: var(--text-dim); font-size: 0.8rem;">by ${ep.operator}</span></div>
+            <div style="font-size: 0.75rem; color: var(--text-dim); font-family: monospace;">${ep.url}</div>
+          </div>
+          <div style="text-align: right; min-width: 80px;">
+            ${ep.online 
+              ? `<span style="color: var(--success); font-size: 0.8rem;">● Online</span><br><span style="font-size: 0.75rem; color: var(--text-dim);">${ep.latency}ms</span>`
+              : `<span style="color: var(--error); font-size: 0.8rem;">● Offline</span>`
+            }
+          </div>
+        </label>
+      `).join('');
+      
+      // Auto-select first healthy endpoint
+      if (onlineCount > 0) {
+        const best = arkeoEndpointHealth.find(e => e.online);
+        selectArkeoEndpoint(best.url, best.name);
+      } else {
+        statusDiv.style.background = 'rgba(239,68,68,0.1)';
+        statusDiv.style.borderColor = 'var(--error)';
+        statusDiv.innerHTML = '❌ No community endpoints available. We strongly recommend running your own Arkeo node.';
+      }
+      
+      // Add "total healthy" note
+      if (onlineCount > 0 && onlineCount <= 2) {
+        statusDiv.innerHTML += `<br><span style="color: var(--warning); font-size: 0.8rem;">⚠️ Only ${onlineCount} community endpoint${onlineCount > 1 ? 's' : ''} available. Consider running your own node for reliability.</span>`;
+      }
+    }
+    
+    function selectArkeoEndpoint(url, name) {
+      const statusDiv = document.getElementById('arkeoConnectionStatus');
+      const healthyEndpoints = arkeoEndpointHealth.filter(e => e.online);
+      
+      // Primary = selected, fallbacks = all other healthy ones
+      state.arkeoHubUri = url;
+      state.arkeoFallbacks = healthyEndpoints.filter(e => e.url !== url).map(e => e.url);
+      
+      statusDiv.style.background = 'var(--success-dim)';
+      statusDiv.style.borderColor = 'var(--success)';
+      let html = `✅ Primary: <strong>${name}</strong>`;
+      if (state.arkeoFallbacks.length > 0) {
+        html += `<br><span style="font-size: 0.8rem; color: var(--text-dim);">🔄 Failover: ${state.arkeoFallbacks.length} backup endpoint${state.arkeoFallbacks.length > 1 ? 's' : ''} configured</span>`;
+      }
+      statusDiv.innerHTML = html;
+    }
+    
     function updateArkeoConnection() {
       const choice = document.querySelector('input[name="arkeoConnection"]:checked').value;
       const customDiv = document.getElementById('arkeoCustomUrl');
+      const publicDiv = document.getElementById('arkeoPublicSelect');
       const statusDiv = document.getElementById('arkeoConnectionStatus');
       const optA = document.getElementById('arkeoOptionA');
       const optB = document.getElementById('arkeoOptionB');
       
       if (choice === 'public') {
         customDiv.classList.add('hidden');
-        state.arkeoHubUri = 'https://rest-seed.arkeo.network';
-        statusDiv.style.background = 'var(--success-dim)';
-        statusDiv.style.borderColor = 'var(--success)';
-        statusDiv.innerHTML = '✅ Will connect via <strong>rest-seed.arkeo.network</strong> (Arkeo public endpoint)';
-        optA.style.borderColor = 'var(--arkeo)';
-        optB.style.borderColor = 'var(--border)';
-      } else {
-        customDiv.classList.remove('hidden');
+        publicDiv.classList.remove('hidden');
         optA.style.borderColor = 'var(--border)';
         optB.style.borderColor = 'var(--arkeo)';
+        // Re-select from list
+        const selected = document.querySelector('input[name="arkeoEndpoint"]:checked');
+        if (selected) {
+          const ep = arkeoEndpointHealth.find(e => e.url === selected.value);
+          if (ep) selectArkeoEndpoint(ep.url, ep.name);
+        } else {
+          checkArkeoEndpoints();
+        }
+      } else {
+        customDiv.classList.remove('hidden');
+        publicDiv.classList.add('hidden');
+        optA.style.borderColor = 'var(--arkeo)';
+        optB.style.borderColor = 'var(--border)';
+        state.arkeoFallbacks = [];
         const url = document.getElementById('arkeoNodeUrl').value.trim();
         if (!url) {
           statusDiv.style.background = 'var(--arkeo-dim)';
@@ -1247,9 +1379,10 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
           const network = data?.default_node_info?.network || '';
           if (network === 'arkeo-main-v1') {
             state.arkeoHubUri = url.replace(/\/$/, '');
+            state.arkeoFallbacks = [];
             statusDiv.style.background = 'var(--success-dim)';
             statusDiv.style.borderColor = 'var(--success)';
-            statusDiv.innerHTML = `✅ Connected to <strong>${moniker}</strong> (${network})`;
+            statusDiv.innerHTML = `✅ Connected to <strong>${moniker}</strong> (${network})<br><span style="font-size: 0.8rem; color: var(--text-dim);">🔒 Fully independent — no third-party dependency</span>`;
           } else {
             statusDiv.style.background = 'rgba(239,68,68,0.1)';
             statusDiv.style.borderColor = 'var(--error)';
@@ -2275,7 +2408,7 @@ host: 0.0.0.0
 port: 3636
 provider_pubkey: ${pubkey}
 source_chain: ${CONFIG.CHAIN_ID}
-hub_provider_uri: ${state.arkeoHubUri}
+hub_provider_uri: ${state.arkeoHubUri}${state.arkeoFallbacks && state.arkeoFallbacks.length > 0 ? '\nhub_provider_fallbacks:\n' + state.arkeoFallbacks.map(u => '  - ' + u).join('\n') : ''}
 event_stream_host: wss://rpc-seed.arkeo.network/websocket
 free_rate_limit: 10
 free_rate_limit_duration: 1m
@@ -2384,6 +2517,7 @@ services:
     // ============================================================
     document.addEventListener('DOMContentLoaded', () => {
       loadServices();
+      checkArkeoEndpoints();
       
       // Check if Keplr is already connected
       if (window.keplr) {
