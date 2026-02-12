@@ -685,9 +685,35 @@
               </tr>
             </table>
             <p><strong>Tips:</strong> Start competitive to attract subscribers. You can adjust your rate anytime by updating your provider config on-chain.</p>
-            <p style="margin-top: 0.5rem;">⚠️ <strong>Rate limits</strong> are separate from pricing — they're set per contract when a subscriber opens one, not here.</p>
           </div>
         </details>
+      </div>
+      
+      <!-- Node Protection -->
+      <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem;">
+        <h3 style="margin-bottom: 0.5rem;">🛡️ Node Protection</h3>
+        <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 1rem;">
+          Protect your node from being overwhelmed. Your sentinel will automatically reject requests that exceed these limits.
+        </p>
+        
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label class="form-label">Max requests per minute <span style="color: var(--text-dim); font-weight: 400;">(per subscriber)</span></label>
+          <input type="number" class="form-input" id="maxQpm" 
+                 value="100" min="1" step="10" oninput="updateProtectionSummary()">
+          <p class="form-hint">Each subscriber's contract is capped at this rate. Prevents any single user from hogging your resources.</p>
+        </div>
+        
+        <!-- Visual summary -->
+        <div id="protectionSummary" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; font-size: 0.85rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <span style="color: var(--success); font-size: 1.1rem;">✅</span>
+            <span>Each subscriber limited to <strong id="protQpm">100</strong> requests/min</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="color: var(--success); font-size: 1.1rem;">✅</span>
+            <span>With 10 subscribers: max <strong id="protTotal">1,000</strong> requests/min to your node</span>
+          </div>
+        </div>
       </div>
       
       <!-- Metadata Section -->
@@ -1321,6 +1347,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
       currentStep: 1,
       arkeoHubUri: 'https://rest-seed.arkeo.network',
       arkeoFallbacks: [],
+      maxQpm: 100,
     };
 
     // ============================================================
@@ -1905,6 +1932,13 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
       }
     }
     
+    function updateProtectionSummary() {
+      const qpm = parseInt(document.getElementById('maxQpm').value) || 100;
+      state.maxQpm = qpm;
+      document.getElementById('protQpm').textContent = qpm.toLocaleString();
+      document.getElementById('protTotal').textContent = (qpm * 10).toLocaleString();
+    }
+
     // First updateSummary removed — see second definition below which includes price calculator
 
     // ============================================================
@@ -2467,6 +2501,8 @@ hub_provider_uri: ${state.arkeoHubUri}${state.arkeoFallbacks && state.arkeoFallb
 event_stream_host: wss://rpc-seed.arkeo.network/websocket
 free_rate_limit: 10
 free_rate_limit_duration: 1m
+contract_rate_limit: ${state.maxQpm || 100}
+contract_rate_limit_duration: 1m
 claims_enabled: true
 claim_check_interval: 30m
 
