@@ -2985,6 +2985,20 @@ services:
           </div>
         `;
         
+        // If user skipped to step 6, fetch provider info from chain
+        let serviceName = state.selectedService?.name || '';
+        let providerData = null;
+        if (state.walletPubkeyBech32) {
+          try {
+            const provResp = await fetch(`${CONFIG.REST_API}/arkeo/provider/${state.walletPubkeyBech32}/2`);
+            if (provResp.ok) {
+              providerData = (await provResp.json()).provider;
+              if (!serviceName) serviceName = providerData.service || '2';
+            }
+          } catch (e) { console.warn('Could not fetch provider from chain:', e); }
+        }
+        if (!serviceName) serviceName = '2'; // fallback to arkeo-mainnet-fullnode
+
         const accountInfo = await getAccountInfo(state.walletAddress);
         
         const modMsg = {
@@ -2992,15 +3006,15 @@ services:
           value: {
             creator: state.walletAddress,
             provider: state.walletPubkeyBech32,
-            service: state.selectedService.name,
+            service: serviceName,
             metadataUri: metadataUri,
             metadataNonce: String(Date.now()), // Increment nonce to signal update
             status: 1, // ONLINE
-            minContractDuration: String(state.minContractDuration || 10),
-            maxContractDuration: String(Math.min(state.maxContractDuration || 5256000, 5256000)),
-            subscriptionRate: [{ denom: CONFIG.ARKEO_DENOM, amount: '1' }],
-            payAsYouGoRate: [{ denom: CONFIG.ARKEO_DENOM, amount: String(state.paygRate || 25000) }],
-            settlementDuration: '10',
+            minContractDuration: String(providerData?.min_contract_duration || state.minContractDuration || 10),
+            maxContractDuration: String(providerData?.max_contract_duration || Math.min(state.maxContractDuration || 5256000, 5256000)),
+            subscriptionRate: providerData?.subscription_rate || [{ denom: CONFIG.ARKEO_DENOM, amount: '1' }],
+            payAsYouGoRate: providerData?.pay_as_you_go_rate || [{ denom: CONFIG.ARKEO_DENOM, amount: String(state.paygRate || 25000) }],
+            settlementDuration: providerData?.settlement_duration || '10',
           }
         };
         
