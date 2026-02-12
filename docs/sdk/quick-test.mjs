@@ -61,12 +61,22 @@ async function query(path, nonce) {
 // Auto-fetch current nonce from chain if not provided
 if (START_NONCE === 0) {
   try {
+    console.log('Fetching current nonce from chain...');
     var contractResp = await fetch('https://rest-seed.arkeo.network/arkeo/contract/' + CONTRACT_ID);
-    var contractData = await contractResp.json();
-    START_NONCE = parseInt(contractData.contract.nonce || '0') + 1;
-    if (START_NONCE < 1) START_NONCE = 1;
-    console.log('Auto-detected start nonce:', START_NONCE);
-  } catch(e) { START_NONCE = 1; }
+    if (!contractResp.ok) {
+      console.log('Chain returned HTTP', contractResp.status, '- using nonce 1');
+      START_NONCE = 1;
+    } else {
+      var contractData = await contractResp.json();
+      var chainNonce = parseInt(contractData.contract?.nonce || '0');
+      START_NONCE = chainNonce + 1;
+      if (START_NONCE < 1) START_NONCE = 1;
+      console.log('Auto-detected start nonce:', START_NONCE, '(chain nonce:', chainNonce + ')');
+    }
+  } catch(e) {
+    console.log('Nonce fetch failed:', e.message, '- using nonce 1');
+    START_NONCE = 1;
+  }
 }
 
 for (var nonce = START_NONCE; nonce <= START_NONCE + 2; nonce++) {

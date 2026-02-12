@@ -191,12 +191,14 @@ export class ArkeoClient {
    * @param {number} config.contractId - Your contract ID
    * @param {string} config.privateKey - Private key (hex) or mnemonic phrase
    * @param {string} config.service - Service name (e.g. "arkeo-mainnet-fullnode")
-   * @param {number} [config.startNonce] - Starting nonce (default: 1)
+   * @param {number} [config.startNonce] - Starting nonce (default: auto-detect from chain)
+   * @param {string} [config.restApi] - Arkeo REST API endpoint (default: "https://rest-seed.arkeo.network")
    */
   constructor(config) {
     this.sentinelUrl = config.sentinelUrl.replace(/\/$/, '');
     this.contractId = config.contractId;
     this.service = config.service;
+    this.restApi = config.restApi || 'https://rest-seed.arkeo.network';
     
     // Parse private key (hex or mnemonic)
     let privKeyBytes;
@@ -213,8 +215,9 @@ export class ArkeoClient {
     this.publicKeyBech32 = encodePubKeyBech32(this.publicKey);
     this.address = pubKeyToAddress(this.publicKey);
     
-    // Nonce tracking
-    this.currentNonce = config.startNonce || 1;
+    // Nonce tracking - will auto-fetch on first request if not provided
+    this.currentNonce = config.startNonce || null;
+    this._nonceFetched = config.startNonce ? true : false;
   }
   
   /**
@@ -265,12 +268,42 @@ export class ArkeoClient {
   }
   
   /**
+   * Auto-fetch current nonce from Arkeo blockchain if not set
+   * @private
+   */
+  async _ensureNonce() {
+    if (this._nonceFetched) return;
+    
+    try {
+      const resp = await fetch(`${this.restApi}/arkeo/contract/${this.contractId}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        const chainNonce = parseInt(data.contract?.nonce || '0');
+        this.currentNonce = chainNonce + 1;
+        if (this.currentNonce < 1) this.currentNonce = 1;
+        console.log(`[ArkeoClient] Auto-detected nonce: ${this.currentNonce} (chain: ${chainNonce})`);
+      } else {
+        console.warn('[ArkeoClient] Failed to fetch nonce from chain, defaulting to 1');
+        this.currentNonce = 1;
+      }
+    } catch (err) {
+      console.warn('[ArkeoClient] Nonce fetch error, defaulting to 1:', err.message);
+      this.currentNonce = 1;
+    }
+    
+    this._nonceFetched = true;
+  }
+  
+  /**
    * Make an authenticated RPC call
    * @param {string} path - RPC path (e.g. "/status" or "/abci_info")
    * @param {Object} [options] - Fetch options (method, body, headers, etc.)
    * @returns {Promise<Response>} Fetch response
    */
   async rpc(path, options = {}) {
+    // Auto-fetch nonce on first request if needed
+    await this._ensureNonce();
+    
     const arkauth = await this.generateArkAuth();
     
     // Build URL with arkauth query parameter

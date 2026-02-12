@@ -467,6 +467,13 @@
   </nav>
 
   <div class="container">
+    <!-- Start Over Link -->
+    <div style="text-align: right; margin-bottom: 0.5rem;">
+      <a href="#" onclick="event.preventDefault(); if(confirm('Clear all progress and start over?')) { clearState(); location.reload(); }" style="font-size: 0.85rem; color: var(--text-dim); text-decoration: none;">
+        🔄 Start Over
+      </a>
+    </div>
+    
     <!-- Progress Bar -->
     <div class="progress-container">
       <div class="progress-steps">
@@ -1950,6 +1957,9 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
       
       document.getElementById('nextBtn1').disabled = false;
       document.getElementById('selectedChainName').textContent = getChainDisplayName(name);
+      
+      // Save state
+      saveState();
     }
 
     // ============================================================
@@ -1957,7 +1967,9 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
     // ============================================================
     function validateRpcUrl() {
       const url = document.getElementById('rpcUrl').value;
+      state.rpcUrl = url;
       checkStep2Ready();
+      saveState();
       
       // Update sentinel command preview
       try {
@@ -2015,6 +2027,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
       state.providerName = document.getElementById('providerName').value || 'My Arkeo Provider';
       state.providerDesc = document.getElementById('providerDesc').value || '';
       state.providerLocation = document.getElementById('providerLocation').value || '';
+      saveState();
       
       const metadata = {
         moniker: state.providerName,
@@ -2049,6 +2062,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
     function updateProtectionSummary() {
       const qpm = parseInt(document.getElementById('maxQpm').value) || 100;
       state.maxQpm = qpm;
+      saveState();
       document.getElementById('protQpm').textContent = qpm.toLocaleString();
       document.getElementById('protTotal').textContent = (qpm * 10).toLocaleString();
     }
@@ -2082,6 +2096,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
     function updateMaxDurationDisplay() {
       const blocks = parseInt(document.getElementById('maxContractDuration').value) || 0;
       state.maxContractDuration = blocks;
+      saveState();
       const humanEl = document.getElementById('maxDurationHuman');
       if (humanEl) {
         humanEl.textContent = blocksToHuman(blocks);
@@ -2114,6 +2129,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
     function updateMinDurationDisplay() {
       const blocks = parseInt(document.getElementById('minContractDuration').value) || 0;
       state.minContractDuration = blocks;
+      saveState();
       const humanEl = document.getElementById('minDurationHuman');
       if (humanEl) {
         humanEl.textContent = blocksToHuman(blocks);
@@ -2178,6 +2194,9 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
       document.getElementById('progressLine').style.width = progressPercent + '%';
       
       state.currentStep = step;
+      
+      // Save state on step change
+      saveState();
       
       // Step-specific updates
       if (step === 3) {
@@ -2510,6 +2529,9 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
           </a>
         `;
         
+        // Clear state on successful registration completion
+        clearState();
+        
         setTimeout(() => goToStep(5), 2000);
         
       } catch (err) {
@@ -2781,6 +2803,7 @@ services:
       // Fix double protocol
       url = url.replace(/^https?:\/\/https?:\/\//, 'https://');
       state.sentinelUrl = url;
+      saveState();
       updateSentinelConfig();
       updateMetadataJson();
       updateCurlTestCmd();
@@ -2899,6 +2922,20 @@ services:
           if (rpcResp.ok) {
             el.className = 'status-box success';
             el.innerHTML = `<span>✅</span><span>Service endpoint responding!</span>`;
+            
+            // TEST PASSED — Show "Set Metadata URI On-Chain" button
+            resultsDiv.innerHTML += `
+              <div style="margin-top: 1.5rem; padding: 1.25rem; background: var(--arkeo-dim); border: 1px solid var(--arkeo); border-radius: 0.75rem;">
+                <div style="font-weight: 600; margin-bottom: 0.75rem; font-size: 1rem;">🔗 Set Metadata URI On-Chain</div>
+                <div style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 1rem; line-height: 1.5;">
+                  Your sentinel is working! Now update your provider record on-chain to set the metadata_uri. This tells subscribers where to find your provider info.
+                </div>
+                <button onclick="setMetadataUriOnChain()" id="setMetadataBtn" class="btn btn-primary" style="width: 100%;">
+                  📡 Set Metadata URI On-Chain
+                </button>
+                <div id="metadataUriStatus" style="margin-top: 1rem;"></div>
+              </div>
+            `;
           } else {
             el.className = 'status-box warning';
             el.innerHTML = `<span>⚠️</span><span>Service returned HTTP ${rpcResp.status} — may still be starting up.</span>`;
@@ -2914,11 +2951,229 @@ services:
 
       btn.disabled = false;
     }
+    
+    // ============================================================
+    // SET METADATA URI ON-CHAIN (TASK 1)
+    // ============================================================
+    async function setMetadataUriOnChain() {
+      if (!state.walletConnected) {
+        alert('Please connect your Keplr wallet first (top right corner).');
+        return;
+      }
+      
+      const btn = document.getElementById('setMetadataBtn');
+      const statusDiv = document.getElementById('metadataUriStatus');
+      btn.disabled = true;
+      
+      try {
+        // Build metadata URL from sentinel URL
+        const sentinelUrl = document.getElementById('sentinelPublicUrl').value.trim();
+        if (!sentinelUrl) {
+          throw new Error('No sentinel URL set');
+        }
+        const metadataUri = sentinelUrl.replace(/\/+$/, '') + '/metadata.json';
+        
+        statusDiv.innerHTML = `
+          <div class="status-box testing">
+            <div class="spinner"></div>
+            <span>Building transaction...</span>
+          </div>
+        `;
+        
+        const accountInfo = await getAccountInfo(state.walletAddress);
+        
+        const modMsg = {
+          typeUrl: '/arkeo.arkeo.MsgModProvider',
+          value: {
+            creator: state.walletAddress,
+            provider: state.walletPubkeyBech32,
+            service: state.selectedService.name,
+            metadataUri: metadataUri,
+            metadataNonce: String(Date.now()), // Increment nonce to signal update
+            status: 1, // ONLINE
+            minContractDuration: String(state.minContractDuration || 10),
+            maxContractDuration: String(Math.min(state.maxContractDuration || 5256000, 5256000)),
+            subscriptionRate: [{ denom: CONFIG.ARKEO_DENOM, amount: '1' }],
+            payAsYouGoRate: [{ denom: CONFIG.ARKEO_DENOM, amount: String(state.paygRate || 25000) }],
+            settlementDuration: '10',
+          }
+        };
+        
+        console.log('MsgModProvider (metadata update):', modMsg);
+        
+        statusDiv.innerHTML = `
+          <div class="status-box testing">
+            <div class="spinner"></div>
+            <span>Please approve in Keplr...</span>
+          </div>
+        `;
+        
+        const result = await signAndBroadcastDirect(modMsg, accountInfo);
+        
+        if (result.code !== 0) {
+          throw new Error(`TX failed: ${result.rawLog || 'Unknown error'}`);
+        }
+        
+        statusDiv.innerHTML = `
+          <div class="status-box success">
+            <span>✅</span>
+            <span>Metadata URI set successfully!</span>
+          </div>
+          <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-dim);">
+            TX: <a href="${CONFIG.EXPLORER_TX}${result.transactionHash}" target="_blank" class="tx-link" style="word-break: break-all;">${result.transactionHash.slice(0, 16)}...</a>
+          </div>
+          <div style="margin-top: 0.75rem; padding: 0.75rem; background: var(--success-dim); border-radius: 0.5rem; font-size: 0.85rem;">
+            Your metadata_uri is now: <code style="background: var(--bg-input); padding: 0.15rem 0.4rem; border-radius: 0.25rem; word-break: break-all;">${metadataUri}</code>
+          </div>
+        `;
+        
+      } catch (err) {
+        console.error('Metadata URI update failed:', err);
+        statusDiv.innerHTML = `
+          <div class="status-box error">
+            <span>❌</span>
+            <span>Failed: ${err.message}</span>
+          </div>
+        `;
+        btn.disabled = false;
+      }
+    }
+    
+    // ============================================================
+    // STATE PERSISTENCE (TASK 3)
+    // ============================================================
+    const STATE_KEY = 'arkeo_provider_state';
+    
+    function saveState() {
+      try {
+        const savedState = {
+          currentStep: state.currentStep,
+          selectedService: state.selectedService,
+          rpcUrl: state.rpcUrl,
+          sentinelUrl: state.sentinelUrl,
+          providerName: state.providerName,
+          providerDesc: state.providerDesc,
+          providerLocation: state.providerLocation,
+          paygRate: state.paygRate,
+          maxQpm: state.maxQpm,
+          maxContractDuration: state.maxContractDuration,
+          minContractDuration: state.minContractDuration,
+          arkeoHubUri: state.arkeoHubUri,
+          arkeoFallbacks: state.arkeoFallbacks,
+          walletAddress: state.walletAddress,
+          timestamp: Date.now()
+        };
+        sessionStorage.setItem(STATE_KEY, JSON.stringify(savedState));
+        console.log('[State] Saved:', savedState.currentStep);
+      } catch (err) {
+        console.error('[State] Save failed:', err);
+      }
+    }
+    
+    function restoreState() {
+      try {
+        const saved = sessionStorage.getItem(STATE_KEY);
+        if (!saved) return false;
+        
+        const savedState = JSON.parse(saved);
+        console.log('[State] Restoring:', savedState);
+        
+        // Restore state variables
+        if (savedState.selectedService) state.selectedService = savedState.selectedService;
+        if (savedState.rpcUrl) state.rpcUrl = savedState.rpcUrl;
+        if (savedState.sentinelUrl) state.sentinelUrl = savedState.sentinelUrl;
+        if (savedState.providerName) state.providerName = savedState.providerName;
+        if (savedState.providerDesc) state.providerDesc = savedState.providerDesc;
+        if (savedState.providerLocation) state.providerLocation = savedState.providerLocation;
+        if (savedState.paygRate) state.paygRate = savedState.paygRate;
+        if (savedState.maxQpm) state.maxQpm = savedState.maxQpm;
+        if (savedState.maxContractDuration) state.maxContractDuration = savedState.maxContractDuration;
+        if (savedState.minContractDuration) state.minContractDuration = savedState.minContractDuration;
+        if (savedState.arkeoHubUri) state.arkeoHubUri = savedState.arkeoHubUri;
+        if (savedState.arkeoFallbacks) state.arkeoFallbacks = savedState.arkeoFallbacks;
+        if (savedState.walletAddress) state.walletAddress = savedState.walletAddress;
+        
+        // Restore form inputs
+        if (savedState.rpcUrl) {
+          const rpcInput = document.getElementById('rpcUrl');
+          if (rpcInput) rpcInput.value = savedState.rpcUrl;
+        }
+        if (savedState.providerName) {
+          const nameInput = document.getElementById('providerName');
+          if (nameInput) nameInput.value = savedState.providerName;
+        }
+        if (savedState.providerDesc) {
+          const descInput = document.getElementById('providerDesc');
+          if (descInput) descInput.value = savedState.providerDesc;
+        }
+        if (savedState.providerLocation) {
+          const locInput = document.getElementById('providerLocation');
+          if (locInput) locInput.value = savedState.providerLocation;
+        }
+        if (savedState.paygRate) {
+          const rateInput = document.getElementById('paygRate');
+          if (rateInput) rateInput.value = savedState.paygRate;
+        }
+        if (savedState.maxQpm) {
+          const qpmInput = document.getElementById('maxQpm');
+          if (qpmInput) qpmInput.value = savedState.maxQpm;
+        }
+        if (savedState.maxContractDuration) {
+          const maxDurInput = document.getElementById('maxContractDuration');
+          if (maxDurInput) maxDurInput.value = savedState.maxContractDuration;
+        }
+        if (savedState.minContractDuration) {
+          const minDurInput = document.getElementById('minContractDuration');
+          if (minDurInput) minDurInput.value = savedState.minContractDuration;
+        }
+        if (savedState.sentinelUrl) {
+          const sentinelInput = document.getElementById('sentinelPublicUrl');
+          if (sentinelInput) sentinelInput.value = savedState.sentinelUrl;
+        }
+        
+        // Restore step-specific UI
+        if (savedState.currentStep && savedState.currentStep > 1) {
+          setTimeout(() => {
+            goToStep(savedState.currentStep);
+            
+            // Re-select chain if step >= 2
+            if (savedState.currentStep >= 2 && savedState.selectedService) {
+              document.querySelectorAll('.chain-option').forEach(el => {
+                const chainName = el.querySelector('.chain-name')?.textContent;
+                const displayName = getChainDisplayName(savedState.selectedService.name);
+                if (chainName === displayName) {
+                  el.classList.add('selected');
+                }
+              });
+              document.getElementById('nextBtn1').disabled = false;
+              document.getElementById('selectedChainName').textContent = getChainDisplayName(savedState.selectedService.name);
+            }
+          }, 100);
+        }
+        
+        return true;
+      } catch (err) {
+        console.error('[State] Restore failed:', err);
+        return false;
+      }
+    }
+    
+    function clearState() {
+      try {
+        sessionStorage.removeItem(STATE_KEY);
+        console.log('[State] Cleared');
+      } catch (err) {
+        console.error('[State] Clear failed:', err);
+      }
+    }
 
     // ============================================================
     // INITIALIZE
     // ============================================================
     document.addEventListener('DOMContentLoaded', () => {
+      // Restore state first
+      restoreState();
+      
       loadServices();
       checkArkeoEndpoints();
       
