@@ -2910,6 +2910,22 @@ services:
         resultsDiv.innerHTML = `<div class="status-box error"><span>❌</span><span>Could not reach metadata endpoint (${metaUrl}). Error: ${e.message || 'Unknown'}. Check the URL and try again.</span></div>`;
       }
 
+      // Show "Set Metadata URI On-Chain" button after metadata test passes
+      if (metaOk) {
+        resultsDiv.innerHTML += `
+          <div style="margin-top: 1.5rem; padding: 1.25rem; background: var(--arkeo-dim); border: 1px solid var(--arkeo); border-radius: 0.75rem;">
+            <div style="font-weight: 600; margin-bottom: 0.75rem; font-size: 1rem;">🔗 Set Metadata URI On-Chain</div>
+            <div style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 1rem; line-height: 1.5;">
+              Your sentinel is working! Now update your provider record on-chain to set the metadata_uri. This tells subscribers where to find your provider info.
+            </div>
+            <button onclick="setMetadataUriOnChain()" id="setMetadataBtn" class="btn btn-primary" style="width: 100%;">
+              📡 Set Metadata URI On-Chain
+            </button>
+            <div id="metadataUriStatus" style="margin-top: 1rem;"></div>
+          </div>
+        `;
+      }
+
       // Test 2: service health
       if (metaOk && serviceName) {
         const serviceUrl = baseUrl + '/' + serviceName;
@@ -2925,20 +2941,6 @@ services:
           if (rpcResp.ok) {
             el.className = 'status-box success';
             el.innerHTML = `<span>✅</span><span>Service endpoint responding!</span>`;
-            
-            // TEST PASSED — Show "Set Metadata URI On-Chain" button
-            resultsDiv.innerHTML += `
-              <div style="margin-top: 1.5rem; padding: 1.25rem; background: var(--arkeo-dim); border: 1px solid var(--arkeo); border-radius: 0.75rem;">
-                <div style="font-weight: 600; margin-bottom: 0.75rem; font-size: 1rem;">🔗 Set Metadata URI On-Chain</div>
-                <div style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 1rem; line-height: 1.5;">
-                  Your sentinel is working! Now update your provider record on-chain to set the metadata_uri. This tells subscribers where to find your provider info.
-                </div>
-                <button onclick="setMetadataUriOnChain()" id="setMetadataBtn" class="btn btn-primary" style="width: 100%;">
-                  📡 Set Metadata URI On-Chain
-                </button>
-                <div id="metadataUriStatus" style="margin-top: 1rem;"></div>
-              </div>
-            `;
           } else {
             el.className = 'status-box warning';
             el.innerHTML = `<span>⚠️</span><span>Service returned HTTP ${rpcResp.status} — may still be starting up.</span>`;
