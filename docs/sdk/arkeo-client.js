@@ -10,7 +10,11 @@
 
 import * as secp256k1 from '@noble/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
+import { hmac } from '@noble/hashes/hmac';
 import { ripemd160 } from '@noble/hashes/ripemd160';
+
+// Required for @noble/secp256k1 synchronous signing
+secp256k1.etc.hmacSha256Sync = (k, ...m) => hmac(sha256, k, secp256k1.etc.concatBytes(...m));
 import * as bip39 from 'bip39';
 import crypto from 'crypto';
 import { Buffer } from 'buffer';

@@ -51,8 +51,8 @@ message MsgCloseContract {
 message MsgClaimContractIncome {
   string creator = 1;
   uint64 contract_id = 2;
-  bytes signature = 3;
-  int64 nonce = 4;
+  bytes signature = 4;
+  int64 nonce = 5;
 }
 
 message Coin {
