@@ -271,7 +271,7 @@ async function fetchAllContracts() {
 async function fetchServices() {
   const res = await fetch(`${API}/arkeo/services`);
   const data = await res.json();
-  return data.service || [];
+  return data.services || data.service || [];
 }
 
 // Main
@@ -281,7 +281,13 @@ async function fetchServices() {
 
     // -- Overview Stats --
     const onlineProviders = providers.filter(p => p.status === 'ONLINE' || p.status === 'ProviderStatus_ONLINE');
-    const uniqueChains = new Set(services.map(s => s.service?.service || s.service));
+    // Build service ID → name lookup from services catalog
+    const serviceNameMap = {};
+    services.forEach(s => {
+      if (s.service_id && s.name) serviceNameMap[String(s.service_id)] = s.name;
+      else if (s.service) serviceNameMap[String(s.service)] = s.name || String(s.service);
+    });
+    const uniqueChains = new Set(services.map(s => s.name || s.service?.service || s.service));
     const activeContracts = contracts.filter(c => parseInt(c.deposit || 0) > parseInt(c.paid || 0));
     const totalBonded = providers.reduce((s, p) => s + parseInt(p.bond || 0), 0);
     const totalEarned = contracts.reduce((s, c) => s + parseInt(c.paid || 0), 0);
@@ -338,11 +344,15 @@ async function fetchServices() {
       if (!providerStats[pk]) providerStats[pk] = { pubkey: pk, bond: 0, services: 0, status: p.status, activeContracts: 0, earned: 0 };
       providerStats[pk].bond = parseInt(p.bond || 0);
     });
-    // Count services per provider
-    services.forEach(s => {
-      const pk = s.provider || s.pub_key;
-      if (providerStats[pk]) providerStats[pk].services++;
-      else providerStats[pk] = { pubkey: pk, bond: 0, services: 1, status: 'UNKNOWN', activeContracts: 0, earned: 0 };
+    // Count services per provider from contracts (services catalog doesn't have provider info)
+    const providerServiceSets = {};
+    contracts.forEach(c => {
+      const pk = c.provider;
+      if (!providerServiceSets[pk]) providerServiceSets[pk] = new Set();
+      providerServiceSets[pk].add(String(c.service || ''));
+    });
+    Object.entries(providerServiceSets).forEach(([pk, svcSet]) => {
+      if (providerStats[pk]) providerStats[pk].services = svcSet.size;
     });
     // Count contracts per provider
     contracts.forEach(c => {
@@ -383,7 +393,8 @@ async function fetchServices() {
     // -- Service Popularity Chart --
     const chainCounts = {};
     services.forEach(s => {
-      const name = chainName(s.service?.service || s.service || 'unknown');
+      const svcId = String(s.service_id || s.service || 'unknown');
+      const name = chainName(serviceNameMap[svcId] || s.name || svcId);
       chainCounts[name] = (chainCounts[name] || 0) + 1;
     });
     const sortedChains = Object.entries(chainCounts).sort((a, b) => b[1] - a[1]);
@@ -434,7 +445,7 @@ async function fetchServices() {
       const tr = document.createElement('tr');
       const type = c.type === 'ContractType_PAY_AS_YOU_GO' || c.type === 'PAY_AS_YOU_GO' ? 'PAYG' : 'Sub';
       const typeClass = type === 'PAYG' ? 'type-payg' : 'type-sub';
-      const svcName = chainName(c.service || 'unknown');
+      const svcName = chainName(serviceNameMap[String(c.service)] || c.service || 'unknown');
       tr.innerHTML = `<td>#${c.id}</td><td>${providerName(c.provider)}</td><td>${svcName}</td><td>${fmt(uarkeo(c.deposit))}</td><td>${fmt(uarkeo(c.paid))}</td><td><span class="${typeClass}">${type}</span></td>`;
       ctbody.appendChild(tr);
     });
