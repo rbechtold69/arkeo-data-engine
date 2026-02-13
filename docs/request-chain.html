@@ -778,84 +778,16 @@
       } else {
         // Seed data
         chainRequests = [
-          { 
-            name: 'Solana', 
-            votes: 34, 
-            comments: [
-              'Need this for my DeFi app — Solana has the best UX',
-              'AI agent needs fast Solana data for trading bot'
-            ]
-          },
-          { 
-            name: 'Base', 
-            votes: 28, 
-            comments: [
-              'Building an AI agent that needs Base chain access',
-              'Coinbase ecosystem is growing fast'
-            ]
-          },
-          { 
-            name: 'Arbitrum', 
-            votes: 22, 
-            comments: [
-              'Need Arbitrum for L2 scaling research',
-              'Lower fees than mainnet, perfect for my app'
-            ]
-          },
-          { 
-            name: 'Polygon', 
-            votes: 18, 
-            comments: [
-              'Polygon has huge adoption in gaming',
-              'Need this for NFT marketplace'
-            ]
-          },
-          { 
-            name: 'Sui', 
-            votes: 15, 
-            comments: [
-              'Sui\'s Move language is the future',
-              'Building a DeFi protocol on Sui'
-            ]
-          },
-          { 
-            name: 'Aptos', 
-            votes: 11, 
-            comments: [
-              'Aptos has incredible throughput',
-              'Move-based chains are underserved'
-            ]
-          },
-          { 
-            name: 'Avalanche', 
-            votes: 9, 
-            comments: [
-              'Need Avalanche subnets for enterprise project'
-            ]
-          },
-          { 
-            name: 'Near', 
-            votes: 7, 
-            comments: [
-              'NEAR has the best dev experience',
-              'Sharding is the future'
-            ]
-          },
-          { 
-            name: 'Fantom', 
-            votes: 5, 
-            comments: [
-              'DeFi on Fantom is underrated'
-            ]
-          },
-          { 
-            name: 'Celestia', 
-            votes: 4, 
-            comments: [
-              'Modular blockchains need RPC support',
-              'Building a rollup on Celestia'
-            ]
-          }
+          { name: 'Solana', votes: 0, comments: [] },
+          { name: 'Base', votes: 0, comments: [] },
+          { name: 'Arbitrum', votes: 0, comments: [] },
+          { name: 'Polygon', votes: 0, comments: [] },
+          { name: 'Sui', votes: 0, comments: [] },
+          { name: 'Aptos', votes: 0, comments: [] },
+          { name: 'Avalanche', votes: 0, comments: [] },
+          { name: 'Near', votes: 0, comments: [] },
+          { name: 'Fantom', votes: 0, comments: [] },
+          { name: 'Celestia', votes: 0, comments: [] }
         ];
         saveData();
       }
@@ -890,8 +822,8 @@
         });
       }
 
-      // Sort by votes (descending)
-      filtered.sort((a, b) => b.votes - a.votes);
+      // Sort by votes (descending), then alphabetically
+      filtered.sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name));
 
       grid.innerHTML = filtered.map((chain, index) => {
         const meta = chainMetadata[chain.name] || { icon: '🔗', category: 'Other' };
