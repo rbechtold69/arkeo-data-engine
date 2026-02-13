@@ -551,7 +551,7 @@
           actionBtn = `<button class="action-btn claim-btn" onclick="claimEarnings(${c.id})">Claim</button> <button class="action-btn close-btn" onclick="closeContract(${c.id})">Close</button>`;
         } else if (c.active && c.isClient) {
           actionBtn = `<button class="action-btn close-btn" onclick="closeContract(${c.id})">Close</button>`;
-        } else if (c.active && !c.isClient) {
+        } else if (c.active && isAlsoProvider) {
           actionBtn = `<button class="action-btn claim-btn" onclick="claimEarnings(${c.id})">Claim</button>`;
         }
 
