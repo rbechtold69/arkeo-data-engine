@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Request a Chain | Arkeo Marketplace</title>
+  <link rel="icon" type="image/png" href="images/arkeo-logo-200px_1.png">
+  <meta name="description" content="Request chains you want Arkeo providers to support. Vote for chains and help providers see where demand is.">
+  <meta name="theme-color" content="#0a0c10">
+  <style>
+    :root {
+      --bg-main: #0a0c10;
+      --bg-card: #12151c;
+      --bg-card-hover: #181c25;
+      --bg-input: #1a1f2a;
+      --border: #252a36;
+      --border-hover: #3BE0FF;
+      --arkeo: #3BE0FF;
+      --arkeo-dim: rgba(59, 224, 255, 0.1);
+      --arkeo-glow: rgba(59, 224, 255, 0.3);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --text: #ffffff;
+      --text-dim: #8b92a5;
+      --text-muted: #5a6278;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .hidden { display: none !important; }
+
+    body {
+      background: var(--bg-main);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* Navigation */
+    .nav {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .logo img { height: 40px; }
+    .logo-text span { color: var(--arkeo); }
+    
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+    .nav-link {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-link:hover { color: var(--arkeo); }
+    .nav-link.active { color: var(--arkeo); }
+
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .btn-primary {
+      background: var(--arkeo);
+      color: #000;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 0 20px var(--arkeo-glow);
+    }
+    .btn-primary:disabled {
+      background: var(--border);
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      border-color: var(--arkeo);
+      color: var(--arkeo);
+    }
+    .btn-outline {
+      background: transparent;
+      color: var(--arkeo);
+      border: 1px solid var(--arkeo);
+    }
+    .btn-outline:hover {
+      background: var(--arkeo-dim);
+    }
+    .nav-buttons {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .nav-btn {
+      padding: 0.45rem 0.9rem;
+      border-radius: 0.375rem;
+      font-weight: 500;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid var(--border);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      color: var(--text);
+      background: transparent;
+    }
+    .nav-btn:hover {
+      color: var(--arkeo);
+      border-color: var(--arkeo);
+      background: rgba(59, 224, 255, 0.05);
+    }
+    .nav-btn-accent {
+      border-color: rgba(59, 224, 255, 0.3);
+      color: var(--arkeo);
+    }
+    .nav-btn-accent:hover {
+      background: rgba(59, 224, 255, 0.1);
+      border-color: var(--arkeo);
+    }
+
+    /* Main Content */
+    .main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Hero Section */
+    .hero {
+      text-align: center;
+      padding: 3rem 2rem;
+      margin-bottom: 3rem;
+    }
+    .hero h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, var(--text) 0%, var(--arkeo) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--text-dim);
+      max-width: 700px;
+      margin: 0 auto 2rem;
+    }
+
+    /* Request Form Card */
+    .request-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 3rem;
+    }
+    .card-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .card-subtitle {
+      color: var(--text-dim);
+      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+    }
+
+    /* Form Elements */
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+    .form-label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+    .form-select {
+      width: 100%;
+      padding: 0.875rem 1rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      color: var(--text);
+      font-size: 1rem;
+      transition: border-color 0.2s;
+      cursor: pointer;
+    }
+    .form-select:focus {
+      outline: none;
+      border-color: var(--arkeo);
+    }
+    .form-input {
+      width: 100%;
+      padding: 0.875rem 1rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      color: var(--text);
+      font-size: 1rem;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus {
+      outline: none;
+      border-color: var(--arkeo);
+    }
+    .form-textarea {
+      width: 100%;
+      padding: 0.875rem 1rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      color: var(--text);
+      font-size: 1rem;
+      transition: border-color 0.2s;
+      min-height: 100px;
+      resize: vertical;
+    }
+    .form-textarea:focus {
+      outline: none;
+      border-color: var(--arkeo);
+    }
+
+    /* Wallet Connect */
+    .wallet-section {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .wallet-connected {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .wallet-address {
+      font-family: monospace;
+      color: var(--arkeo);
+      font-size: 0.9rem;
+    }
+    .wallet-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success);
+      border-radius: 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    /* Category Tabs */
+    .category-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .category-tab {
+      padding: 0.5rem 1rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .category-tab:hover {
+      border-color: var(--arkeo);
+      color: var(--text);
+    }
+    .category-tab.active {
+      background: var(--arkeo-dim);
+      border-color: var(--arkeo);
+      color: var(--arkeo);
+    }
+
+    /* Chain Cards Grid */
+    .chain-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+    .chain-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .chain-card:hover {
+      border-color: var(--arkeo);
+      background: var(--bg-card-hover);
+      transform: translateY(-2px);
+    }
+    .chain-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .chain-name-section {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .chain-icon {
+      font-size: 2rem;
+    }
+    .chain-name {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+    .chain-category {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .vote-badge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0.5rem 0.75rem;
+      background: var(--arkeo-dim);
+      border-radius: 0.75rem;
+      min-width: 70px;
+    }
+    .vote-count {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--arkeo);
+      line-height: 1;
+    }
+    .vote-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .trending-badge {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      color: #fff;
+      padding: 0.35rem 0.75rem;
+      border-radius: 1rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+    }
+    .chain-comments {
+      margin: 1rem 0;
+      padding: 1rem;
+      background: var(--bg-input);
+      border-radius: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      font-style: italic;
+      max-height: 80px;
+      overflow-y: auto;
+    }
+    .chain-comment {
+      margin-bottom: 0.5rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .chain-comment:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .vote-btn {
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--arkeo);
+      color: #000;
+      border: none;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .vote-btn:hover {
+      box-shadow: 0 0 20px var(--arkeo-glow);
+    }
+    .vote-btn.voted {
+      background: var(--success);
+      cursor: default;
+    }
+    .vote-btn.voted:hover {
+      box-shadow: none;
+    }
+
+    /* Provider CTA Section */
+    .provider-cta {
+      background: linear-gradient(135deg, rgba(59, 224, 255, 0.08), rgba(43, 184, 212, 0.08));
+      border: 1px solid rgba(59, 224, 255, 0.25);
+      border-radius: 1rem;
+      padding: 3rem 2rem;
+      text-align: center;
+      margin: 4rem 0 2rem;
+    }
+    .provider-cta h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+    .provider-cta p {
+      font-size: 1.1rem;
+      color: var(--text-dim);
+      max-width: 600px;
+      margin: 0 auto 2rem;
+    }
+    .provider-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin: 2rem 0;
+    }
+    .provider-stat {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+    }
+    .provider-stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--arkeo);
+      margin-bottom: 0.25rem;
+    }
+    .provider-stat-label {
+      font-size: 0.9rem;
+      color: var(--text-dim);
+    }
+
+    /* Footer */
+    .footer {
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+      padding: 2rem;
+      margin-top: 4rem;
+    }
+    .footer-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .footer-links {
+      display: flex;
+      gap: 2rem;
+    }
+    .footer-link {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.875rem;
+    }
+    .footer-link:hover { color: var(--arkeo); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .nav { padding: 0.75rem 1rem; }
+      .nav-links { display: none; }
+      .nav-inner { flex-wrap: wrap; gap: 0.5rem; }
+      .logo { font-size: 1rem; }
+      .logo img { height: 32px; }
+      
+      .hero { padding: 2rem 1rem; }
+      .hero h1 { font-size: 1.75rem; }
+      .hero p { font-size: 0.95rem; }
+      
+      .main { padding: 1rem; }
+      .request-card { padding: 1.25rem; }
+      .chain-grid { grid-template-columns: 1fr; }
+      .provider-cta { padding: 2rem 1.25rem; }
+      .provider-cta h2 { font-size: 1.5rem; }
+      
+      .footer-inner { flex-direction: column; text-align: center; }
+      .footer-links { flex-wrap: wrap; justify-content: center; }
+    }
+
+    /* Success message */
+    .success-message {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid var(--success);
+      border-radius: 0.75rem;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .success-message-text {
+      color: var(--success);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="index.html" class="logo">
+        <img src="images/arkeo-logo-200px_1.png" alt="Arkeo">
+        <span class="logo-text">Arkeo <span>Marketplace</span></span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html" class="nav-link">Home</a>
+        <a href="analytics.html" class="nav-link">📊 Analytics</a>
+        <a href="request-chain.html" class="nav-link active">🗳️ Request Chain</a>
+        <a href="https://racing.builtonarkeo.com/" target="_blank" class="nav-link">🏇 Racing</a>
+        <a href="https://docs.arkeo.network" target="_blank" class="nav-link">Docs</a>
+        <a href="x402-setup.html" class="nav-link">⚡ x402</a>
+      </div>
+      <div class="nav-buttons">
+        <a href="my-contracts.html" class="nav-btn">My Contracts</a>
+        <a href="become-provider.html" class="nav-btn">Provide Data</a>
+        <a href="subscribe.html" class="nav-btn">Use Data</a>
+        <a href="https://app.osmosis.zone/pool/2977" target="_blank" rel="noopener" class="nav-btn nav-btn-accent">Buy ARKEO</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <h1>Request a Chain</h1>
+    <p>Tell providers what chains you need. Vote for chains you want to see supported. Help shape what gets built next.</p>
+  </section>
+
+  <!-- Main Content -->
+  <main class="main">
+    <!-- Request Form -->
+    <div class="request-card">
+      <h2 class="card-title">🎯 Request a New Chain</h2>
+      <p class="card-subtitle">Don't see a chain you need? Request it and let providers know there's demand.</p>
+      
+      <!-- Success Message (hidden by default) -->
+      <div id="successMessage" class="success-message hidden">
+        <span style="font-size: 1.5rem;">✅</span>
+        <span class="success-message-text" id="successText">Request submitted! Providers can now see the demand.</span>
+      </div>
+
+      <!-- Wallet Connect (Optional) -->
+      <div class="wallet-section">
+        <div id="walletDisconnected">
+          <div style="margin-bottom: 0.75rem; font-weight: 500;">🔐 Verify your identity (optional)</div>
+          <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 1rem;">
+            Connect your wallet to prevent spam and give your request more credibility.
+          </p>
+          <button class="btn btn-secondary" onclick="connectWallet()" id="connectWalletBtn">
+            Connect Keplr Wallet
+          </button>
+        </div>
+        <div id="walletConnected" class="wallet-connected hidden">
+          <div>
+            <div class="wallet-badge">
+              <span>✓</span>
+              <span>Verified</span>
+            </div>
+          </div>
+          <div class="wallet-address" id="walletAddress">arkeo1...</div>
+          <button class="btn btn-secondary" onclick="disconnectWallet()" style="padding: 0.5rem 1rem; font-size: 0.85rem;">
+            Disconnect
+          </button>
+        </div>
+      </div>
+
+      <form id="requestForm" onsubmit="submitRequest(event)">
+        <div class="form-group">
+          <label class="form-label">Chain *</label>
+          <select class="form-select" id="chainSelect" required onchange="toggleOtherInput()">
+            <option value="">Select a chain...</option>
+            <optgroup label="Layer 1s">
+              <option value="Solana">☀️ Solana</option>
+              <option value="Sui">🌊 Sui</option>
+              <option value="Aptos">🔷 Aptos</option>
+              <option value="Near">🌐 Near</option>
+              <option value="Avalanche">🔺 Avalanche</option>
+              <option value="Fantom">👻 Fantom</option>
+              <option value="Algorand">◎ Algorand</option>
+              <option value="Tezos">🅣 Tezos</option>
+              <option value="Cardano">₳ Cardano</option>
+              <option value="Polkadot">⚫ Polkadot</option>
+            </optgroup>
+            <optgroup label="Layer 2s">
+              <option value="Base">🔵 Base</option>
+              <option value="Arbitrum">🔷 Arbitrum</option>
+              <option value="Optimism">🔴 Optimism</option>
+              <option value="Polygon">💜 Polygon</option>
+              <option value="zkSync">⚡ zkSync</option>
+              <option value="Starknet">🌟 Starknet</option>
+            </optgroup>
+            <optgroup label="Cosmos Chains">
+              <option value="Celestia">🟣 Celestia</option>
+              <option value="Injective">💉 Injective</option>
+              <option value="Juno">🪐 Juno</option>
+              <option value="Akash">☁️ Akash</option>
+              <option value="Kujira">🐋 Kujira</option>
+            </optgroup>
+            <optgroup label="Other">
+              <option value="Other">Other (specify below)</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="form-group hidden" id="otherChainGroup">
+          <label class="form-label">Chain Name *</label>
+          <input type="text" class="form-input" id="otherChainInput" placeholder="Enter chain name...">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Why do you need this? (optional)</label>
+          <textarea class="form-textarea" id="commentInput" placeholder="E.g., &quot;Building a DeFi app that needs Solana data&quot; or &quot;AI agent needs Base chain access&quot;"></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="submitBtn">
+          Submit Request
+        </button>
+      </form>
+    </div>
+
+    <!-- Category Filter -->
+    <div style="margin-bottom: 2rem;">
+      <h2 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 1rem;">🔥 Most Requested Chains</h2>
+      <p style="color: var(--text-dim); margin-bottom: 1.5rem;">Vote for chains you want to see supported. Providers use this to decide where to expand next.</p>
+      
+      <div class="category-tabs">
+        <button class="category-tab active" onclick="filterByCategory('all')">All</button>
+        <button class="category-tab" onclick="filterByCategory('L1')">L1s</button>
+        <button class="category-tab" onclick="filterByCategory('L2')">L2s</button>
+        <button class="category-tab" onclick="filterByCategory('Cosmos')">Cosmos</button>
+        <button class="category-tab" onclick="filterByCategory('Other')">Other</button>
+      </div>
+    </div>
+
+    <!-- Chain Leaderboard -->
+    <div class="chain-grid" id="chainGrid">
+      <!-- Populated by JavaScript -->
+    </div>
+
+    <!-- Provider CTA Section -->
+    <section class="provider-cta">
+      <h2>See demand? Start earning.</h2>
+      <p>These are chains that real users need. Spin up a node and start selling data to waiting customers.</p>
+      
+      <div class="provider-stats">
+        <div class="provider-stat">
+          <div class="provider-stat-value" id="totalRequests">—</div>
+          <div class="provider-stat-label">Total Requests</div>
+        </div>
+        <div class="provider-stat">
+          <div class="provider-stat-value" id="totalVotes">—</div>
+          <div class="provider-stat-label">Total Votes</div>
+        </div>
+        <div class="provider-stat">
+          <div class="provider-stat-value" id="uniqueChains">—</div>
+          <div class="provider-stat-label">Unique Chains</div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+        <a href="become-provider.html" class="btn btn-primary" style="font-size: 1.1rem; padding: 1rem 2rem;">
+          Become a Provider →
+        </a>
+        <a href="https://docs.arkeo.network/provider-guide" target="_blank" class="btn btn-outline" style="font-size: 1.1rem; padding: 1rem 2rem;">
+          Read Provider Guide
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div style="color: var(--text-dim); font-size: 0.875rem;">
+        © 2025 Arkeo Network. Community owned, no VCs.
+      </div>
+      <div class="footer-links">
+        <a href="https://docs.arkeo.network" target="_blank" class="footer-link">Documentation</a>
+        <a href="https://github.com/arkeonetwork" target="_blank" class="footer-link">GitHub</a>
+        <a href="https://discord.gg/arkeo" target="_blank" class="footer-link">Discord</a>
+        <a href="https://twitter.com/arkaboreal" target="_blank" class="footer-link">Twitter</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // ============================================================
+    // STATE MANAGEMENT
+    // ============================================================
+    let chainRequests = [];
+    let userVotes = new Set();
+    let connectedWallet = null;
+    let currentCategory = 'all';
+
+    // Chain metadata
+    const chainMetadata = {
+      'Solana': { icon: '☀️', category: 'L1' },
+      'Base': { icon: '🔵', category: 'L2' },
+      'Arbitrum': { icon: '🔷', category: 'L2' },
+      'Polygon': { icon: '💜', category: 'L2' },
+      'Sui': { icon: '🌊', category: 'L1' },
+      'Aptos': { icon: '🔷', category: 'L1' },
+      'Avalanche': { icon: '🔺', category: 'L1' },
+      'Near': { icon: '🌐', category: 'L1' },
+      'Fantom': { icon: '👻', category: 'L1' },
+      'Celestia': { icon: '🟣', category: 'Cosmos' },
+      'Optimism': { icon: '🔴', category: 'L2' },
+      'zkSync': { icon: '⚡', category: 'L2' },
+      'Starknet': { icon: '🌟', category: 'L2' },
+      'Injective': { icon: '💉', category: 'Cosmos' },
+      'Juno': { icon: '🪐', category: 'Cosmos' },
+      'Akash': { icon: '☁️', category: 'Cosmos' },
+      'Kujira': { icon: '🐋', category: 'Cosmos' },
+      'Algorand': { icon: '◎', category: 'L1' },
+      'Tezos': { icon: '🅣', category: 'L1' },
+      'Cardano': { icon: '₳', category: 'L1' },
+      'Polkadot': { icon: '⚫', category: 'L1' },
+    };
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+    function initializeData() {
+      // Load from localStorage or use seed data
+      const stored = localStorage.getItem('arkeo_chain_requests');
+      if (stored) {
+        chainRequests = JSON.parse(stored);
+      } else {
+        // Seed data
+        chainRequests = [
+          { 
+            name: 'Solana', 
+            votes: 34, 
+            comments: [
+              'Need this for my DeFi app — Solana has the best UX',
+              'AI agent needs fast Solana data for trading bot'
+            ]
+          },
+          { 
+            name: 'Base', 
+            votes: 28, 
+            comments: [
+              'Building an AI agent that needs Base chain access',
+              'Coinbase ecosystem is growing fast'
+            ]
+          },
+          { 
+            name: 'Arbitrum', 
+            votes: 22, 
+            comments: [
+              'Need Arbitrum for L2 scaling research',
+              'Lower fees than mainnet, perfect for my app'
+            ]
+          },
+          { 
+            name: 'Polygon', 
+            votes: 18, 
+            comments: [
+              'Polygon has huge adoption in gaming',
+              'Need this for NFT marketplace'
+            ]
+          },
+          { 
+            name: 'Sui', 
+            votes: 15, 
+            comments: [
+              'Sui\'s Move language is the future',
+              'Building a DeFi protocol on Sui'
+            ]
+          },
+          { 
+            name: 'Aptos', 
+            votes: 11, 
+            comments: [
+              'Aptos has incredible throughput',
+              'Move-based chains are underserved'
+            ]
+          },
+          { 
+            name: 'Avalanche', 
+            votes: 9, 
+            comments: [
+              'Need Avalanche subnets for enterprise project'
+            ]
+          },
+          { 
+            name: 'Near', 
+            votes: 7, 
+            comments: [
+              'NEAR has the best dev experience',
+              'Sharding is the future'
+            ]
+          },
+          { 
+            name: 'Fantom', 
+            votes: 5, 
+            comments: [
+              'DeFi on Fantom is underrated'
+            ]
+          },
+          { 
+            name: 'Celestia', 
+            votes: 4, 
+            comments: [
+              'Modular blockchains need RPC support',
+              'Building a rollup on Celestia'
+            ]
+          }
+        ];
+        saveData();
+      }
+
+      // Load user votes
+      const storedVotes = localStorage.getItem('arkeo_user_votes');
+      if (storedVotes) {
+        userVotes = new Set(JSON.parse(storedVotes));
+      }
+
+      renderChains();
+      updateStats();
+    }
+
+    function saveData() {
+      localStorage.setItem('arkeo_chain_requests', JSON.stringify(chainRequests));
+      localStorage.setItem('arkeo_user_votes', JSON.stringify([...userVotes]));
+    }
+
+    // ============================================================
+    // RENDERING
+    // ============================================================
+    function renderChains() {
+      const grid = document.getElementById('chainGrid');
+      
+      // Filter by category
+      let filtered = chainRequests;
+      if (currentCategory !== 'all') {
+        filtered = chainRequests.filter(chain => {
+          const meta = chainMetadata[chain.name];
+          return meta && meta.category === currentCategory;
+        });
+      }
+
+      // Sort by votes (descending)
+      filtered.sort((a, b) => b.votes - a.votes);
+
+      grid.innerHTML = filtered.map((chain, index) => {
+        const meta = chainMetadata[chain.name] || { icon: '🔗', category: 'Other' };
+        const hasVoted = userVotes.has(chain.name);
+        const isTrending = chain.votes >= 10;
+        
+        return `
+          <div class="chain-card">
+            ${isTrending ? '<div class="trending-badge">🔥 Trending</div>' : ''}
+            <div class="chain-header">
+              <div class="chain-name-section">
+                <div class="chain-icon">${meta.icon}</div>
+                <div>
+                  <div class="chain-name">${chain.name}</div>
+                  <div class="chain-category">${meta.category}</div>
+                </div>
+              </div>
+              <div class="vote-badge">
+                <div class="vote-count">${chain.votes}</div>
+                <div class="vote-label">Votes</div>
+              </div>
+            </div>
+            
+            ${chain.comments && chain.comments.length > 0 ? `
+              <div class="chain-comments">
+                ${chain.comments.slice(0, 3).map(comment => `
+                  <div class="chain-comment">"${comment}"</div>
+                `).join('')}
+              </div>
+            ` : ''}
+            
+            <button 
+              class="vote-btn ${hasVoted ? 'voted' : ''}" 
+              onclick="vote('${chain.name}')"
+              ${hasVoted ? 'disabled' : ''}
+            >
+              ${hasVoted ? '✓ You Voted' : '👍 Vote for This'}
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateStats() {
+      const totalVotes = chainRequests.reduce((sum, chain) => sum + chain.votes, 0);
+      document.getElementById('totalRequests').textContent = chainRequests.length;
+      document.getElementById('totalVotes').textContent = totalVotes;
+      document.getElementById('uniqueChains').textContent = chainRequests.length;
+    }
+
+    // ============================================================
+    // VOTING
+    // ============================================================
+    function vote(chainName) {
+      if (userVotes.has(chainName)) return;
+
+      const chain = chainRequests.find(c => c.name === chainName);
+      if (chain) {
+        chain.votes++;
+        userVotes.add(chainName);
+        saveData();
+        renderChains();
+        updateStats();
+      }
+    }
+
+    // ============================================================
+    // CATEGORY FILTER
+    // ============================================================
+    function filterByCategory(category) {
+      currentCategory = category;
+      
+      // Update active tab
+      document.querySelectorAll('.category-tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      event.target.classList.add('active');
+      
+      renderChains();
+    }
+
+    // ============================================================
+    // FORM HANDLING
+    // ============================================================
+    function toggleOtherInput() {
+      const select = document.getElementById('chainSelect');
+      const otherGroup = document.getElementById('otherChainGroup');
+      const otherInput = document.getElementById('otherChainInput');
+      
+      if (select.value === 'Other') {
+        otherGroup.classList.remove('hidden');
+        otherInput.required = true;
+      } else {
+        otherGroup.classList.add('hidden');
+        otherInput.required = false;
+      }
+    }
+
+    function submitRequest(event) {
+      event.preventDefault();
+      
+      const selectValue = document.getElementById('chainSelect').value;
+      const chainName = selectValue === 'Other' 
+        ? document.getElementById('otherChainInput').value.trim()
+        : selectValue;
+      const comment = document.getElementById('commentInput').value.trim();
+      
+      if (!chainName) return;
+
+      // Check if chain already exists
+      let chain = chainRequests.find(c => c.name.toLowerCase() === chainName.toLowerCase());
+      
+      if (chain) {
+        // Add comment if provided
+        if (comment) {
+          if (!chain.comments) chain.comments = [];
+          chain.comments.push(comment);
+        }
+        // Auto-vote on submission
+        if (!userVotes.has(chain.name)) {
+          chain.votes++;
+          userVotes.add(chain.name);
+        }
+      } else {
+        // Create new chain request
+        chain = {
+          name: chainName,
+          votes: 1,
+          comments: comment ? [comment] : []
+        };
+        chainRequests.push(chain);
+        userVotes.add(chainName);
+      }
+
+      saveData();
+      renderChains();
+      updateStats();
+
+      // Show success message
+      const successMsg = document.getElementById('successMessage');
+      const successText = document.getElementById('successText');
+      successText.textContent = `Request submitted! ${chain.name} now has ${chain.votes} vote${chain.votes !== 1 ? 's' : ''}.`;
+      successMsg.classList.remove('hidden');
+
+      // Reset form
+      document.getElementById('requestForm').reset();
+      document.getElementById('otherChainGroup').classList.add('hidden');
+
+      // Scroll to leaderboard
+      setTimeout(() => {
+        document.getElementById('chainGrid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 500);
+
+      // Hide success message after 5 seconds
+      setTimeout(() => {
+        successMsg.classList.add('hidden');
+      }, 5000);
+    }
+
+    // ============================================================
+    // WALLET CONNECTION
+    // ============================================================
+    async function connectWallet() {
+      if (!window.keplr) {
+        alert('Please install Keplr wallet extension first.\n\nGet it at: https://www.keplr.app/');
+        return;
+      }
+
+      try {
+        const chainId = 'arkeo-main-v1';
+        await window.keplr.enable(chainId);
+        const offlineSigner = window.keplr.getOfflineSigner(chainId);
+        const accounts = await offlineSigner.getAccounts();
+        
+        connectedWallet = accounts[0].address;
+        
+        // Update UI
+        document.getElementById('walletDisconnected').classList.add('hidden');
+        document.getElementById('walletConnected').classList.remove('hidden');
+        document.getElementById('walletAddress').textContent = 
+          connectedWallet.substring(0, 12) + '...' + connectedWallet.substring(connectedWallet.length - 6);
+      } catch (error) {
+        console.error('Failed to connect wallet:', error);
+        alert('Failed to connect wallet. Please try again.');
+      }
+    }
+
+    function disconnectWallet() {
+      connectedWallet = null;
+      document.getElementById('walletDisconnected').classList.remove('hidden');
+      document.getElementById('walletConnected').classList.add('hidden');
+    }
+
+    // ============================================================
+    // INITIALIZE ON LOAD
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', initializeData);
+  </script>
+</body>
+</html>
