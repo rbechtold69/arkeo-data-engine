@@ -29,7 +29,6 @@ function bech32Encode(prefix, data) {
 
 let nonce = 0;
 
-// Derive keys
 const privKeyBytes = hexToBytes(PRIVATE_KEY);
 const pubKeyBytes = secp.getPublicKey(privKeyBytes, true);
 const amino = new Uint8Array(38);
@@ -38,7 +37,7 @@ amino.set(pubKeyBytes, 5);
 const pubKeyBech32 = bech32Encode('arkeopub', amino);
 const addr = bech32Encode('arkeo', ripemd160(sha256(pubKeyBytes)));
 
-async function signedQuery(path) {
+async function signedQuery(path, method = 'GET', body = null) {
   nonce++;
   const preimage = CONTRACT_ID + ':' + pubKeyBech32 + ':' + nonce;
   const signDoc = JSON.stringify({account_number:"0",chain_id:"",fee:{amount:[],gas:"0"},memo:"",msgs:[{type:"sign/MsgSignData",value:{data:Buffer.from(preimage).toString('base64'),signer:addr}}],sequence:"0"});
@@ -46,7 +45,6 @@ async function signedQuery(path) {
   const sig = secp.sign(msgHash, privKeyBytes);
   let sigBytes = sig.toCompactRawBytes();
   
-  // Normalize high-S
   const N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141');
   const s = BigInt('0x' + bytesToHex(sigBytes.slice(32)));
   if (s > N / 2n) {
@@ -64,8 +62,16 @@ async function signedQuery(path) {
   const arkauth = `${pubBase64}:${sigBase64}:${preimage}:${nonce}`;
   
   const url = `${SENTINEL}/${SERVICE}${path}`;
-  const resp = await fetch(url, { headers: { 'X-Arkauth': arkauth } });
-  return { status: resp.status, data: await resp.json() };
+  const opts = { headers: { 'X-Arkauth': arkauth } };
+  if (method === 'POST' && body) {
+    opts.method = 'POST';
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const resp = await fetch(url, opts);
+  const text = await resp.text();
+  try { return { status: resp.status, data: JSON.parse(text) }; }
+  catch { return { status: resp.status, data: text }; }
 }
 
 console.log('');
@@ -79,91 +85,84 @@ console.log(`Provider: Red_5 (${SENTINEL})`);
 console.log(`Signing Key: ${addr}`);
 console.log('');
 
-// Demo 1: Latest block
-console.log('━━━ 📦 QUERY 1: Latest Block ━━━');
-const block = await signedQuery('/cosmos/base/tendermint/v1beta1/blocks/latest');
+// Query 1: Network status
+console.log('━━━ 🌐 QUERY 1: Network Status ━━━');
+const status = await signedQuery('/status');
+if (status.status === 200) {
+  const r = status.data.result;
+  console.log(`  Node: ${r.node_info.moniker}`);
+  console.log(`  Network: ${r.node_info.network}`);
+  console.log(`  Latest Block: ${r.sync_info.latest_block_height}`);
+  console.log(`  Block Time: ${r.sync_info.latest_block_time}`);
+  console.log(`  Catching Up: ${r.sync_info.catching_up}`);
+}
+console.log('');
+
+// Query 2: Latest block details
+console.log('━━━ 📦 QUERY 2: Latest Block ━━━');
+const block = await signedQuery('/block');
 if (block.status === 200) {
-  const h = block.data.block?.header;
-  console.log(`  Height: ${h?.height}`);
-  console.log(`  Time: ${h?.time}`);
-  console.log(`  Proposer: ${h?.proposer_address?.slice(0,16)}...`);
-  console.log(`  Txs in block: ${block.data.block?.data?.txs?.length || 0}`);
+  const h = block.data.result.block.header;
+  const txs = block.data.result.block.data.txs || [];
+  console.log(`  Height: ${h.height}`);
+  console.log(`  Time: ${h.time}`);
+  console.log(`  Proposer: ${h.proposer_address.slice(0,16)}...`);
+  console.log(`  Transactions: ${txs.length}`);
+  console.log(`  Chain ID: ${h.chain_id}`);
 }
 console.log('');
 
-// Demo 2: Check a wallet balance
-console.log('━━━ 💰 QUERY 2: Wallet Balance ━━━');
-const wallet = 'arkeo1a7c5dwq7etnhe38r32kqmvlntk9y27cdgnfvxq';
-const bal = await signedQuery(`/cosmos/bank/v1beta1/balances/${wallet}`);
-if (bal.status === 200) {
-  const balances = bal.data.balances || [];
-  const arkeo = balances.find(b => b.denom === 'uarkeo');
-  console.log(`  Wallet: ${wallet.slice(0,15)}...${wallet.slice(-6)}`);
-  console.log(`  Balance: ${arkeo ? (parseInt(arkeo.amount)/1e8).toFixed(2) : '0'} ARKEO`);
-}
-console.log('');
-
-// Demo 3: Staking info
-console.log('━━━ 🥩 QUERY 3: Staking Delegations ━━━');
-const del = await signedQuery(`/cosmos/staking/v1beta1/delegations/${wallet}`);
-if (del.status === 200) {
-  const delegations = del.data.delegation_responses || [];
-  let totalStaked = 0;
-  for (const d of delegations.slice(0, 5)) {
-    const amount = parseInt(d.balance?.amount || 0) / 1e8;
-    totalStaked += amount;
-    const validator = d.delegation?.validator_address?.slice(0, 20) + '...';
-    console.log(`  → ${amount.toFixed(2)} ARKEO staked with ${validator}`);
-  }
-  if (delegations.length > 5) console.log(`  ... and ${delegations.length - 5} more`);
-  console.log(`  Total Staked: ${totalStaked.toFixed(2)} ARKEO`);
-}
-console.log('');
-
-// Demo 4: Active providers on marketplace
-console.log('━━━ 🏪 QUERY 4: Active Providers ━━━');
-const prov = await signedQuery('/arkeo/providers');
-if (prov.status === 200) {
-  const providers = prov.data.provider || prov.data.providers || [];
-  const online = providers.filter(p => p.status === 'ONLINE');
-  console.log(`  Total Providers: ${providers.length}`);
-  console.log(`  Online: ${online.length}`);
-  for (const p of online.slice(0, 5)) {
-    const rate = parseInt(p.pay_as_you_go_rate?.[0]?.amount || 0);
-    const bond = parseInt(p.bond || 0) / 1e8;
-    console.log(`  → ${p.pub_key?.slice(0,25)}... | Rate: ${rate} uarkeo/req | Bond: ${bond} ARKEO`);
+// Query 3: Active validators
+console.log('━━━ 🏛️ QUERY 3: Active Validators ━━━');
+const vals = await signedQuery('/validators?per_page=100');
+if (vals.status === 200) {
+  const r = vals.data.result;
+  const validators = r.validators || [];
+  console.log(`  Total Active: ${r.total}`);
+  console.log(`  Top 5 by Voting Power:`);
+  const sorted = validators.sort((a, b) => parseInt(b.voting_power) - parseInt(a.voting_power));
+  for (const v of sorted.slice(0, 5)) {
+    console.log(`    → ${v.address.slice(0,12)}... | Power: ${parseInt(v.voting_power).toLocaleString()}`);
   }
 }
 console.log('');
 
-// Demo 5: Active contracts
-console.log('━━━ 📋 QUERY 5: Network Contracts ━━━');
-const contracts = await signedQuery('/arkeo/contracts?pagination.limit=10&pagination.reverse=true');
-if (contracts.status === 200) {
-  const list = contracts.data.contract || contracts.data.contracts || [];
-  let active = 0;
-  for (const c of list) {
-    if (parseInt(c.deposit || 0) > 0) active++;
-  }
-  console.log(`  Recent contracts shown: ${list.length}`);
-  console.log(`  With active deposits: ${active}`);
+// Query 4: Genesis info
+console.log('━━━ ⚙️ QUERY 4: Chain Info ━━━');
+const info = await signedQuery('/abci_info');
+if (info.status === 200) {
+  const r = info.data.result.response;
+  console.log(`  App: ${r.data}`);
+  console.log(`  Version: ${r.version}`);
+  console.log(`  Last Block: ${r.last_block_height}`);
 }
 console.log('');
 
-// Demo 6: Governance params
-console.log('━━━ ⚖️ QUERY 6: Network Parameters ━━━');
-const params = await signedQuery('/cosmos/staking/v1beta1/params');
-if (params.status === 200) {
-  const p = params.data.params;
-  console.log(`  Max Validators: ${p?.max_validators}`);
-  console.log(`  Unbonding Time: ${parseInt(p?.unbonding_time || 0) / 86400}s`);
-  console.log(`  Bond Denom: ${p?.bond_denom}`);
+// Query 5: Specific block (genesis)
+console.log('━━━ 🏁 QUERY 5: Block #1 (Genesis) ━━━');
+const genesis = await signedQuery('/block?height=1');
+if (genesis.status === 200) {
+  const h = genesis.data.result.block.header;
+  console.log(`  Genesis Time: ${h.time}`);
+  console.log(`  Chain ID: ${h.chain_id}`);
+  console.log(`  Validators Hash: ${h.validators_hash.slice(0,20)}...`);
 }
-
 console.log('');
+
+// Query 6: Unconfirmed transactions (mempool)
+console.log('━━━ 📬 QUERY 6: Mempool Status ━━━');
+const mempool = await signedQuery('/num_unconfirmed_txs');
+if (mempool.status === 200) {
+  const r = mempool.data.result;
+  console.log(`  Pending Txs: ${r.total}`);
+  console.log(`  Total Bytes: ${r.total_bytes}`);
+}
+console.log('');
+
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log(`✅ ${nonce} paid queries completed — all auto-signed`);
+console.log(`✅ ${nonce} paid queries — all auto-signed by SDK`);
 console.log(`💸 Cost: ${nonce * 25000} uarkeo (${(nonce * 25000 / 1e8).toFixed(4)} ARKEO)`);
-console.log(`🔑 No manual signing — SDK handles everything`);
+console.log(`⚡ No wallet popups, no manual signing`);
+console.log(`🔑 One API key = unlimited programmatic access`);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 console.log('');
