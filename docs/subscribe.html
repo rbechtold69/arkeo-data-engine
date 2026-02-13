@@ -1109,24 +1109,18 @@
       <div class="form-group" style="margin-top: 2rem;">
         <label class="form-label">🔑 API Signing Key</label>
         <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem;">
-          <!-- Key Type Toggle -->
-          <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-            <button type="button" id="generateKeyBtn" class="btn btn-primary" style="flex: 1;" onclick="selectKeyMode('generate')">
-              Generate New Key
-            </button>
-            <button type="button" id="existingKeyBtn" class="btn btn-secondary" style="flex: 1;" onclick="selectKeyMode('existing')">
-              Use Existing Key
-            </button>
-          </div>
           
-          <!-- Generate Key Flow -->
+          <!-- Generate Key Flow (default) -->
           <div id="generateKeyFlow">
             <div style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.5; margin-bottom: 1rem;">
-              Generate a dedicated signing key for SDK requests. This key can ONLY make RPC queries against your contract — it cannot access your wallet or move funds.
+              This creates a dedicated API key for making queries. It can only access your contract — it can't touch your wallet or funds.
             </div>
-            <button type="button" class="btn btn-primary" onclick="generateSigningKey()" style="width: 100%;">
-              🔑 Generate Signing Key
+            <button type="button" class="btn btn-primary" onclick="generateSigningKey()" style="width: 100%; font-size: 1rem; padding: 0.75rem;">
+              🔑 Generate API Key
             </button>
+            <div style="text-align: center; margin-top: 0.75rem;">
+              <a href="#" onclick="selectKeyMode('existing'); return false;" style="color: var(--text-dim); font-size: 0.8rem; text-decoration: underline;">Already have a key? Import it instead</a>
+            </div>
             
             <!-- Key Display (hidden until generated) -->
             <div id="generatedKeyDisplay" style="display: none; margin-top: 1rem;">
@@ -1173,6 +1167,9 @@
           <div id="existingKeyFlow" style="display: none;">
             <div style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.5; margin-bottom: 1rem;">
               Paste your existing private key (hex) or public key (arkeopub...). If you provide a public key, you must already have the private key stored securely.
+            </div>
+            <div style="margin-bottom: 0.75rem;">
+              <a href="#" onclick="selectKeyMode('generate'); return false;" style="color: var(--text-dim); font-size: 0.8rem; text-decoration: underline;">← Back to generate new key</a>
             </div>
             <input type="text" id="existingKeyInput" class="form-input" placeholder="Private key (hex) or public key (arkeopub...)" oninput="parseExistingKey()" style="margin-bottom: 1rem;">
             
