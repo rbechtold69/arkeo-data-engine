@@ -1585,7 +1585,12 @@
         if (state.selectedProvider) selectedProvider = state.selectedProvider;
         if (state.contractDurationBlocks) contractDurationBlocks = state.contractDurationBlocks;
         if (state.paymentMethod) paymentMethod = state.paymentMethod;
-        if (state.signingKey) signingKey = state.signingKey;
+        if (state.signingKey) {
+          signingKey = state.signingKey;
+          // Never restore private key from storage — it should not have been saved,
+          // but clean up any legacy data that might have it
+          if (signingKey) delete signingKey.privateKeyHex;
+        }
         if (state.walletAddress) walletAddress = state.walletAddress;
         if (state.walletPubkeyBytes) walletPubkeyBytes = new Uint8Array(state.walletPubkeyBytes);
         if (typeof state.failoverEnabled === 'boolean') failoverEnabled = state.failoverEnabled;
@@ -1605,14 +1610,15 @@
         const failoverCheckbox = document.getElementById('enableFailover');
         if (failoverCheckbox) failoverCheckbox.checked = failoverEnabled;
         
-        // Restore signing key display
-        if (signingKey && signingKey.privateKeyHex) {
-          const privateKeyDisplay = document.getElementById('privateKeyDisplay');
+        // Restore signing key display — NEVER restore private key
+        // Private key is only shown once at generation time, never persisted or restored
+        if (signingKey && signingKey.publicKeyBech32) {
           const publicKeyDisplay = document.getElementById('publicKeyDisplay');
           const addressDisplay = document.getElementById('addressDisplay');
           const generatedKeyDisplay = document.getElementById('generatedKeyDisplay');
+          const privateKeyDisplay = document.getElementById('privateKeyDisplay');
           
-          if (privateKeyDisplay) privateKeyDisplay.textContent = signingKey.privateKeyHex;
+          if (privateKeyDisplay) privateKeyDisplay.textContent = '••• saved at generation time — not stored •••';
           if (publicKeyDisplay) publicKeyDisplay.textContent = signingKey.publicKeyBech32;
           if (addressDisplay) addressDisplay.textContent = signingKey.address;
           if (generatedKeyDisplay) generatedKeyDisplay.style.display = 'block';
