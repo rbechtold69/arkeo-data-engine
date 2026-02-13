@@ -646,7 +646,7 @@
       }
     }
 
-    // Claim Earnings
+    // Claim Earnings — fetches stored claim signature from sentinel
     async function claimEarnings(contractId) {
       const contract = state.contracts.find(c => c.id == contractId);
       if (!contract) return;
@@ -661,24 +661,82 @@
         return;
       }
 
-      // For PAYG contracts, the claim TX requires an arkauth signature from the client
-      // that proves N requests were served. The sentinel handles this automatically
-      // because it collects these signatures as it proxies requests.
-      //
-      // For manual claiming, we use ADR-036 signing via Keplr to generate
-      // the arkauth signature for the current nonce.
-      if (!confirm(`Claim earnings from contract #${contractId}?\n\nDeposit: ${(deposit / CONFIG.ARKEO_DIVISOR).toFixed(4)} ARKEO\nAlready paid: ${(paid / CONFIG.ARKEO_DIVISOR).toFixed(4)} ARKEO\nCurrent nonce: ${nonce}\n\nThis will claim any unclaimed income up to the current nonce.`)) return;
+      // Resolve sentinel URL for this provider
+      const providerPubkey = contract.provider;
+      let sentinelUrl = null;
+
+      // Check KNOWN_PROVIDERS first
+      if (typeof KNOWN_PROVIDERS !== 'undefined' && KNOWN_PROVIDERS[providerPubkey]?.sentinelUrl) {
+        sentinelUrl = KNOWN_PROVIDERS[providerPubkey].sentinelUrl;
+      }
+
+      // If not in KNOWN_PROVIDERS, try to get from on-chain metadata_uri
+      if (!sentinelUrl) {
+        try {
+          showToast('Looking up provider sentinel...', 'info');
+          // Query all provider services to find metadata_uri
+          const provRes = await fetch(`${CONFIG.REST_API}/arkeo/providers`);
+          const provData = await provRes.json();
+          const provEntry = provData.provider?.find(p => p.pubkey === providerPubkey);
+          if (provEntry?.metadata_uri) {
+            const metaRes = await fetch(provEntry.metadata_uri);
+            const meta = await metaRes.json();
+            const port = meta.config?.port || '3636';
+            // Derive sentinel URL from metadata_uri domain
+            const metaUrl = new URL(provEntry.metadata_uri);
+            sentinelUrl = `${metaUrl.protocol}//${metaUrl.hostname}:${port}`;
+          }
+        } catch (e) {
+          console.warn('Could not resolve sentinel from metadata:', e);
+        }
+      }
+
+      if (!sentinelUrl) {
+        showToast('Cannot find sentinel URL for this provider. The provider needs a sentinelUrl in their metadata or KNOWN_PROVIDERS config.', 'error');
+        return;
+      }
+
+      // Fetch the stored claim from sentinel
+      showToast('Fetching claim from sentinel...', 'info');
+      let claim;
+      try {
+        const claimRes = await fetch(`${sentinelUrl}/claim/${contractId}`);
+        if (!claimRes.ok) throw new Error(`Sentinel returned ${claimRes.status}`);
+        claim = await claimRes.json();
+      } catch (e) {
+        showToast(`Could not reach sentinel at ${sentinelUrl}: ${e.message}`, 'error');
+        return;
+      }
+
+      if (!claim || !claim.signature || !claim.nonce) {
+        showToast('No claim data found on sentinel for this contract. Make some queries first!', 'error');
+        return;
+      }
+
+      if (claim.claimed) {
+        showToast('This claim has already been submitted. Make more queries to accumulate new earnings.', 'error');
+        return;
+      }
+
+      const claimNonce = parseInt(claim.nonce);
+      const earnings = claimNonce * (parseInt(contract.rate?.amount) || 0);
+      const earningsArkeo = (earnings / CONFIG.ARKEO_DIVISOR).toFixed(4);
+      const alreadyPaid = (paid / CONFIG.ARKEO_DIVISOR).toFixed(4);
+      const newEarnings = ((earnings - paid) / CONFIG.ARKEO_DIVISOR).toFixed(4);
+
+      if (!confirm(
+        `Claim earnings from contract #${contractId}?\n\n` +
+        `Sentinel nonce: ${claimNonce} (${claimNonce} queries served)\n` +
+        `Total earned: ${earningsArkeo} ARKEO\n` +
+        `Already paid: ${alreadyPaid} ARKEO\n` +
+        `New to claim: ${newEarnings} ARKEO\n\n` +
+        `This will broadcast the sentinel's stored signature to the chain.`
+      )) return;
 
       try {
-        // Get the arkauth signature for the current nonce using Keplr
-        // The preimage is "{contractId}:{nonce}:" — same format sentinel uses
-        const preimage = `${contractId}:${nonce}:`;
-        
-        // Sign via Keplr's signArbitrary (ADR-036)
-        const signResult = await window.keplr.signArbitrary(CONFIG.CHAIN_ID, state.walletAddress, preimage);
-        
-        // Convert base64 signature to bytes
-        const sigBytes = Uint8Array.from(atob(signResult.signature), c => c.charCodeAt(0));
+        // Convert hex signature to bytes
+        const sigHex = claim.signature;
+        const sigBytes = new Uint8Array(sigHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
 
         const msg = {
           typeUrl: '/arkeo.arkeo.MsgClaimContractIncome',
@@ -686,15 +744,15 @@
             creator: state.walletAddress,
             contractId: contractId,
             signature: sigBytes,
-            nonce: nonce
+            nonce: claimNonce
           }
         };
 
         const result = await signAndBroadcastDirect(msg);
-        showToast(`Earnings claimed! TX: ${result.txhash.slice(0, 12)}...`);
+        showToast(`Earnings claimed! TX: ${result.txhash.slice(0, 12)}...`, 'success');
         setTimeout(loadContracts, 3000);
       } catch (e) {
-        console.error(e);
+        console.error('Claim failed:', e);
         showToast('Failed to claim: ' + e.message, 'error');
       }
     }

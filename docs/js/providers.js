@@ -1,6 +1,6 @@
 // Shared KNOWN_PROVIDERS config — single source of truth
 // Used by index.html, subscribe.html, provider.html
-// Last health check: 2026-02-13 09:37 UTC
+// Last health check: 2026-02-13 15:37 UTC
 
 const KNOWN_PROVIDERS = {
   // ✅ HEALTHY — sentinel responding
@@ -58,6 +58,7 @@ const KNOWN_PROVIDERS = {
     name: 'Red_5 Arkeo',
     description: 'Arkeo mainnet full node — reliable RPC infrastructure',
     website: 'https://red5-arkeo.duckdns.org',
+    sentinelUrl: 'http://red5-arkeo.duckdns.org:3636',
     location: 'North America',
     health: 'healthy',
   },
