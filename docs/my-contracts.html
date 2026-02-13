@@ -681,10 +681,9 @@
           if (provEntry?.metadata_uri) {
             const metaRes = await fetch(provEntry.metadata_uri);
             const meta = await metaRes.json();
-            const port = meta.config?.port || '3636';
-            // Derive sentinel URL from metadata_uri domain
+            // Derive sentinel URL from metadata_uri domain (use HTTPS, sentinel proxied via nginx)
             const metaUrl = new URL(provEntry.metadata_uri);
-            sentinelUrl = `${metaUrl.protocol}//${metaUrl.hostname}:${port}`;
+            sentinelUrl = `https://${metaUrl.hostname}`;
           }
         } catch (e) {
           console.warn('Could not resolve sentinel from metadata:', e);

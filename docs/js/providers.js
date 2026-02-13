@@ -58,7 +58,7 @@ const KNOWN_PROVIDERS = {
     name: 'Red_5 Arkeo',
     description: 'Arkeo mainnet full node — reliable RPC infrastructure',
     website: 'https://red5-arkeo.duckdns.org',
-    sentinelUrl: 'http://red5-arkeo.duckdns.org:3636',
+    sentinelUrl: 'https://red5-arkeo.duckdns.org',
     location: 'North America',
     health: 'healthy',
   },
