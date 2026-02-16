@@ -40,10 +40,9 @@
       background: var(--bg-card);
       border-bottom: 1px solid var(--border);
       padding: 1rem 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
+      position: sticky;
+      top: 0;
+      z-index: 100;}
     .logo {
       display: flex;
       align-items: center;
@@ -604,11 +603,11 @@
         <a href="x402-setup.html" class="nav-link">⚡ x402</a>
       </div>
       <div class="nav-buttons">
-        <button class="nav-btn" id="walletBtn" onclick="connectWallet()">🔗 Connect Wallet</button>
         <a href="my-contracts.html" class="nav-btn">My Contracts</a>
         <a href="become-provider.html" class="nav-btn">Provide Data</a>
         <a href="subscribe.html" class="nav-btn">Use Data</a>
         <a href="https://app.osmosis.zone/pool/2977" target="_blank" rel="noopener" class="nav-btn nav-btn-accent">Buy ARKEO</a>
+        <button class="nav-btn" id="walletBtn" onclick="connectWallet()" style="border-color: var(--arkeo); color: var(--arkeo);">🔗 Connect Wallet</button>
       </div>
       <button class="hamburger" onclick="document.getElementById('mobileMenu').classList.toggle('open')" aria-label="Menu">☰</button>
     </div>
