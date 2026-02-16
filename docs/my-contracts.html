@@ -341,8 +341,8 @@
       </div>
 
       <div class="filter-row">
-        <button class="filter-btn active" onclick="setFilter('all', this)">All</button>
-        <button class="filter-btn" onclick="setFilter('active', this)">Active</button>
+        <button class="filter-btn" onclick="setFilter('all', this)">All</button>
+        <button class="filter-btn active" onclick="setFilter('active', this)">Active</button>
         <button class="filter-btn" onclick="setFilter('expired', this)">Expired</button>
         <button class="filter-btn" onclick="setFilter('client', this)">As Client</button>
         <button class="filter-btn" onclick="setFilter('provider', this)">As Provider</button>
@@ -402,7 +402,7 @@
       walletPubkey: null,     // arkeopub bech32
       walletPubkeyBytes: null,
       contracts: [],
-      currentFilter: 'all',
+      currentFilter: 'active',
       currentHeight: 0,
     };
 
@@ -560,9 +560,11 @@
         const active = state.currentHeight < (height + duration) && deposit > paid;
         return { ...c, isClient, active };
       }).filter(c => {
-        // Hide empty expired contracts (zero deposit, no activity)
+        // Hide fully consumed expired contracts (deposit == paid, nothing to claim)
         const deposit = parseInt(c.deposit) || 0;
+        const paid = parseInt(c.paid) || 0;
         if (!c.active && deposit === 0) return false;
+        if (!c.active && deposit > 0 && deposit <= paid) return false;
         return true;
       });
 
