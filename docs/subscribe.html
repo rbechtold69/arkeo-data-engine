@@ -3824,13 +3824,37 @@ console.log(data);</pre>
       const resultDiv = document.getElementById('testConnectionResult');
       
       if (!signingKey || !signingKey.privateKeyHex) {
-        resultDiv.style.display = 'block';
-        resultDiv.innerHTML = `
-          <div style="padding: 1rem; background: rgba(239,68,68,0.1); border: 1px solid var(--error); border-radius: 0.5rem;">
-            <div style="color: var(--error); font-weight: 600;">❌ No Signing Key</div>
-            <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">Generate or import a signing key first. The private key is needed to authenticate queries.</div>
-          </div>`;
-        return;
+        // Check if there's a key in the test input field
+        const testKeyInput = document.getElementById('testPrivateKeyInput');
+        if (testKeyInput && testKeyInput.value.trim()) {
+          const inputKey = testKeyInput.value.trim();
+          if (!signingKey) signingKey = {};
+          signingKey.privateKeyHex = inputKey;
+          // Derive public key from private key
+          try {
+            const nobleSecp = window.nobleSecp256k1;
+            const pubKeyBytes = nobleSecp.getPublicKey(hexToBytes(inputKey), true);
+            signingKey.publicKeyBech32 = pubkeyToBech32(pubKeyBytes, 'arkeopub');
+          } catch(e) {
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = `
+              <div style="padding: 1rem; background: rgba(239,68,68,0.1); border: 1px solid var(--error); border-radius: 0.5rem;">
+                <div style="color: var(--error); font-weight: 600;">❌ Invalid Private Key</div>
+                <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">Check the key and try again.</div>
+              </div>`;
+            return;
+          }
+        } else {
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <div style="padding: 1rem; background: rgba(239,68,68,0.1); border: 1px solid var(--error); border-radius: 0.5rem;">
+              <div style="color: var(--error); font-weight: 600;">🔑 Private Key Needed</div>
+              <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.5rem;">Paste your signing key below to authenticate the test query. The key is only used in-browser and never stored.</div>
+              <input type="password" id="testPrivateKeyInput" class="form-input" placeholder="Paste your private key hex..." style="margin-top: 0.75rem; font-family: monospace; font-size: 0.85rem;">
+              <button class="btn btn-primary" onclick="testConnection()" style="width: 100%; margin-top: 0.5rem;">🔍 Test with this key</button>
+            </div>`;
+          return;
+        }
       }
       
       if (!contractId) {
