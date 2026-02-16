@@ -25,10 +25,19 @@
     .ok { color: #6bff6b; }
     .err { color: #ff6b6b; }
     .lbl { color: #ff8e53; }
+    @media (max-width: 600px) {
+      body { padding: 1rem; }
+      .container { max-width: 100%; }
+      h1 { font-size: 1.3rem; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
+    <div style="background: #3a2a1a; border: 1px solid #f59e0b; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; color: #f59e0b; font-size: 0.9rem;">
+      ⚠️ <strong>Deprecated:</strong> This page uses legacy Amino signing which may not work correctly. 
+      Please use <a href="my-contracts.html" style="color: #ff8e53; font-weight: 600;">My Contracts</a> instead for reliable contract management.
+    </div>
     <h1>🔒 Close Contract</h1>
     <p class="subtitle">Close an Arkeo PAYG contract and reclaim your deposit via Keplr</p>
 

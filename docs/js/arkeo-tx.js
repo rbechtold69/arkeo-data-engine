@@ -181,10 +181,40 @@ class ArkeoTxHelper {
     console.log('ArkeoTxHelper initialized');
   }
 
+  // SRI hashes for dynamically loaded CDN scripts
+  static SRI_HASHES = {
+    'https://cdn.jsdelivr.net/npm/long@5.2.3/umd/index.min.js': 'sha384-WMR9gjTtdEVLsU2eEynLDmwo7Fv0l59CyDWb5zzAPWBVxEsh3bz9V3A/YW4yZW1K',
+    'https://cdn.jsdelivr.net/npm/protobufjs@7.2.6/dist/protobuf.min.js': 'sha384-N6/IbrGcVGxeDavKs7t3aMNadp5sUPWtGF2BMZf9/554yatfJRVfjlwmJER0Vmww',
+  };
+
+  // Allowed CDN origins for dynamic script loading
+  static ALLOWED_SCRIPT_ORIGINS = [
+    'https://cdn.jsdelivr.net',
+  ];
+
   loadScript(src) {
     return new Promise((resolve, reject) => {
+      // Validate URL origin against allowlist
+      try {
+        const url = new URL(src);
+        const allowed = ArkeoTxHelper.ALLOWED_SCRIPT_ORIGINS.some(origin => src.startsWith(origin));
+        if (!allowed) {
+          return reject(new Error(`Script origin not allowed: ${url.origin}`));
+        }
+      } catch (e) {
+        return reject(new Error(`Invalid script URL: ${src}`));
+      }
+
       const script = document.createElement('script');
       script.src = src;
+      script.crossOrigin = 'anonymous';
+
+      // Add SRI hash if available
+      const sriHash = ArkeoTxHelper.SRI_HASHES[src];
+      if (sriHash) {
+        script.integrity = sriHash;
+      }
+
       script.onload = resolve;
       script.onerror = reject;
       document.head.appendChild(script);

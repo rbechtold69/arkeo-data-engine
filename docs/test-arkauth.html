@@ -94,6 +94,13 @@
     .row { display: flex; gap: 1rem; }
     .row > * { flex: 1; }
     .help { color: #666; font-size: 0.75rem; margin-top: -0.7rem; margin-bottom: 1rem; }
+    @media (max-width: 600px) {
+      body { padding: 1rem; }
+      .container { max-width: 100%; }
+      h1 { font-size: 1.4rem; }
+      .row { flex-direction: column; gap: 0; }
+      .btn + .btn { margin-left: 0; margin-top: 0.5rem; }
+    }
   </style>
 </head>
 <body>

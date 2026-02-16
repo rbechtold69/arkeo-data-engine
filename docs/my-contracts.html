@@ -374,7 +374,7 @@
 
     // Connect Keplr
     async function connectWallet() {
-      if (!window.keplr) { showToast('Please install Keplr wallet extension', 'error'); return; }
+      if (!window.keplr) { showToast('Keplr wallet not detected. Install it from keplr.app and refresh this page.', 'error'); return; }
       try {
         await window.keplr.enable(CONFIG.CHAIN_ID);
         const offlineSigner = window.keplr.getOfflineSigner(CONFIG.CHAIN_ID);
@@ -685,11 +685,16 @@
           const provData = await provRes.json();
           const provEntry = provData.provider?.find(p => p.pubkey === providerPubkey);
           if (provEntry?.metadata_uri) {
-            const metaRes = await fetch(provEntry.metadata_uri);
-            const meta = await metaRes.json();
-            // Derive sentinel URL from metadata_uri domain (use HTTPS, sentinel proxied via nginx)
+            // Validate URL before fetching — only allow HTTPS
             const metaUrl = new URL(provEntry.metadata_uri);
-            sentinelUrl = `https://${metaUrl.hostname}`;
+            if (metaUrl.protocol !== 'https:') {
+              console.warn('Rejecting non-HTTPS metadata URI:', provEntry.metadata_uri);
+            } else {
+              const metaRes = await fetch(provEntry.metadata_uri);
+              const meta = await metaRes.json();
+              // Derive sentinel URL from metadata_uri domain (use HTTPS, sentinel proxied via nginx)
+              sentinelUrl = `https://${metaUrl.hostname}`;
+            }
           }
         } catch (e) {
           console.warn('Could not resolve sentinel from metadata:', e);
@@ -697,7 +702,7 @@
       }
 
       if (!sentinelUrl) {
-        showToast('Cannot find sentinel URL for this provider. The provider needs a sentinelUrl in their metadata or KNOWN_PROVIDERS config.', 'error');
+        showToast('Cannot find this provider\'s sentinel URL. The provider may not have configured their metadata yet. Contact them directly to claim earnings.', 'error');
         return;
       }
 
