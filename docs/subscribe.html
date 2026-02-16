@@ -2776,7 +2776,24 @@ console.log(data);</pre>
         
         if (arkeoAccounts.length === 0) throw new Error('No accounts found');
         
-        walletAddress = arkeoAccounts[0].address;
+        const newWalletAddress = arkeoAccounts[0].address;
+        
+        // If wallet changed, clear old signing key — it belongs to the previous wallet
+        if (walletAddress && walletAddress !== newWalletAddress && signingKey) {
+          console.log('Wallet changed from', walletAddress, 'to', newWalletAddress, '— clearing old signing key');
+          signingKey = null;
+          const generatedKeyDisplay = document.getElementById('generatedKeyDisplay');
+          if (generatedKeyDisplay) generatedKeyDisplay.style.display = 'none';
+          const privateKeyDisplay = document.getElementById('privateKeyDisplay');
+          if (privateKeyDisplay) privateKeyDisplay.textContent = '';
+          const publicKeyDisplay = document.getElementById('publicKeyDisplay');
+          if (publicKeyDisplay) publicKeyDisplay.textContent = '';
+          const addressDisplay = document.getElementById('addressDisplay');
+          if (addressDisplay) addressDisplay.textContent = '';
+          clearState();
+        }
+        
+        walletAddress = newWalletAddress;
         walletPubkeyBytes = arkeoAccounts[0].pubkey;
         
         // Get Arkeo balance
