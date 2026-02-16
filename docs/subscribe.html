@@ -912,9 +912,8 @@
       <div class="form-group">
         <label class="form-label">Payment Method</label>
         <div style="display: flex; gap: 0.75rem; margin-bottom: 1rem;">
-          <button class="btn btn-primary" id="payArkeoBtn" onclick="selectPayment('arkeo')" style="flex: 1; position: relative; border: 2px solid #10b981; box-shadow: 0 0 15px rgba(16,185,129,0.2);">
+          <button class="btn btn-primary" id="payArkeoBtn" onclick="selectPayment('arkeo')" style="flex: 1; position: relative;">
             💎 Pay with ARKEO
-            <span style="position: absolute; top: -10px; right: -10px; background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-size: 0.65rem; padding: 3px 8px; border-radius: 10px; font-weight: 700;">⭐ SAVE 25%</span>
           </button>
           <button class="btn btn-secondary" id="payUsdcBtn" onclick="selectPayment('usdc')" style="flex: 1;">
             💵 Pay with USDC
@@ -926,13 +925,13 @@
         </div>
         <!-- ARKEO payment info (shown by default) -->
         <div id="arkeoPaymentInfo" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; font-size: 0.85rem;">
-          <div style="font-weight: 700; margin-bottom: 0.5rem; color: #10b981;">⭐ Recommended — Save 25% with ARKEO</div>
+          <div style="font-weight: 700; margin-bottom: 0.5rem; color: #10b981;">💎 Pay with ARKEO</div>
           <div style="color: var(--text-dim); line-height: 1.5;">Pay directly with ARKEO — no conversion fees, instant settlement. 2% burn proposed (subject to DAO vote) to increase token scarcity.</div>
           <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding: 0.5rem; background: rgba(16,185,129,0.1); border-radius: 0.375rem; font-size: 0.8rem;">
             <span style="font-weight: 600;">Wallet</span>
             <span style="color: var(--arkeo);">→</span>
             <span style="font-weight: 600;">Contract</span>
-            <span style="margin-left: auto; color: #10b981; font-weight: 600;">25% discount · Instant</span>
+            <span style="margin-left: auto; color: #10b981; font-weight: 600;">Instant</span>
           </div>
         </div>
         <!-- USDC payment info (hidden by default) -->
@@ -1144,8 +1143,8 @@ console.log(data);</pre>
           <summary style="padding: 0.75rem 1rem; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--text-dim); background: var(--bg-input); user-select: none;">ℹ️ How payments work</summary>
           <div style="padding: 1rem; font-size: 0.8rem; color: var(--text-dim); line-height: 1.6;">
             <div style="margin-bottom: 0.75rem;">
-              <div style="font-weight: 600; color: #10b981; margin-bottom: 0.25rem;">💎 Direct ARKEO (Recommended)</div>
-              Wallet → Contract · <strong>25% discount</strong> · Instant settlement
+              <div style="font-weight: 600; color: #10b981; margin-bottom: 0.25rem;">💎 Direct ARKEO</div>
+              Wallet → Contract · Instant settlement · Native chain payments
             </div>
             <div style="margin-bottom: 0.75rem;">
               <div style="font-weight: 600; color: var(--text); margin-bottom: 0.25rem;">💵 Via USDC</div>
@@ -1647,7 +1646,7 @@ console.log(data);</pre>
     let selectedChain = null;
     let selectedProvider = null;
     let currentStep = 1;
-    let paymentMethod = 'arkeo'; // Default to ARKEO for discount
+    let paymentMethod = 'arkeo'; // Default to ARKEO
     let walletAddress = null;
     let walletPubkeyBytes = null;
     let failoverEnabled = true; // Default to enabled
@@ -2726,9 +2725,9 @@ console.log(data);</pre>
         }
         updateUsdcEstimate();
       } else {
-        // ARKEO gets 25% more requests (discount)
-        const requests = Math.floor((amount / rate) * 1.25);
-        document.getElementById('depositEstimate').innerHTML = `≈ <strong>${requests.toLocaleString()}</strong> requests <span style="color: #10b981;">(+25% bonus!)</span>`;
+        // ARKEO payment
+        const requests = Math.floor(amount / rate);
+        document.getElementById('depositEstimate').innerHTML = `≈ <strong>${requests.toLocaleString()}</strong> requests`;
       }
       
       // Save state after deposit amount changes
