@@ -645,11 +645,14 @@
 
         let actionBtn = '';
         const isAlsoProvider = c.provider === state.walletPubkey;
-        if (c.active && c.isClient && isAlsoProvider) {
+        const isDelegate = c.delegate === state.walletPubkey;
+        const canClose = c.active && (c.isClient || isAlsoProvider || isDelegate);
+        const canClaim = c.active && (isAlsoProvider || isDelegate) && parseInt(c.nonce) > 0;
+        if (canClaim && canClose) {
           actionBtn = `<button class="action-btn claim-btn" onclick="claimEarnings(${c.id})">Claim</button> <button class="action-btn close-btn" onclick="closeContract(${c.id})">Close</button>`;
-        } else if (c.active && c.isClient) {
+        } else if (canClose) {
           actionBtn = `<button class="action-btn close-btn" onclick="closeContract(${c.id})">Close</button>`;
-        } else if (c.active && isAlsoProvider) {
+        } else if (canClaim) {
           actionBtn = `<button class="action-btn claim-btn" onclick="claimEarnings(${c.id})">Claim</button>`;
         }
 
