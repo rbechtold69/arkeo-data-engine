@@ -38,9 +38,9 @@
       background: var(--bg-card);
       border-bottom: 1px solid var(--border);
       padding: 1rem 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
     .logo {
       display: flex;
@@ -52,8 +52,8 @@
       color: var(--text);
     }
     .logo img { height: 36px; }
-    .logo span { color: var(--arkeo); }
-    .nav-links { display: flex; align-items: center; gap: 1.5rem; }
+    .logo-text span { color: var(--arkeo); }
+    .nav-links { display: flex; align-items: center; gap: 2rem; }
     .nav-link { color: var(--text-dim); text-decoration: none; font-weight: 500; transition: color 0.2s; }
     .nav-link:hover { color: var(--arkeo); }
     .wallet-btn {
