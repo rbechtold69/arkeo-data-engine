@@ -3857,8 +3857,8 @@ console.log(data);</pre>
       try {
         // Build arkauth signature using same method as SDK
         const nobleSecp = window.nobleSecp256k1;
-        const nobleHashes = window.nobleHashes;
-        if (!nobleSecp || !nobleHashes) throw new Error('Crypto libraries not loaded. Please refresh the page.');
+        const nobleSha256 = window.nobleSha256;
+        if (!nobleSecp || !nobleSha256) throw new Error('Crypto libraries not loaded. Please refresh the page.');
         
         const serviceName = selectedProvider?.serviceId ? 
           (SERVICE_ID_TO_NAME[selectedProvider.serviceId] || selectedProvider.serviceId) : 
@@ -3877,10 +3877,10 @@ console.log(data);</pre>
         
         // Preimage format matches chain verification: "{contractId}:{nonce}:"
         const preimage = `${contractId}:${nonce}:`;
-        const msgHash = nobleHashes.sha256(new TextEncoder().encode(preimage));
+        const msgHash = await nobleSha256(new TextEncoder().encode(preimage));
         
         const privKeyBytes = hexToBytes(signingKey.privateKeyHex);
-        const sig = await nobleSecp.signAsync(msgHash, privKeyBytes, { lowS: true });
+        const sig = await nobleSecp.signAsync(new Uint8Array(msgHash), privKeyBytes, { lowS: true });
         const sigBytes = sig.toCompactRawBytes();
         const sigHex = Array.from(sigBytes).map(b => b.toString(16).padStart(2, '0')).join('');
         
