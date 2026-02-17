@@ -3832,8 +3832,11 @@ console.log(data);</pre>
           signingKey.privateKeyHex = inputKey;
           // Derive public key from private key
           try {
-            const nobleSecp = window.nobleSecp256k1;
-            const pubKeyBytes = nobleSecp.getPublicKey(hexToBytes(inputKey), true);
+            if (!window._nobleSecp256k1Full) {
+              const mod = await import('https://esm.run/@noble/secp256k1@2.1.0');
+              window._nobleSecp256k1Full = mod;
+            }
+            const pubKeyBytes = window._nobleSecp256k1Full.getPublicKey(hexToBytes(inputKey), true);
             signingKey.publicKeyBech32 = pubkeyToBech32(pubKeyBytes, 'arkeopub');
           } catch(e) {
             resultDiv.style.display = 'block';
@@ -3887,10 +3890,6 @@ console.log(data);</pre>
       
       try {
         // Build arkauth signature using same method as SDK
-        const nobleSecp = window.nobleSecp256k1;
-        const nobleSha256 = window.nobleSha256;
-        if (!nobleSecp || !nobleSha256) throw new Error('Crypto libraries not loaded. Please refresh the page.');
-        
         const serviceName = selectedProvider?.serviceId ? 
           (SERVICE_ID_TO_NAME[selectedProvider.serviceId] || selectedProvider.serviceId) : 
           'arkeo-mainnet-fullnode';
@@ -3908,10 +3907,18 @@ console.log(data);</pre>
         
         // Preimage format matches chain verification: "{contractId}:{nonce}:"
         const preimage = `${contractId}:${nonce}:`;
-        const msgHash = await nobleSha256(new TextEncoder().encode(preimage));
+        const msgHash = await window.nobleSha256(new TextEncoder().encode(preimage));
+        
+        // ECDSA secp256k1 signing using the noble library loaded from SDK
+        // Load noble/secp256k1 if not already loaded
+        if (!window._nobleSecp256k1Full) {
+          const mod = await import('https://esm.run/@noble/secp256k1@2.1.0');
+          window._nobleSecp256k1Full = mod;
+        }
+        const secp = window._nobleSecp256k1Full;
         
         const privKeyBytes = hexToBytes(signingKey.privateKeyHex);
-        const sig = await nobleSecp.signAsync(new Uint8Array(msgHash), privKeyBytes, { lowS: true });
+        const sig = secp.sign(new Uint8Array(msgHash), privKeyBytes, { lowS: true });
         const sigBytes = sig.toCompactRawBytes();
         const sigHex = Array.from(sigBytes).map(b => b.toString(16).padStart(2, '0')).join('');
         
