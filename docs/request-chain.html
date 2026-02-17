@@ -675,8 +675,8 @@
       <div class="nav-links">
         <a href="analytics.html" class="nav-link">📊 Analytics</a>
         <a href="request-chain.html" class="nav-link active">🗳️ Request Chain</a>
-        <a href="https://racing.builtonarkeo.com/" target="_blank" class="nav-link">🏇 Racing</a>
-        <a href="https://docs.arkeo.network" target="_blank" class="nav-link">Docs</a>
+        <a href="https://racing.builtonarkeo.com/" target="_blank" rel="noopener" class="nav-link">🏇 Racing</a>
+        <a href="https://docs.arkeo.network" target="_blank" rel="noopener" class="nav-link">Docs</a>
         <a href="x402-setup.html" class="nav-link">⚡ x402</a>
       </div>
       <div class="nav-buttons">
@@ -692,12 +692,12 @@
       <a href="analytics.html">📊 Analytics</a>
       <a href="request-chain.html">🗳️ Request Chain</a>
       <a href="x402-setup.html">⚡ x402</a>
-      <a href="https://docs.arkeo.network" target="_blank">📄 Docs</a>
+      <a href="https://docs.arkeo.network" target="_blank" rel="noopener">📄 Docs</a>
       <a href="my-contracts.html">📋 My Contracts</a>
       <a href="become-provider.html">🚀 Provide Data</a>
       <a href="subscribe.html">📡 Use Data</a>
-      <a href="https://app.osmosis.zone/pool/2977" target="_blank">💰 Buy ARKEO</a>
-      <a href="https://racing.builtonarkeo.com/" target="_blank">🏇 Racing</a>
+      <a href="https://app.osmosis.zone/pool/2977" target="_blank" rel="noopener">💰 Buy ARKEO</a>
+      <a href="https://racing.builtonarkeo.com/" target="_blank" rel="noopener">🏇 Racing</a>
     </div>
   </nav>
 
@@ -766,7 +766,7 @@
               <div>
                 <div id="chainName" style="font-weight: 600;"></div>
                 <div style="font-size: 0.75rem; color: var(--text-dim);">
-                  <span id="chainSymbol"></span> • <a id="chainLink" href="#" target="_blank" style="color: var(--arkeo);">View on CoinGecko</a>
+                  <span id="chainSymbol"></span> • <a id="chainLink" href="#" target="_blank" rel="noopener" style="color: var(--arkeo);">View on CoinGecko</a>
                 </div>
               </div>
             </div>
@@ -836,7 +836,7 @@
         <a href="become-provider.html" class="btn btn-primary" style="font-size: 1.1rem; padding: 1rem 2rem;">
           Become a Provider →
         </a>
-        <a href="https://docs.arkeo.network/provider-guide" target="_blank" class="btn btn-outline" style="font-size: 1.1rem; padding: 1rem 2rem;">
+        <a href="https://docs.arkeo.network/provider-guide" target="_blank" rel="noopener" class="btn btn-outline" style="font-size: 1.1rem; padding: 1rem 2rem;">
           Read Provider Guide
         </a>
       </div>
@@ -850,10 +850,10 @@
         © 2025 Arkeo Network. Community owned, no VCs.
       </div>
       <div class="footer-links">
-        <a href="https://docs.arkeo.network" target="_blank" class="footer-link">Documentation</a>
-        <a href="https://github.com/arkeonetwork" target="_blank" class="footer-link">GitHub</a>
-        <a href="https://discord.gg/arkeo" target="_blank" class="footer-link">Discord</a>
-        <a href="https://twitter.com/arkaboreal" target="_blank" class="footer-link">Twitter</a>
+        <a href="https://docs.arkeo.network" target="_blank" rel="noopener" class="footer-link">Documentation</a>
+        <a href="https://github.com/arkeonetwork" target="_blank" rel="noopener" class="footer-link">GitHub</a>
+        <a href="https://discord.gg/arkeo" target="_blank" rel="noopener" class="footer-link">Discord</a>
+        <a href="https://twitter.com/arkaboreal" target="_blank" rel="noopener" class="footer-link">Twitter</a>
       </div>
     </div>
   </footer>
@@ -961,7 +961,7 @@
           : `<div class="chain-icon">${meta.icon}</div>`;
         
         const categoryBadge = chain.coinGeckoId 
-          ? `<a href="${COINGECKO_CACHE.getCoinGeckoUrl(chain.coinGeckoId)}" target="_blank" style="color: var(--arkeo); text-decoration: none;">✓ Verified on CoinGecko</a>`
+          ? `<a href="${COINGECKO_CACHE.getCoinGeckoUrl(chain.coinGeckoId)}" target="_blank" rel="noopener" style="color: var(--arkeo); text-decoration: none;">✓ Verified on CoinGecko</a>`
           : meta.category;
         
         return `

@@ -914,17 +914,23 @@ ethereum_tool = <span class="function">Tool</span>(
 ARKEO_WALLET_KEY=<span class="string">0xYourPrivateKeyOnBase</span>
 ARKEO_ENDPOINT=<span class="string">https://red5-arkeo.duckdns.org/</span>
 
-<span class="comment"># commands/blockchain.py</span>
-<span class="keyword">from</span> x402 <span class="keyword">import</span> Client  <span class="comment"># JS SDK recommended</span>
+<span class="comment"># commands/blockchain.py  (pip install requests eth-account)</span>
+<span class="keyword">import</span> os, requests, json, base64
+<span class="keyword">from</span> eth_account <span class="keyword">import</span> Account
 
 <span class="keyword">def</span> <span class="function">eth_get_block</span>(block=<span class="string">"latest"</span>):
-    <span class="string">"""Get current Ethereum block via Arkeo x402"""</span>
-    client = <span class="function">Client</span>(os.getenv(<span class="string">"ARKEO_WALLET_KEY"</span>))
-    <span class="keyword">return</span> client.<span class="function">post</span>(
-        os.getenv(<span class="string">"ARKEO_ENDPOINT"</span>),
-        {<span class="string">"method"</span>: <span class="string">"eth_getBlockByNumber"</span>,
-         <span class="string">"params"</span>: [block, <span class="string">False</span>]}
-    )</div>
+    <span class="string">"""Get Ethereum block via Arkeo — handles x402 flow"""</span>
+    endpoint = os.<span class="function">getenv</span>(<span class="string">"ARKEO_ENDPOINT"</span>)
+    payload  = {<span class="string">"jsonrpc"</span>: <span class="string">"2.0"</span>, <span class="string">"method"</span>: <span class="string">"eth_getBlockByNumber"</span>,
+                <span class="string">"params"</span>: [block, <span class="keyword">False</span>], <span class="string">"id"</span>: 1}
+    r = requests.<span class="function">post</span>(endpoint, json=payload)
+    <span class="keyword">if</span> r.status_code == 402:
+        <span class="comment"># Decode payment info and sign (see Python example in /sdk/)</span>
+        info = json.<span class="function">loads</span>(base64.<span class="function">b64decode</span>(
+            r.headers[<span class="string">"X-PAYMENT-REQUIRED"</span>]))
+        <span class="comment"># → sign USDC transfer to info["accepts"][0]["payTo"]</span>
+        <span class="comment"># → retry with X-Payment header (see sdk/python/arkeo_client.py)</span>
+    <span class="keyword">return</span> r.<span class="function">json</span>()</div>
       </div>
 
       <div class="card">

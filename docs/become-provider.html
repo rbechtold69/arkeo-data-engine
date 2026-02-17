@@ -601,8 +601,8 @@
       <div class="nav-links">
         <a href="analytics.html" class="nav-link">📊 Analytics</a>
         <a href="request-chain.html" class="nav-link">🗳️ Request Chain</a>
-        <a href="https://racing.builtonarkeo.com/" target="_blank" class="nav-link">🏇 Racing</a>
-        <a href="https://docs.arkeo.network" target="_blank" class="nav-link">Docs</a>
+        <a href="https://racing.builtonarkeo.com/" target="_blank" rel="noopener" class="nav-link">🏇 Racing</a>
+        <a href="https://docs.arkeo.network" target="_blank" rel="noopener" class="nav-link">Docs</a>
         <a href="x402-setup.html" class="nav-link">⚡ x402</a>
       </div>
       <div class="nav-buttons">
@@ -619,12 +619,12 @@
       <a href="analytics.html">📊 Analytics</a>
       <a href="request-chain.html">🗳️ Request Chain</a>
       <a href="x402-setup.html">⚡ x402</a>
-      <a href="https://docs.arkeo.network" target="_blank">📄 Docs</a>
+      <a href="https://docs.arkeo.network" target="_blank" rel="noopener">📄 Docs</a>
       <a href="my-contracts.html">📋 My Contracts</a>
       <a href="become-provider.html">🚀 Provide Data</a>
       <a href="subscribe.html">📡 Use Data</a>
-      <a href="https://app.osmosis.zone/pool/2977" target="_blank">💰 Buy ARKEO</a>
-      <a href="https://racing.builtonarkeo.com/" target="_blank">🏇 Racing</a>
+      <a href="https://app.osmosis.zone/pool/2977" target="_blank" rel="noopener">💰 Buy ARKEO</a>
+      <a href="https://racing.builtonarkeo.com/" target="_blank" rel="noopener">🏇 Racing</a>
     </div>
   </nav>
 
@@ -686,7 +686,7 @@
             <div>
               <div id="coinGeckoName" style="font-weight: 600;"></div>
               <div style="font-size: 0.75rem; color: var(--text-dim);">
-                <span id="coinGeckoSymbol"></span> • <a id="coinGeckoLink" href="#" target="_blank" style="color: var(--arkeo);">View on CoinGecko</a>
+                <span id="coinGeckoSymbol"></span> • <a id="coinGeckoLink" href="#" target="_blank" rel="noopener" style="color: var(--arkeo);">View on CoinGecko</a>
               </div>
             </div>
           </div>
@@ -1139,7 +1139,7 @@
           ℹ️ <strong>What happens here:</strong> Two transactions will register you as a provider on the Arkeo blockchain. This bonds 1 ARKEO as collateral and sets your pricing. You'll set up your sentinel in the next step — your provider won't be live until that's done.
           <br><br>
           💰 <strong>You'll need at least ~1.01 ARKEO</strong> in your Keplr wallet — 1 ARKEO for the bond plus a small amount for gas fees. 
-          Don't have any? <a href="https://app.osmosis.zone/?from=USDC&to=ARKEO" target="_blank" style="color: var(--arkeo);">Buy ARKEO on Osmosis →</a>
+          Don't have any? <a href="https://app.osmosis.zone/?from=USDC&to=ARKEO" target="_blank" rel="noopener" style="color: var(--arkeo);">Buy ARKEO on Osmosis →</a>
         </div>
         
         <div id="txStatus"></div>
@@ -1221,7 +1221,7 @@
           </summary>
           <div style="margin-top: 0.5rem; color: var(--text-dim); font-size: 0.85rem; line-height: 1.8;">
             <ol style="padding-left: 1.25rem;">
-              <li>Go to <a href="https://www.duckdns.org" target="_blank" style="color: var(--arkeo);">duckdns.org</a> and sign in with Google/GitHub</li>
+              <li>Go to <a href="https://www.duckdns.org" target="_blank" rel="noopener" style="color: var(--arkeo);">duckdns.org</a> and sign in with Google/GitHub</li>
               <li>Create a subdomain (e.g. <code style="background: var(--bg-card); padding: 0.1rem 0.3rem; border-radius: 0.2rem;">my-arkeo-node</code>)</li>
               <li>Point it to your server's IP address</li>
               <li>Enter it above (e.g. <code style="background: var(--bg-card); padding: 0.1rem 0.3rem; border-radius: 0.2rem;">my-arkeo-node.duckdns.org</code>)</li>
@@ -1480,7 +1480,7 @@ sudo systemctl enable fail2ban
         <div style="font-weight: 600; margin-bottom: 0.5rem; color: #a78bfa;">What is x402?</div>
         <div style="color: var(--text-dim); font-size: 0.9rem; line-height: 1.7;">
           x402 is Coinbase's open standard for HTTP-native payments. It lets clients pay per request with USDC on Base (low fees) — no accounts, no API keys. Perfect for AI agents. 
-          <a href="https://x402.org" target="_blank" style="color: var(--arkeo);">Learn more →</a>
+          <a href="https://x402.org" target="_blank" rel="noopener" style="color: var(--arkeo);">Learn more →</a>
         </div>
       </div>
 
@@ -1634,7 +1634,7 @@ sudo systemctl enable fail2ban
       <div class="x402-body hidden" style="padding: 0 1.5rem 1.5rem; color: var(--text-dim); font-size: 0.9rem; line-height: 1.7;">
 
         <p style="margin-bottom: 1rem;">
-          <a href="https://x402.org" target="_blank" style="color: var(--arkeo);">x402</a> is Coinbase's open HTTP payment standard. It lets clients pay per request with USDC — no accounts, no KYC. 
+          <a href="https://x402.org" target="_blank" rel="noopener" style="color: var(--arkeo);">x402</a> is Coinbase's open HTTP payment standard. It lets clients pay per request with USDC — no accounts, no KYC. 
           Add x402 middleware to your sentinel to accept micropayments from AI agents and developers on <strong>Base network</strong> (low fees).
         </p>
 
@@ -1716,7 +1716,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
         </div>
 
         <p>
-          <a href="https://x402.org/docs/sellers" target="_blank" style="color: var(--arkeo);">Full x402 seller documentation →</a>
+          <a href="https://x402.org/docs/sellers" target="_blank" rel="noopener" style="color: var(--arkeo);">Full x402 seller documentation →</a>
         </p>
 
       </div>
@@ -3017,7 +3017,7 @@ app.listen(<span style="color: #79c0ff;">3637</span>);</pre>
         document.getElementById('finalService').textContent = state.selectedService.name;
         document.getElementById('finalPubkey').textContent = state.walletPubkeyBech32 || state.walletAddress;
         document.getElementById('finalBondTx').innerHTML = `
-          <a href="${CONFIG.EXPLORER_TX}${bondTxHash}" target="_blank" class="tx-link">
+          <a href="${CONFIG.EXPLORER_TX}${bondTxHash}" target="_blank" rel="noopener" class="tx-link">
             ${bondTxHash.slice(0, 16)}...
           </a>
         `;
@@ -3528,7 +3528,7 @@ services:
             <span>Metadata URI set successfully!</span>
           </div>
           <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-dim);">
-            TX: <a href="${CONFIG.EXPLORER_TX}${result.transactionHash}" target="_blank" class="tx-link" style="word-break: break-all;">${result.transactionHash.slice(0, 16)}...</a>
+            TX: <a href="${CONFIG.EXPLORER_TX}${result.transactionHash}" target="_blank" rel="noopener" class="tx-link" style="word-break: break-all;">${result.transactionHash.slice(0, 16)}...</a>
           </div>
           <div style="margin-top: 0.75rem; padding: 0.75rem; background: var(--success-dim); border-radius: 0.5rem; font-size: 0.85rem;">
             Your metadata_uri is now: <code style="background: var(--bg-input); padding: 0.15rem 0.4rem; border-radius: 0.25rem; word-break: break-all;">${metadataUri}</code>
@@ -3917,7 +3917,7 @@ services:
           <div style="padding: 0.75rem; background: var(--success-dim); border: 1px solid var(--success); border-radius: 0.5rem;">
             <div style="color: var(--success); font-weight: 600; margin-bottom: 0.5rem;">✅ Contract Created!</div>
             <div style="font-size: 0.85rem; color: var(--text-dim);">
-              TX: <a href="${CONFIG.EXPLORER_TX}${txHash}" target="_blank" style="color: var(--arkeo);">${txHash.slice(0, 16)}...</a>
+              TX: <a href="${CONFIG.EXPLORER_TX}${txHash}" target="_blank" rel="noopener" style="color: var(--arkeo);">${txHash.slice(0, 16)}...</a>
               ${x402ContractId ? `<br>Contract ID: ${x402ContractId}` : ''}
             </div>
           </div>
