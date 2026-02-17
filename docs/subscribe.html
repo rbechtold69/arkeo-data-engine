@@ -3858,13 +3858,20 @@ console.log(data);</pre>
       }
       
       if (!contractId) {
-        resultDiv.style.display = 'block';
-        resultDiv.innerHTML = `
-          <div style="padding: 1rem; background: rgba(239,68,68,0.1); border: 1px solid var(--error); border-radius: 0.5rem;">
-            <div style="color: var(--error); font-weight: 600;">❌ No Active Contract</div>
-            <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">Open a contract first before testing queries.</div>
-          </div>`;
-        return;
+        const testContractInput = document.getElementById('testContractIdInput');
+        if (testContractInput && testContractInput.value.trim()) {
+          contractId = parseInt(testContractInput.value.trim().replace('#', ''));
+        } else {
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <div style="padding: 1rem; background: rgba(239,68,68,0.1); border: 1px solid var(--error); border-radius: 0.5rem;">
+              <div style="color: var(--error); font-weight: 600;">🔗 Contract ID Needed</div>
+              <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.5rem;">Enter your contract ID to test. You can find it on the <a href="my-contracts.html" style="color: var(--arkeo);">My Contracts</a> page.</div>
+              <input type="text" id="testContractIdInput" class="form-input" placeholder="Contract ID (e.g. 998)" style="margin-top: 0.75rem; font-family: monospace; font-size: 0.85rem;">
+              <button class="btn btn-primary" onclick="testConnection()" style="width: 100%; margin-top: 0.5rem;">🔍 Test with this contract</button>
+            </div>`;
+          return;
+        }
       }
       
       btn.disabled = true;
