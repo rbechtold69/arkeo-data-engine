@@ -95,4 +95,4 @@ tmp/
 temp/
 *.tmp
 *.bak
-*.swp
+*.swp.env

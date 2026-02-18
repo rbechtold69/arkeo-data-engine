@@ -3988,7 +3988,15 @@ console.log(data);</pre>
           `https://red5-arkeo.duckdns.org`;
         const sentinelBase = endpoint.replace(/\/$/, '');
         const queryPath = '/status';
-        const queryUrl = `${sentinelBase}/${serviceName}${queryPath}?arkauth=${encodeURIComponent(arkauth)}`;
+        let queryUrl = `${sentinelBase}/${serviceName}${queryPath}?arkauth=${encodeURIComponent(arkauth)}`;
+
+        // If sentinel is HTTP but page is HTTPS, route through CORS proxy
+        const isHttpSentinel = queryUrl.startsWith('http://');
+        const isHttpsPage = window.location.protocol === 'https:';
+        if (isHttpSentinel && isHttpsPage) {
+          const proxyBase = 'https://red5-arkeo.duckdns.org/arkeo-proxy/';
+          queryUrl = `${proxyBase}${encodeURIComponent(`${sentinelBase}/${serviceName}${queryPath}`)}?arkauth=${encodeURIComponent(arkauth)}`;
+        }
         
         const startTime = performance.now();
         const response = await fetch(queryUrl);
@@ -4024,10 +4032,21 @@ console.log(data);</pre>
             </div>`;
         }
       } catch (err) {
+        let errMsg = err.message;
+        let errHint = '';
+        if (errMsg === 'Failed to fetch' || errMsg.includes('NetworkError') || errMsg.includes('fetch')) {
+          errHint = `<div style="margin-top:0.5rem; font-size:0.85rem; color:var(--text-dim);">
+            This usually means the provider's sentinel is unreachable. Possible causes:<br>
+            • Sentinel is offline or behind a firewall<br>
+            • Provider hasn't set up CORS headers on their sentinel<br>
+            • Network connectivity issue
+          </div>`;
+        }
         resultDiv.innerHTML = `
           <div style="padding: 1rem; background: rgba(239,68,68,0.1); border: 1px solid var(--error); border-radius: 0.5rem;">
-            <div style="color: var(--error); font-weight: 600;">❌ Error</div>
-            <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">${escapeHtml(err.message)}</div>
+            <div style="color: var(--error); font-weight: 600;">❌ Connection Failed</div>
+            <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">${escapeHtml(errMsg)}</div>
+            ${errHint}
           </div>`;
       } finally {
         btn.disabled = false;
