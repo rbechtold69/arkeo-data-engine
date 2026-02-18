@@ -1279,6 +1279,20 @@
                  placeholder="https://my-node.duckdns.org" oninput="onSentinelPublicUrlChange()">
           <p class="form-hint">The installer will show this URL when it finishes.</p>
         </div>
+
+        <div style="background: rgba(245,158,11,0.1); border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;">
+          <div style="display: flex; align-items: flex-start; gap: 0.6rem;">
+            <span style="font-size: 1.1rem; margin-top: 0.05rem;">⚠️</span>
+            <div>
+              <div style="font-weight: 700; color: #f59e0b; margin-bottom: 0.35rem;">HTTPS Required for Browser Connections</div>
+              <div style="font-size: 0.85rem; color: var(--text-dim); line-height: 1.5;">
+                Your sentinel URL <strong>must use HTTPS</strong> (e.g. <code style="background: var(--bg-input); padding: 0.1rem 0.3rem; border-radius: 0.25rem;">https://</code>) for subscribers to connect via the marketplace. Browsers block HTTP connections from HTTPS pages — if your sentinel runs on plain HTTP, the Test Connection button will fail for all users.<br><br>
+                <strong>Free fix:</strong> The installer automatically sets up HTTPS with Let's Encrypt if you provide a domain name. No domain? Use a free one from <a href="https://www.duckdns.org" target="_blank" style="color: var(--arkeo);">DuckDNS.org</a> — takes 2 minutes.<br><br>
+                If you're already running HTTP-only, re-run the installer with a domain name to add SSL.
+              </div>
+            </div>
+          </div>
+        </div>
         
         <button class="btn btn-primary" id="selfTestBtn" onclick="runSelfTest()" style="width: 100%;">
           🔍 Test My Sentinel
@@ -3300,6 +3314,19 @@ services:
       updateSentinelConfig();
       updateMetadataJson();
       updateCurlTestCmd();
+
+      // Warn if HTTP (not HTTPS)
+      const hint = document.querySelector('#sentinelPublicUrl + .form-hint') || document.querySelector('.form-hint');
+      const existingWarn = document.getElementById('httpWarnInline');
+      if (existingWarn) existingWarn.remove();
+      if (url && url.startsWith('http://')) {
+        const warn = document.createElement('div');
+        warn.id = 'httpWarnInline';
+        warn.style = 'margin-top:0.5rem; padding: 0.6rem 0.75rem; background: rgba(239,68,68,0.1); border: 1px solid #ef4444; border-radius: 0.4rem; font-size: 0.82rem; color: #ef4444;';
+        warn.innerHTML = '❌ <strong>HTTP detected.</strong> Subscribers won\'t be able to connect via the marketplace. Switch to <strong>https://</strong> — re-run the installer with a domain name to get a free SSL cert.';
+        const input = document.getElementById('sentinelPublicUrl');
+        input.parentNode.insertBefore(warn, input.nextSibling);
+      }
     }
 
     function updateMetadataJson() {
