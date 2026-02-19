@@ -3314,6 +3314,11 @@ console.log(data);</pre>
           securityWarning.querySelector('span').textContent = '🔒';
         }
         
+        // Preserve key for test connection before wiping from signingKey
+        if (signingKey && signingKey.privateKeyHex) {
+          _savedTestKey = signingKey.privateKeyHex;
+        }
+
         // Clear private key from global signingKey object — it's already captured in closures where needed
         if (signingKey) {
           delete signingKey.privateKeyHex;
@@ -3323,6 +3328,9 @@ console.log(data);</pre>
         setTimeout(() => {
           clearState();
           goToStep(4);
+          // Pre-fill test connection form
+          const tcContractInput = document.getElementById('testContractIdInput');
+          if (tcContractInput && contractId) tcContractInput.value = contractId;
           // Scroll to top so user sees the success page
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }, 1000);
@@ -3934,7 +3942,7 @@ console.log(data);</pre>
       const testKeyInput = document.getElementById('testPrivateKeyInput');
       
       const testContractId = contractId || (testContractInput?.value?.trim() ? parseInt(testContractInput.value.trim().replace('#', '')) : null);
-      const testPrivKey = signingKey?.privateKeyHex || testKeyInput?.value?.trim() || null;
+      const testPrivKey = signingKey?.privateKeyHex || _savedTestKey || testKeyInput?.value?.trim() || null;
       
       if (!testContractId || !testPrivKey) {
         resultDiv.style.display = 'block';
@@ -4023,7 +4031,29 @@ console.log(data);</pre>
             }
           } catch(e) { /* couldn't look up provider */ }
         }
-        
+
+        // Check sentinel's open-claims to get the actual last-used nonce (sentinel may be ahead of chain)
+        if (resolvedMetadataUri) {
+          try {
+            const sentinelBase0 = resolvedMetadataUri.replace('/metadata.json', '').replace(/\/$/, '');
+            const isHttp0 = sentinelBase0.startsWith('http://');
+            const claimsUrl = isHttp0 && window.location.protocol === 'https:'
+              ? `https://red5-arkeo.duckdns.org/arkeo-proxy/${encodeURIComponent(sentinelBase0 + '/open-claims')}`
+              : `${sentinelBase0}/open-claims`;
+            const claimsResp = await fetch(claimsUrl);
+            if (claimsResp.ok) {
+              const claims = await claimsResp.json();
+              if (Array.isArray(claims)) {
+                const myClaim = claims.find(c => c.contract_id === contractId || c.contract_id === String(contractId));
+                if (myClaim && myClaim.nonce) {
+                  const sentinelNonce = parseInt(myClaim.nonce);
+                  if (sentinelNonce >= nonce) nonce = sentinelNonce + 1;
+                }
+              }
+            }
+          } catch(e) { /* use chain nonce */ }
+        }
+
         // Preimage format: "{contractId}:{nonce}:" (matches chain verification)
         const preimage = `${contractId}:${nonce}:`;
         const msgHash = sha256Fn(new TextEncoder().encode(preimage));
@@ -4175,6 +4205,7 @@ console.log(data);</pre>
     // SIGNING KEY GENERATION
     // ============================================================
     let signingKey = null; // { privateKeyHex, publicKeyHex, publicKeyBech32, address }
+    let _savedTestKey = null; // preserved copy of privateKeyHex for test connection after key deletion
     
     function selectKeyMode(mode) {
       const generateFlow = document.getElementById('generateKeyFlow');

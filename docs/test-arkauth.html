@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net; connect-src *; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;">
-  <title>ArkAuth Test — Arkeo Marketplace</title>
+  <title>Test Your Connection — Arkeo Marketplace</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -18,7 +18,7 @@
     h1 {
       font-size: 1.8rem;
       margin-bottom: 0.5rem;
-      background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+      background: linear-gradient(135deg, #3BE0FF, #00b4d8);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -43,7 +43,7 @@
       outline: none;
       transition: border-color 0.2s;
     }
-    input:focus { border-color: #ff8e53; }
+    input:focus { border-color: #3BE0FF; }
     .btn {
       display: inline-block;
       padding: 0.75rem 1.5rem;
@@ -58,7 +58,8 @@
     .btn:hover { opacity: 0.9; }
     .btn:active { transform: scale(0.98); }
     .btn-primary {
-      background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+      background: linear-gradient(135deg, #3BE0FF, #00b4d8);
+      color: #000;
     }
     .btn-secondary {
       background: linear-gradient(135deg, #6366f1, #8b5cf6);
@@ -89,7 +90,7 @@
       overflow-y: auto;
       color: #9ca3af;
     }
-    .output .label { color: #ff8e53; }
+    .output .label { color: #3BE0FF; }
     .output .ok { color: #6bff6b; }
     .output .err { color: #ff6b6b; }
     .row { display: flex; gap: 1rem; }
@@ -217,6 +218,7 @@
       <div class="nav-links">
         <a href="analytics.html" class="nav-link">📊 Analytics</a>
         <a href="request-chain.html" class="nav-link">🗳️ Request Chain</a>
+        <a href="agents.html" class="nav-link">🤖 AI Agents</a>
         <a href="https://racing.builtonarkeo.com/" target="_blank" class="nav-link">🏇 Racing</a>
         <a href="https://docs.arkeo.network" target="_blank" class="nav-link">Docs</a>
         <a href="x402-setup.html" class="nav-link">⚡ x402</a>
@@ -233,6 +235,7 @@
       <a href="index.html">🏠 Home</a>
       <a href="analytics.html">📊 Analytics</a>
       <a href="request-chain.html">🗳️ Request Chain</a>
+      <a href="agents.html">🤖 AI Agents</a>
       <a href="x402-setup.html">⚡ x402</a>
       <a href="https://docs.arkeo.network" target="_blank">📄 Docs</a>
       <a href="my-contracts.html">📋 My Contracts</a>
@@ -244,8 +247,15 @@
   </nav>
 
   <div class="container">
-    <h1>⚡ ArkAuth Tester</h1>
-    <p class="subtitle">Test PAYG contract authentication against an Arkeo sentinel</p>
+    <h1>⚡ Test Your Connection</h1>
+    <p class="subtitle">Verify your PAYG contract works correctly with an Arkeo sentinel</p>
+
+    <!-- Helper Info -->
+    <div class="card" style="background: rgba(59, 224, 255, 0.05); border-color: rgba(59, 224, 255, 0.2); margin-bottom: 1.5rem; padding: 1rem 1.25rem;">
+      <p style="color: #8b92a5; font-size: 0.85rem; margin: 0; line-height: 1.5;">
+        Use this tool to verify your PAYG contract is working correctly. Connect your Keplr wallet, enter your contract details, and send a test request.
+      </p>
+    </div>
 
     <!-- Wallet -->
     <div class="card">
@@ -269,16 +279,16 @@
       <div class="row">
         <div>
           <label>Contract ID</label>
-          <input id="contractId" type="number" value="916" placeholder="42">
+          <input id="contractId" type="number" value="" placeholder="Enter contract ID">
         </div>
         <div>
           <label>Nonce</label>
           <input id="nonce" type="number" value="1" placeholder="1">
-          <p class="help">Must be greater than last used nonce</p>
+          <p class="help">Must be greater than last used nonce. Auto-increments after each successful request.</p>
         </div>
       </div>
       <button id="testBtn" class="btn btn-primary" disabled>Test Request</button>
-      <button id="genBtn" class="btn btn-secondary" disabled>Generate Only</button>
+      <button id="genBtn" class="btn btn-secondary" disabled>Generate Token Only</button>
     </div>
 
     <!-- Output -->
